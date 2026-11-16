@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - eks_cluster - fail without changing anything, in check mode too, when a remote node or pod network CIDR block is
+    not an IPv4 block within C(10.0.0.0/8), C(172.16.0.0/12), C(192.168.0.0/16), or C(100.64.0.0/10), overlaps
+    another remote node or pod network block, including those an update keeps for an omitted list, or overlaps the
+    cluster's service CIDR block. EKS rejected these only after the module's other updates of the same run. An exact
+    repeat within one list is still sent once.
+...

@@ -16,6 +16,10 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 MISSING = ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}}, "ListTagsForResource")
+# Live: ListTagsForResource on a deleted contact's well-formed ARN.
+NOT_FOUND = ClientError(
+    {"Error": {"Code": "NotFoundException", "Message": "Resource was not found"}}, "ListTagsForResource"
+)
 DENIED = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "ListTagsForResource")
 
 
@@ -52,15 +56,16 @@ def test_list_contact_tags_returns_the_tag_dictionary(missing_ok):
     client.list_tags_for_resource.assert_called_once_with(arn="arn:contact", aws_retry=True)
 
 
-def test_list_contact_tags_returns_none_for_a_missing_contact_when_allowed():
-    client = Mock(list_tags_for_resource=Mock(side_effect=MISSING))
+@pytest.mark.parametrize("error", [MISSING, NOT_FOUND], ids=["resource-not-found", "not-found"])
+def test_list_contact_tags_returns_none_for_a_missing_contact_when_allowed(error):
+    client = Mock(list_tags_for_resource=Mock(side_effect=error))
 
     assert list_contact_tags(client, FakeModule({}), "arn:contact", missing_ok=True) is None
 
 
 @pytest.mark.parametrize(
     ("error", "missing_ok"),
-    [(MISSING, False), (DENIED, False), (DENIED, True)],
+    [(MISSING, False), (NOT_FOUND, False), (DENIED, False), (DENIED, True)],
 )
 def test_list_contact_tags_reports_errors(error, missing_ok):
     client = Mock(list_tags_for_resource=Mock(side_effect=error))

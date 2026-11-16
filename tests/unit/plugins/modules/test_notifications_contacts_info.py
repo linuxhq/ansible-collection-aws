@@ -136,3 +136,29 @@ def test_missing_contact_arn_returns_an_empty_list():
         plugin.main()
 
     assert raised.value.values["email_contacts"] == []
+
+
+def test_contact_deleted_before_its_tags_are_listed_is_dropped():
+    # Live: ListTagsForResource on a deleted contact's well-formed ARN fails with the unmodeled NotFoundException.
+    client = Mock()
+    client.list_tags_for_resource.side_effect = ClientError(
+        {"Error": {"Code": "NotFoundException", "Message": "Resource was not found"}}, "ListTagsForResource"
+    )
+    module = FakeModule({"arn": None}, client=client)
+    contact = {
+        "address": "a@example.com",
+        "arn": "arn:contact",
+        "creationTime": "2026-01-01T00:00:00Z",
+        "name": "Operations",
+        "status": "active",
+        "updateTime": "2026-01-01T00:00:00Z",
+    }
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "query_list", return_value=[contact]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["email_contacts"] == []

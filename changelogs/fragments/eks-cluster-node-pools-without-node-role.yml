@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - eks_cluster - fail without changing anything, in check mode too, when EKS Auto Mode compute would be enabled with
+    node pools while neither O(compute_config.node_role_arn) nor the cluster's node role is set. EKS rejected the
+    Auto Mode request, which the module sends after its other updates of the same run.
+...

@@ -1656,6 +1656,30 @@ def test_endpoint_needing_action_fails_with_the_aws_status_message():
     )
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(("tags", "expected_changed"), [(None, False), ({"Name": "main"}, True)])
+def test_endpoint_needing_action_without_an_endpoint_write_fails_in_both_modes(check_mode, tags, expected_changed):
+    client = Mock()
+    endpoint = existing_endpoint(Status="ACTION_NEEDED", StatusMessage="Subnet subnet-2 has no free addresses")
+    with (
+        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
+        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
+        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait,
+        pytest.raises(ModuleFail) as result,
+    ):
+        plugin.ensure_present(client, FakeModule(endpoint_params(tags=tags, wait=True), check_mode=check_mode))
+
+    wait.assert_not_called()
+    assert result.value.values["changed"] is expected_changed
+    assert result.value.values["msg"] == (
+        "AWS Route53 Resolver endpoint main needs action: Subnet subnet-2 has no free addresses"
+    )
+    # Only a real run applies the tag-only change before failing.
+    assert client.tag_resource.called is (expected_changed and not check_mode)
+    client.update_resolver_endpoint.assert_not_called()
+
+
 def test_delete_rejected_by_aws_names_the_likely_dependency():
     client = Mock()
     client.delete_resolver_endpoint.side_effect = plugin.ClientError(

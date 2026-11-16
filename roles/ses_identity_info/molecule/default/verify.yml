@@ -48,6 +48,18 @@
           - _ses_identity_info_dict['molecule.org'].identity_type == 'DOMAIN'
           - _ses_identity_info_dict['molecule.org'].verification_status == 'PENDING'
 
+    - name: Ensure role is included with a missing name
+      ansible.builtin.include_role:
+        name: ses_identity_info
+      vars:
+        ses_identity_info_name: missing.molecule.org
+
+    - name: Ensure info with a missing name is empty
+      ansible.builtin.assert:
+        that:
+          - _ses_identity_info_list == []
+          - _ses_identity_info_dict == {}
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         route53_zone_list:

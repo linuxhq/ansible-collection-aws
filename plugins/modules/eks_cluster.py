@@ -70,6 +70,9 @@ options:
           - EKS rejects node pools on a cluster without EKS Auto Mode compute; the module fails before any change if
             this is not empty and differs from the cluster's node pools while EKS Auto Mode compute is neither
             enabled on the cluster nor enabled by O(compute_config.enabled).
+          - EKS rejects node pools without a node role; the module fails before any change if EKS Auto Mode compute
+            would be enabled with node pools while neither O(compute_config.node_role_arn) nor the cluster's node
+            role is set.
         elements: str
         type: list
       node_role_arn:
@@ -224,6 +227,9 @@ options:
               - This must contain at least one CIDR block, and entries must not be empty.
               - Each CIDR block must be in canonical form, for example V(10.80.0.0/16) rather than V(10.80.0.5/16).
                 A repeated CIDR block is sent once.
+              - Each CIDR block must be an IPv4 block within V(10.0.0.0/8), V(172.16.0.0/12), V(192.168.0.0/16), or
+                V(100.64.0.0/10), and must not overlap another remote node or pod network block or the cluster's
+                service CIDR block. The module fails before any change otherwise.
               - This must contain at most 15 distinct CIDR blocks.
             elements: str
             required: true
@@ -241,6 +247,9 @@ options:
               - This must contain at least one CIDR block, and entries must not be empty.
               - Each CIDR block must be in canonical form, for example V(10.81.0.0/16) rather than V(10.81.0.5/16).
                 A repeated CIDR block is sent once.
+              - Each CIDR block must be an IPv4 block within V(10.0.0.0/8), V(172.16.0.0/12), V(192.168.0.0/16), or
+                V(100.64.0.0/10), and must not overlap another remote node or pod network block or the cluster's
+                service CIDR block. The module fails before any change otherwise.
               - This must contain at most 15 distinct CIDR blocks.
             elements: str
             required: true
@@ -1049,6 +1058,11 @@ RESOURCES_VPC_CONFIG_NETWORK_FIELDS = [
     "subnetIds",
 ]
 
+# Live: EKS accepts remote node and pod networks only inside RFC 1918 or CGNAT ranges.
+REMOTE_NETWORK_RANGES = tuple(
+    ipaddress.ip_network(cidr) for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10")
+)
+
 CLUSTER_TRANSITION_STATUSES = {"CREATING", "PENDING", "UPDATING"}
 
 # The authentication modes EKS accepts as a change from each mode; it never disables access entries once enabled, and
@@ -1148,6 +1162,52 @@ def canonicalize_public_access_cidrs(module):
         )
     except ValueError as e:
         module.fail_json(msg=f"resources_vpc_config.public_access_cidrs must contain valid CIDR blocks: {e}")
+
+
+def require_valid_remote_networks(module, remote_networks, service_cidr=None):
+    """Fail on remote node or pod CIDR blocks that EKS rejects; remote_networks maps each option to its blocks."""
+    # Live: EKS rejects these, but check mode would predict success, and on an update they reach EKS after other
+    # updates.
+    checked = []
+    for network, blocks in remote_networks.items():
+        for block in blocks:
+            if block.version != 4:
+                module.fail_json(msg=f"remote_network_config.{network}[].cidrs must contain IPv4 CIDR blocks: {block}")
+
+            if not any(block.subnet_of(allowed) for allowed in REMOTE_NETWORK_RANGES):
+                module.fail_json(
+                    msg=(
+                        f"remote_network_config.{network}[].cidrs must contain CIDR blocks within "
+                        f"{', '.join(str(allowed) for allowed in REMOTE_NETWORK_RANGES)}: {block}"
+                    )
+                )
+
+            for other_network, other in checked:
+                if block.overlaps(other):
+                    module.fail_json(
+                        msg=(
+                            f"remote_network_config.{network}[].cidrs must not overlap other remote network CIDR "
+                            f"blocks: {block} overlaps {other} in remote_network_config.{other_network}"
+                        )
+                    )
+
+            if service_cidr is not None and block.overlaps(service_cidr):
+                module.fail_json(
+                    msg=(
+                        f"remote_network_config.{network}[].cidrs must not overlap the cluster's service CIDR block "
+                        f"{service_cidr}: {block}"
+                    )
+                )
+
+            checked.append((network, block))
+
+
+def ip_network_or_none(cidr):
+    """Return cidr as a network, or None when it is unset or does not parse."""
+    try:
+        return ipaddress.ip_network(cidr, strict=False) if cidr else None
+    except ValueError:
+        return None
 
 
 def with_auto_mode_defaults(current):
@@ -1524,6 +1584,24 @@ def require_node_settings_with_compute(module, compute_enabled, description, cur
         )
 
 
+def require_node_role_with_node_pools(module, compute_config, description):
+    """Fail when an Auto Mode compute request carries node pools without a node role."""
+    # Live: EKS rejects it ("When Compute Config nodeRoleArn is null or empty, nodePool list cannot be populated."),
+    # but check mode would predict success, and on an update the Auto Mode request is sent after every other update.
+    compute_config = compute_config or {}
+    if (
+        compute_config.get("enabled") is True
+        and compute_config.get("nodePools")
+        and not compute_config.get("nodeRoleArn")
+    ):
+        module.fail_json(
+            msg=(
+                "compute_config.node_pools requires a node role while EKS Auto Mode compute is enabled for "
+                f"{description}; set compute_config.node_role_arn"
+            )
+        )
+
+
 def require_one_minor_version_update(module, current_version, version):
     # EKS updates one minor version at a time and rolls back only to the previous minor version, but check mode would
     # predict success, and the version update reaches EKS after the configuration updates. A rollback to the previous
@@ -1571,6 +1649,7 @@ def ensure_present(client, module, deadline=None):
         require_node_settings_with_compute(
             module, (module.params["compute_config"] or {}).get("enabled") is True, f"new EKS cluster {name}"
         )
+        require_node_role_with_node_pools(module, create_request.get("computeConfig"), f"new EKS cluster {name}")
 
         if not (create_request.get("resourcesVpcConfig") or {}).get("subnetIds"):
             module.fail_json(msg="resources_vpc_config.subnet_ids is required to create an EKS cluster")
@@ -1834,6 +1913,25 @@ def ensure_present(client, module, deadline=None):
         if (current.get("kubernetesNetworkConfig") or {}).get("ipFamily") == "ipv6":
             module.fail_json(msg="remote_network_config requires an IPv4 cluster")
 
+        # EKS checks the networks the cluster would have, including those of an omitted list, against each other and
+        # the cluster's service CIDR block.
+        current_remote_network_config = current.get("remoteNetworkConfig") or {}
+        require_valid_remote_networks(
+            module,
+            {
+                network: [
+                    ipaddress.ip_network(cidr, strict=False)
+                    for entry in remote_network_config.get(key, current_remote_network_config.get(key)) or []
+                    for cidr in entry.get("cidrs") or []
+                ]
+                for network, key in (
+                    ("remote_node_networks", "remoteNodeNetworks"),
+                    ("remote_pod_networks", "remotePodNetworks"),
+                )
+            },
+            ip_network_or_none(current_network_config.get("serviceIpv4Cidr")),
+        )
+
     if auto_mode_changed:
         # EKS requires compute, load balancing, and storage to be enabled or disabled together in one request. The
         # request is sent after the other updates, so mismatched values fail here before any of them.
@@ -1869,7 +1967,9 @@ def ensure_present(client, module, deadline=None):
                 )
             )
 
-        update_requests.append(auto_mode_request(current, config_request))
+        request = auto_mode_request(current, config_request)
+        require_node_role_with_node_pools(module, request.get("computeConfig"), f"existing EKS cluster {name}")
+        update_requests.append(request)
 
     if encryption_request is not None:
         changes["encryptionConfig"] = encryption_request["encryptionConfig"]
@@ -2264,6 +2364,7 @@ def main():
         if len(module.params["encryption_config"] or []) > 1:
             module.fail_json(msg="encryption_config must contain at most one entry")
 
+        remote_networks = {}
         for network in ("remote_node_networks", "remote_pod_networks"):
             entries = (module.params["remote_network_config"] or {}).get(network) or []
             if len(entries) > 1:
@@ -2302,6 +2403,15 @@ def main():
             # EKS rejects a repeated CIDR block, which the cluster comparison ignores, so a repeat is sent once.
             for entry in entries:
                 entry["cidrs"] = list(dict.fromkeys(entry["cidrs"]))
+
+            remote_networks[network] = [ipaddress.ip_network(cidr) for entry in entries for cidr in entry["cidrs"]]
+
+        # An existing cluster's service CIDR block, and the networks of an omitted list, are checked before updating.
+        require_valid_remote_networks(
+            module,
+            remote_networks,
+            ip_network_or_none((module.params["kubernetes_network_config"] or {}).get("service_ipv4_cidr")),
+        )
 
         # EKS rejects these, but check mode would predict success, and a blank network entry or version reaches EKS
         # after other updates.
