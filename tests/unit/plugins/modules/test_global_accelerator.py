@@ -4591,8 +4591,18 @@ def test_endpoint_groups_listed_for_the_pre_write_checks_are_reused(check_mode):
     endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080])})
     entries = [override_listener("TCP", [(80, 80)], {"us-west-2": [(80, 8443)]})]
     module = FakeModule(
-        accelerator_params(enabled=False, listeners=entries, purge_endpoint_groups=False), check_mode=True
+        accelerator_params(enabled=False, listeners=entries, purge_endpoint_groups=False), check_mode=check_mode
     )
+    client = Mock()
+    client.update_accelerator.return_value = {"Accelerator": deployed_accelerator(Enabled=False)}
+    client.create_endpoint_group.return_value = {
+        "EndpointGroup": {
+            "EndpointDescriptions": [],
+            "EndpointGroupArn": "arn:a/west",
+            "EndpointGroupRegion": "us-west-2",
+            "PortOverrides": [{"EndpointPort": 8443, "ListenerPort": 80}],
+        }
+    }
     with (
         patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
         patch.object(plugin, "require_client_methods"),
@@ -4602,12 +4612,22 @@ def test_endpoint_groups_listed_for_the_pre_write_checks_are_reused(check_mode):
             "get_endpoint_groups",
             side_effect=lambda client, module, listener_arn, changed=False: endpoint_groups.get(listener_arn, []),
         ) as get_endpoint_groups,
+        patch.object(plugin, "wait_for_accelerator"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(Mock(), module)
+        plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
     get_endpoint_groups.assert_called_once()
+    assert get_endpoint_groups.call_args.args[2] == "arn:a"
+    if check_mode:
+        assert client.mock_calls == []
+    else:
+        # The accelerator is updated before the endpoint group write that uses the cached listing.
+        assert [name for name, args, kwargs in client.mock_calls] == ["update_accelerator", "create_endpoint_group"]
+        assert client.create_endpoint_group.call_args.kwargs["PortOverrides"] == [
+            {"EndpointPort": 8443, "ListenerPort": 80}
+        ]
 
 
 def run_listener_writes_against_port_overrides(module, current_listeners, endpoint_groups):

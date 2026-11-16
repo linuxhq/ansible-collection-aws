@@ -875,6 +875,34 @@ def test_check_mode_predicts_an_updated_document_as_a_real_update_returns_it(wai
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("latest_status", [None, "Deleting"], ids=["missing", "deleting"])
+def test_default_version_update_fails_when_the_document_is_deleted_after_the_default_read(check_mode, latest_status):
+    # The document is deleted between the $DEFAULT and $LATEST reads: GetDocument returns InvalidDocument, or the latest
+    # version is Deleting (waited on outside check mode). A real run's UpdateDocument would fail, so both modes fail
+    # before any write.
+    reads = [document({"schemaVersion": "1.2"}, Status="Active")]
+    if latest_status is None:
+        reads.append(None)
+    else:
+        reads.append(document({"schemaVersion": "1.2"}, DocumentVersion="2", Status=latest_status))
+        if not check_mode:
+            reads.append(None)
+
+    client = Mock()
+    result, _wait, get_document = run_present(
+        client, FakeModule(params(document_version="$DEFAULT"), check_mode=check_mode), reads
+    )
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {
+        "changed": False,
+        "msg": "Unable to update AWS Systems Manager document example: the document no longer exists",
+    }
+    assert get_document.call_count == len(reads)
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("document_format", ["JSON", "TEXT", "YAML"])
 def test_absent_deletes_documents_of_every_format(document_format, check_mode):
     client = Mock(describe_document=Mock(return_value={"Document": described(document_format)}))

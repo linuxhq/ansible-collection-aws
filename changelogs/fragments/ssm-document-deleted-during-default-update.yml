@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ssm_document - with O(document_version=$DEFAULT), fail cleanly before any change when the document is deleted
+    between the default and latest version reads, instead of failing with a traceback in check mode or at the
+    UpdateDocument call in a real run.
+...
