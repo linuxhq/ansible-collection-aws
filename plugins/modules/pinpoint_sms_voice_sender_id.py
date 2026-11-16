@@ -336,6 +336,8 @@ def ensure_present(client, module, current):
     tags = module.params["tags"]
 
     if current is None:
+        # Live: SMS Voice V2 rejects these keys.
+        require_no_reserved_tag_keys(module, tags or {})
         request = scrub_none_parameters(
             {
                 "DeletionProtectionEnabled": deletion_protection_enabled,
@@ -373,6 +375,9 @@ def ensure_present(client, module, current):
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
         tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge_tags=module.params["purge_tags"])
+        # Live: SMS Voice V2 rejects these keys, after UpdateSenderId of the same run. A stored key with the requested
+        # value is not sent.
+        require_no_reserved_tag_keys(module, tags_to_set)
         require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 200, f"{SERVICE} sender ID")
 
     update = deletion_protection_enabled is not None and current.get("DeletionProtectionEnabled") != (
@@ -477,8 +482,6 @@ def main():
             module.fail_json(msg="message_types must not be empty")
 
         require_valid_tags(module, module.params["tags"], 200, restricted_characters=True)
-        # Live: SMS Voice V2 rejects these keys, which an existing sender ID would reach after UpdateSenderId.
-        require_no_reserved_tag_keys(module, module.params["tags"] or {})
 
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(module, client, SERVICE, {"describe_sender_ids": ("MaxResults", "NextToken", "SenderIds")})
