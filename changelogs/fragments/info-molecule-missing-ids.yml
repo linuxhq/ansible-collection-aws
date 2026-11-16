@@ -1,0 +1,6 @@
+---
+trivial:
+  - ec2_flow_log_info, ec2_vpc_prefix_list_info, notifications_contacts_info, ses_identity_info - assert in the
+    Molecule verify that querying only a well-formed nonexistent ID, name, or deleted contact ARN publishes an empty
+    list and dict.
+...
