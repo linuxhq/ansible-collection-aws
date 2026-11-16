@@ -27,7 +27,8 @@ def list_contact_tags(client, module, contact_arn, missing_ok=False):
     msg = f"Unable to list tags for AWS Notifications contact {contact_arn}"
     try:
         response = client.list_tags_for_resource(arn=contact_arn, aws_retry=True)
-    except is_boto3_error_code("ResourceNotFoundException") as e:
+    # Live: ListTagsForResource reports a missing contact with the unmodeled NotFoundException.
+    except is_boto3_error_code(["NotFoundException", "ResourceNotFoundException"]) as e:
         if missing_ok:
             return None
 

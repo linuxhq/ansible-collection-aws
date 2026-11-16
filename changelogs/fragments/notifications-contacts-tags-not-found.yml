@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - notifications_contacts_info - drop a contact deleted while its tags are listed. ListTagsForResource reports such a
+    contact with C(NotFoundException) rather than C(ResourceNotFoundException), so the module failed instead.
+...
