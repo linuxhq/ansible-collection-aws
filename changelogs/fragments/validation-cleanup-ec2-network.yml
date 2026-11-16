@@ -1,0 +1,11 @@
+---
+minor_changes:
+  - ec2_vpc_prefix_list - a blank O(name) with O(state=present) is now rejected by EC2 instead of by the module
+    before any AWS call, so check mode no longer reports it as an error.
+  - ec2_vpc_vpn - O(local_ipv6_network_cidr) or O(remote_ipv6_network_cidr) on an IPv4 connection, and a missing or
+    blank O(customer_gateway_id) at creation, are now rejected by EC2 instead of by the module, so check mode no
+    longer reports them as errors.
+trivial:
+  - ec2_flow_log, ec2_flow_log_info, ec2_vpc_prefix_list, ec2_vpc_prefix_list_info, and ec2_vpc_vpn - rely on the EC2
+    response shape instead of checking the types and presence of fields EC2 always returns.
+...

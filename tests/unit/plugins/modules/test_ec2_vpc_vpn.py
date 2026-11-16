@@ -421,17 +421,6 @@ def test_shared_inside_cidr_is_rejected_before_mutation(params, connection, exis
     assert client.mock_calls == []
 
 
-@pytest.mark.parametrize("route", ["10.0.0.0/8'", "not-a-cidr", "10.0.0.1/8"])
-def test_invalid_ec2_route_cidrs_fail_before_waiter_construction(params, connection, route):
-    connection["Routes"][0]["DestinationCidrBlock"] = route
-    assert plugin.validate_connection(FakeModule(params), connection) is connection
-
-    with patch.object(plugin, "run_waiter") as run, pytest.raises(ModuleFail):
-        plugin.wait_for_route_deleted(Mock(), FakeModule(params), "vpn-123", route)
-
-    run.assert_not_called()
-
-
 @pytest.mark.parametrize("check_mode", [True, False])
 @pytest.mark.parametrize(
     "field, option, cidrs",
@@ -463,7 +452,6 @@ def test_inside_cidr_swap_fails_before_any_mutation(params, connection, check_mo
 def test_unmanaged_route_cidr_does_not_block_vpn_deletion(params, connection, route):
     connection["Routes"][0]["DestinationCidrBlock"] = route
     module = FakeModule(params)
-    plugin.validate_connection(module, connection)
     client = Mock()
     assert ensure(client, module, connection)["changed"] is False
     with patch.object(plugin, "wait_for_connection_deleted"), pytest.raises(ModuleExit) as result:
@@ -479,17 +467,6 @@ def test_inside_cidr_updates_allow_own_or_unused_cidr(params, connection, cidr, 
     connection["Options"]["TunnelOptions"][1]["TunnelInsideCidr"] = "169.254.11.0/30"
     params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "tunnel_inside_cidr": cidr}]
     assert bool(plugin.tunnel_deltas(FakeModule(params), connection)) is changed
-
-
-@pytest.mark.parametrize("check_mode", [True, False])
-def test_invalid_route_to_purge_fails_before_any_mutation(params, connection, check_mode):
-    connection["Routes"][0]["DestinationCidrBlock"] = "invalid"
-    params.update(routes=[], local_ipv4_network_cidr="10.0.0.0/8")
-    client = Mock()
-    with pytest.raises(ModuleFail, match="canonical IPv4 CIDR"):
-        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
-
-    assert client.mock_calls == []
 
 
 @pytest.mark.parametrize("check_mode", [True, False])
@@ -923,7 +900,7 @@ def test_create_check_mode_validates_and_does_not_invent_an_id(params):
     client = Mock()
     assert ensure(client, FakeModule(params, check_mode=True), None) == {"changed": True, "vpn_connection": {}}
     assert client.mock_calls == []
-    params["customer_gateway_id"] = None
+    params["vpn_gateway_id"] = None
     with pytest.raises(ModuleFail):
         plugin.ensure_present(client, FakeModule(params, check_mode=True), None)
 
@@ -933,12 +910,11 @@ def test_create_check_mode_validates_and_does_not_invent_an_id(params):
 @pytest.mark.parametrize(
     "gateways",
     [
-        {"customer_gateway_id": None, "vpn_gateway_id": "vgw-123"},
         {"customer_gateway_id": "cgw-123", "vpn_gateway_id": None},
         {"customer_gateway_id": "cgw-123", "transit_gateway_id": None},
         {"customer_gateway_id": "cgw-123", "vpn_concentrator_id": None},
     ],
-    ids=["customer_gateway_id", "vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id"],
+    ids=["vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id"],
 )
 def test_create_rejects_blank_gateway_ids_before_any_aws_call(params, check_mode, blank, gateways):
     # No gateway has a blank ID, so EC2 can never create the connection that check mode would predict.
@@ -948,8 +924,7 @@ def test_create_rejects_blank_gateway_ids_before_any_aws_call(params, check_mode
         plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), None)
 
     assert raised.value.values == {
-        "msg": "Creation requires name, customer_gateway_id, and one of vpn_gateway_id, transit_gateway_id, "
-        "or vpn_concentrator_id"
+        "msg": "Creation requires name and one of vpn_gateway_id, transit_gateway_id, or vpn_concentrator_id"
     }
     assert client.mock_calls == []
 
@@ -1128,16 +1103,6 @@ def test_deleting_connection_is_never_recreated(params, connection):
     client.create_vpn_connection.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "response", [{}, {"VpnConnections": None}, {"VpnConnections": [None]}, {"VpnConnections": [{}]}]
-)
-def test_invalid_describe_response_fails(params, response):
-    client = Mock()
-    client.describe_vpn_connections.return_value = response
-    with pytest.raises(ModuleFail):
-        plugin.find_connection(client, FakeModule(params))
-
-
 def test_ambiguous_selection_fails(params, connection):
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": [connection, connection]}
@@ -1195,24 +1160,6 @@ def test_missing_or_null_existing_routing_mode_defaults_to_dynamic(
         assert ensure(client, module, connection)["changed"] is False
 
     assert client.mock_calls == []
-
-
-@pytest.mark.parametrize("routes", [None, {}, [None], [{}], [{"DestinationCidrBlock": ""}]])
-def test_invalid_route_responses_fail_cleanly(params, connection, routes):
-    connection["Routes"] = routes
-    client = Mock()
-    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
-    with pytest.raises(ModuleFail, match="invalid VPN connection routes"):
-        plugin.find_connection(client, FakeModule(params))
-
-
-@pytest.mark.parametrize("tunnels", [{}, [None], ["invalid"]])
-def test_invalid_tunnel_responses_fail_cleanly(params, connection, tunnels):
-    connection["Options"]["TunnelOptions"] = tunnels
-    client = Mock()
-    client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
-    with pytest.raises(ModuleFail, match="invalid VPN connection tunnel options"):
-        plugin.find_connection(client, FakeModule(params))
 
 
 @pytest.mark.parametrize("timeout", [True, False])
@@ -1344,21 +1291,6 @@ def test_ipv4_tunnel_cidrs_are_sent_when_creating_ipv6_connection(params, connec
         {"TunnelInsideCidr": "169.254.20.0/30"},
         {"TunnelInsideCidr": "169.254.21.0/30"},
     ]
-
-
-@pytest.mark.parametrize("option", ["local_ipv6_network_cidr", "remote_ipv6_network_cidr"])
-@pytest.mark.parametrize("check_mode", [True, False])
-@pytest.mark.parametrize("existing", [True, False])
-def test_ipv6_network_cidr_rejected_on_ipv4_connection(params, connection, option, check_mode, existing):
-    # EC2 rejects these options for an IPv4 connection on create and on modify, and omits them from it.
-    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", **{option: "::/0"})
-    client = Mock()
-    module = FakeModule(params, check_mode=check_mode)
-    plugin.validate_inputs(module)
-    with pytest.raises(ModuleFail, match=f"{option} requires tunnel_inside_ip_version=ipv6"):
-        plugin.ensure_present(client, module, connection if existing else None)
-
-    assert client.mock_calls == []
 
 
 @pytest.mark.parametrize("option", ["local_ipv6_network_cidr", "remote_ipv6_network_cidr"])
@@ -1589,18 +1521,6 @@ def test_asymmetric_tunnels_converge_after_creation_order_differs(params, connec
     current["Options"]["TunnelOptions"].reverse()
     client.reset_mock()
     assert ensure(client, FakeModule(params), current)["changed"] is False
-    assert client.mock_calls == []
-
-
-@pytest.mark.parametrize("actual", [[{}], [None], [{"Value": []}], {"Value": "AES256"}, ["AES256"], [{"Value": 1}]])
-@pytest.mark.parametrize("check_mode", [True, False])
-def test_malformed_algorithm_values_fail_before_mutation(params, connection, actual, check_mode):
-    params["tunnel_options"] = [{"phase1_encryption_algorithms": ["AES256"]}]
-    connection["Options"]["TunnelOptions"][1]["Phase1EncryptionAlgorithms"] = actual
-    client = Mock()
-    with pytest.raises(ModuleFail, match="EC2 returned invalid Phase1EncryptionAlgorithms"):
-        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
-
     assert client.mock_calls == []
 
 
@@ -2670,24 +2590,6 @@ def test_shared_log_group_arn_follows_each_tunnels_logging(module_spec, default_
     ]
 
 
-@pytest.mark.parametrize("check_mode", [True, False])
-@pytest.mark.parametrize("actual", ["EXAMPLE", ["EXAMPLE"], {"CloudWatchLogOptions": "EXAMPLE"}])
-def test_malformed_log_options_fail_before_mutation(params, connection, check_mode, actual):
-    connection["Options"]["TunnelOptions"][1]["LogOptions"] = actual
-    params.update(
-        local_ipv4_network_cidr="10.20.0.0/16",
-        tunnel_options=[{"log_options": {"cloud_watch_log_options": {"log_enabled": False}}}],
-    )
-    client = Mock()
-    with pytest.raises(ModuleFail) as raised:
-        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
-
-    assert raised.value.values == {
-        "msg": "EC2 returned invalid LogOptions for VPN connection vpn-123 tunnel 203.0.113.2"
-    }
-    assert client.mock_calls == []
-
-
 @pytest.mark.parametrize(
     "tunnel",
     [
@@ -2804,14 +2706,6 @@ def test_tunnel_timers_accept_equal_lifetimes_and_a_margin_of_half(params, defau
     assert len(plugin.tunnel_deltas(FakeModule(params), default_tunnels)) == 2
 
 
-@pytest.mark.parametrize("value", ["3600", True, 3600.0])
-def test_malformed_returned_timers_fail_before_mutation(params, default_tunnels, value):
-    default_tunnels["Options"]["TunnelOptions"][0]["Phase2LifetimeSeconds"] = value
-    params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "rekey_margin_time_seconds": 300}]
-    with pytest.raises(ModuleFail, match="EC2 returned invalid Phase2LifetimeSeconds"):
-        plugin.tunnel_deltas(FakeModule(params), default_tunnels)
-
-
 @pytest.mark.parametrize("check_mode", [True, False])
 @pytest.mark.parametrize(
     "returned, tunnel",
@@ -2900,18 +2794,6 @@ def test_ikev1_with_add_is_unchanged(params, default_tunnels):
         {"outside_ip_address": "203.0.113.2", "ike_versions": ["ikev1"], "startup_action": "add"}
     ]
     assert plugin.tunnel_deltas(FakeModule(params), default_tunnels) == []
-
-
-@pytest.mark.parametrize("value", ["ikev1", ["ikev1"], {"Value": "ikev1"}])
-def test_malformed_returned_ike_versions_fail_before_a_startup_change(params, default_tunnels, value):
-    default_tunnels["Options"]["TunnelOptions"][0]["IkeVersions"] = value
-    params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "startup_action": "start"}]
-    with pytest.raises(ModuleFail) as raised:
-        plugin.tunnel_deltas(FakeModule(params), default_tunnels)
-
-    assert raised.value.values == {
-        "msg": "EC2 returned invalid IKEVersions for VPN connection vpn-123 tunnel 203.0.113.1"
-    }
 
 
 def test_skip_tunnel_replacement_is_sent_only_with_a_lifecycle_change(params, default_tunnels, sdk_checks):

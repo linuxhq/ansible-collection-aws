@@ -37,26 +37,6 @@ def test_flow_log_ids_are_sent_to_aws():
     assert query.call_args.kwargs["FlowLogIds"] == ["fl-1"]
 
 
-def test_rejects_invalid_flow_log_response():
-    module = FakeModule(
-        {
-            "filters": None,
-            "flow_log_ids": None,
-            "resource_ids": None,
-        },
-        client=Mock(),
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "invalid EC2 flow log" in raised.value.values["msg"]
-
-
 def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
     module = FakeModule(
         {

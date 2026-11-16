@@ -236,26 +236,6 @@ def test_create_retries_reuse_the_client_token():
     assert first.kwargs["ClientToken"] == second.kwargs["ClientToken"]
 
 
-def test_create_rejects_malformed_response():
-    client = Mock(create_managed_prefix_list=Mock(return_value={"PrefixList": None}))
-    module = FakeModule({"name": "main", "tags": None, "wait": False})
-    with (
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail),
-    ):
-        plugin.create_prefix_list(
-            client,
-            module,
-            OWNER,
-            {
-                "address_family": "IPv4",
-                "max_entries": 1,
-                "prefix_list_name": "main",
-            },
-            [{"cidr": "192.0.2.0/24"}],
-        )
-
-
 def test_additive_check_mode_preserves_unmanaged_tags():
     current = {
         "AddressFamily": "IPv4",
@@ -390,24 +370,6 @@ def main_params(**overrides):
     }
     params.update(overrides)
     return params
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("name", ["", " "])
-def test_present_rejects_a_blank_name_before_any_aws_call(name, check_mode):
-    # EC2 rejects both (InvalidParameterValue, MissingParameter); check mode predicted a new prefix list.
-    client = Mock()
-    module = FakeModule(main_params(name=name), check_mode=check_mode, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(module, "client") as connect,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "name must not be empty"
-    connect.assert_not_called()
-    assert client.mock_calls == []
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -575,30 +537,6 @@ def test_lookup_ignores_delete_complete_tombstones():
         ],
     ):
         assert plugin.get_customer_managed_prefix_list_by_name(Mock(), module, OWNER) == active
-
-
-def test_lookup_rejects_malformed_response():
-    module = FakeModule({"name": "main"})
-    with (
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail),
-    ):
-        plugin.get_customer_managed_prefix_list_by_name(Mock(), module, OWNER)
-
-
-def test_entries_reject_malformed_response():
-    module = FakeModule({"name": "main"})
-    with (
-        patch.object(
-            plugin,
-            "get_customer_managed_prefix_list_by_name",
-            return_value={"PrefixListId": "pl-1", "State": "create-complete"},
-        ),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail),
-    ):
-        plugin.get_current(Mock(), module, OWNER)
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1513,7 +1451,7 @@ def test_lookup_ignores_prefix_lists_owned_by_other_accounts():
         assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER) is None
 
 
-def test_lookup_skips_unversioned_aws_managed_prefix_lists_before_validation():
+def test_lookup_skips_aws_managed_prefix_lists():
     own = prefix_list()
     aws_managed = {
         "AddressFamily": "IPv4",
@@ -1525,16 +1463,6 @@ def test_lookup_skips_unversioned_aws_managed_prefix_lists_before_validation():
     }
     with patch.object(plugin, "query_list", return_value=[aws_managed, own]):
         assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER) == own
-
-
-def test_lookup_validates_owned_prefix_lists():
-    with (
-        patch.object(plugin, "query_list", return_value=[prefix_list(Version=None)]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER)
-
-    assert raised.value.values["msg"] == "EC2 returned an invalid managed prefix list"
 
 
 @pytest.mark.parametrize(

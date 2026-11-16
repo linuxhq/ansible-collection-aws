@@ -135,35 +135,6 @@ def test_target_version_is_used_for_entries():
     assert entries.call_args.kwargs["TargetVersion"] == 2
 
 
-def test_rejects_malformed_prefix_list_response():
-    module = FakeModule(
-        {"filters": None, "prefix_list_ids": None, "target_version": None},
-        client=Mock(),
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail),
-    ):
-        plugin.main()
-
-
-def test_rejects_malformed_entry_response():
-    module = FakeModule(
-        {"filters": None, "prefix_list_ids": None, "target_version": None},
-        client=Mock(),
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"PrefixListId": "pl-1"}]),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"Entries": [None]}),
-        pytest.raises(ModuleFail),
-    ):
-        plugin.main()
-
-
 def test_prefix_list_ids_take_precedence_over_the_id_filter():
     module = FakeModule(
         {

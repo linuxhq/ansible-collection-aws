@@ -65,7 +65,6 @@ options:
     description:
       - The managed prefix list name.
       - The name is matched exactly; C(*) and C(?) are not wildcards.
-      - This must not be empty when O(state=present).
     required: true
     type: str
   state:
@@ -277,10 +276,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_ec2_tags,
     require_no_reserved_tag_keys,
     require_resulting_tag_limit,
-    require_valid_tag_list,
     require_valid_tags,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     remaining_wait_timeout,
@@ -427,43 +424,6 @@ WAITER_TARGET_STATES = {
 }
 
 
-def validate_prefix_list(module, prefix_list, changed=False):
-    if (
-        not isinstance(prefix_list, dict)
-        or not isinstance(prefix_list.get("AddressFamily"), str)
-        or not isinstance(prefix_list.get("MaxEntries"), int)
-        or isinstance(prefix_list.get("MaxEntries"), bool)
-        or not isinstance(prefix_list.get("OwnerId"), str)
-        or not isinstance(prefix_list.get("PrefixListId"), str)
-        or not prefix_list["PrefixListId"]
-        or not isinstance(prefix_list.get("PrefixListName"), str)
-        or not isinstance(prefix_list.get("State"), str)
-        or not isinstance(prefix_list.get("Version"), int)
-        or isinstance(prefix_list.get("Version"), bool)
-    ):
-        module.fail_json(changed=changed, msg="EC2 returned an invalid managed prefix list")
-
-    if prefix_list.get("Tags") is not None:
-        require_valid_tag_list(
-            module, prefix_list["Tags"], "EC2 returned an invalid managed prefix list", changed=changed
-        )
-
-    return prefix_list
-
-
-def validate_prefix_list_entries(module, entries, changed=False):
-    for entry in entries:
-        if (
-            not isinstance(entry, dict)
-            or not isinstance(entry.get("Cidr"), str)
-            or not entry["Cidr"]
-            or (entry.get("Description") is not None and not isinstance(entry.get("Description"), str))
-        ):
-            module.fail_json(changed=changed, msg="EC2 returned invalid managed prefix list entries")
-
-    return entries
-
-
 def create_prefix_list(client, module, owner_id, desired_prefix_list, desired_entries, deadline=None):
     tags = module.params["tags"]
     request = scrub_none_parameters(
@@ -496,11 +456,7 @@ def create_prefix_list(client, module, owner_id, desired_prefix_list, desired_en
             msg=f"Unable to create EC2 VPC managed prefix list {module.params['name']}",
         )
 
-    prefix_list = validate_prefix_list(
-        module,
-        response.get("PrefixList") if isinstance(response, dict) else None,
-        changed=True,
-    )
+    prefix_list = response["PrefixList"]
 
     # EC2 creates at most one request's worth of entries; add the rest once creation completes.
     for batch in chunks(desired_entries[MAX_ENTRIES_PER_REQUEST:], MAX_ENTRIES_PER_REQUEST):
@@ -784,18 +740,14 @@ def get_current(client, module, owner_id, changed=False):
         },
         changed=changed,
     )
-    entries = validate_prefix_list_entries(
+    entries = query_list(
         module,
-        query_list(
-            module,
-            client,
-            "get_managed_prefix_list_entries",
-            "Entries",
-            f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
-            changed=changed,
-            PrefixListId=prefix_list_id,
-        ),
+        client,
+        "get_managed_prefix_list_entries",
+        "Entries",
+        f"Unable to get EC2 VPC managed prefix list entries for {prefix_list_id}",
         changed=changed,
+        PrefixListId=prefix_list_id,
     )
 
     return prefix_list, entries
@@ -858,7 +810,7 @@ def describe_prefix_list(client, module, prefix_list_id, changed=False):
     if len(prefix_lists) != 1:
         module.fail_json(changed=changed, msg=f"EC2 did not return managed prefix list {prefix_list_id}")
 
-    return validate_prefix_list(module, prefix_lists[0], changed=changed)
+    return prefix_lists[0]
 
 
 def modify_prefix_list(client, module, current, changed=False, **kwargs):
@@ -891,11 +843,7 @@ def modify_prefix_list(client, module, current, changed=False, **kwargs):
             msg=f"Unable to modify EC2 VPC managed prefix list {module.params['name']}",
         )
 
-    return validate_prefix_list(
-        module,
-        response.get("PrefixList") if isinstance(response, dict) else None,
-        changed=True,
-    )
+    return response["PrefixList"]
 
 
 def wait_for_ready_state(client, module, prefix_list_id, changed=False, deadline=None):
@@ -964,15 +912,9 @@ def get_customer_managed_prefix_list_by_name(client, module, owner_id, changed=F
     matches = []
     for prefix_list in prefix_lists:
         # Skip AWS-managed lists and lists shared from other accounts, which cannot be modified.
-        # AWS-managed lists omit MaxEntries and Version, so they are skipped before validation.
-        if (
-            isinstance(prefix_list, dict)
-            and isinstance(prefix_list.get("OwnerId"), str)
-            and (prefix_list["OwnerId"] != owner_id or prefix_list.get("State") == "delete-complete")
-        ):
+        if prefix_list["OwnerId"] != owner_id or prefix_list.get("State") == "delete-complete":
             continue
 
-        prefix_list = validate_prefix_list(module, prefix_list, changed=changed)
         # The filter value is escaped; still keep only the exact name.
         if prefix_list["PrefixListName"] == name:
             matches.append(prefix_list)
@@ -1055,9 +997,6 @@ def main():
     tags = module.params["tags"]
 
     if state == "present":
-        # EC2 rejects a blank name, which check mode would otherwise predict as a new prefix list.
-        require_non_blank(module, module.params["name"], "name")
-
         if not entries:
             module.fail_json(msg="entries must contain at least one item when state=present")
 
