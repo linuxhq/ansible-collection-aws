@@ -556,6 +556,13 @@ def ensure_present(client, module):
     default_version_to_promote = None
     if resource_changed and current is not None and document_version == "$DEFAULT":
         latest = current_document(client, module, include_tags=False, document_version="$LATEST", deadline=deadline)
+        if latest is None:
+            # The document was deleted after its default version was read; UpdateDocument would fail.
+            module.fail_json(
+                changed=False,
+                msg=f"Unable to update AWS Systems Manager document {name}: the document no longer exists",
+            )
+
         if same_json(comparable_document(latest), desired_comparable):
             if latest.get("Status") == "Failed":
                 fail_failed_document(module, latest)
