@@ -4515,6 +4515,101 @@ def test_port_override_endpoint_port_swap_between_listeners_fails_before_any_wri
     }
 
 
+def run_accelerator_update_with_listeners(module, current_listeners, endpoint_groups):
+    """Run ensure_present on a deployed, enabled accelerator whose listeners and endpoint groups are given."""
+    client = Mock()
+    with (
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_listeners", return_value=current_listeners),
+        patch.object(
+            plugin,
+            "get_endpoint_groups",
+            side_effect=lambda client, module, listener_arn, changed=False: endpoint_groups.get(listener_arn, []),
+        ) as get_endpoint_groups,
+        patch.object(plugin, "delete_endpoint_group") as delete_endpoint_group,
+        patch.object(plugin, "delete_listener") as delete_listener,
+        patch.object(plugin, "wait_for_accelerator"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    client.update_accelerator.assert_not_called()
+    client.update_listener.assert_not_called()
+    client.create_listener.assert_not_called()
+    client.update_endpoint_group.assert_not_called()
+    client.create_endpoint_group.assert_not_called()
+    delete_endpoint_group.assert_not_called()
+    delete_listener.assert_not_called()
+    return raised.value.values, get_endpoint_groups
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_circular_listener_update_fails_before_the_accelerator_update(check_mode):
+    # A real run used to disable the accelerator before the listener reconciliation found the circular updates.
+    entries = [((1, 9), (11, 11)), ((10, 10), (12, 20), (30, 30))]
+    module = FakeModule(
+        accelerator_params(enabled=False, listeners=[multi_range_desired(*ranges) for ranges in entries]),
+        check_mode=check_mode,
+    )
+    values = run_accelerator_update_with_listeners(
+        module, listed_listeners({"arn:a": (1, 10), "arn:b": (30, 30), "arn:c": (11, 20)}), {}
+    )[0]
+
+    assert values["changed"] is False
+    assert "circular port dependencies" in values["msg"]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_port_override_endpoint_port_swap_fails_before_the_accelerator_update(check_mode):
+    # A real run used to disable the accelerator before the listener reconciliation found the endpoint port swap.
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080]), "arn:b": (443, [9090])})
+    entries = [
+        override_listener("TCP", [(80, 80)], {"us-east-1": [(80, 9090)]}),
+        override_listener("TCP", [(443, 443)], {"us-east-1": [(443, 8080)]}),
+    ]
+    module = FakeModule(accelerator_params(enabled=False, listeners=entries), check_mode=check_mode)
+    values, get_endpoint_groups = run_accelerator_update_with_listeners(
+        module, listed_listeners({"arn:a": (80, 80), "arn:b": (443, 443)}), endpoint_groups
+    )
+
+    assert values == {
+        "changed": False,
+        "msg": (
+            "Unable to reconcile AWS Global Accelerator endpoint groups: port override endpoint ports 8080 in "
+            "us-east-1, 9090 in us-east-1 move between listeners in both directions; move them in separate runs"
+        ),
+    }
+    # Each listener's endpoint groups are listed once, for the checks and the reconciliation alike.
+    assert sorted(call.args[2] for call in get_endpoint_groups.call_args_list) == ["arn:a", "arn:b"]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_endpoint_groups_listed_for_the_pre_write_checks_are_reused(check_mode):
+    # purge_endpoint_groups=false keeps unlisted groups, so the retained-override check and the endpoint group
+    # reconciliation both need arn:a's groups; they are listed once.
+    endpoint_groups = port_override_listener_groups({"arn:a": (80, [8080])})
+    entries = [override_listener("TCP", [(80, 80)], {"us-west-2": [(80, 8443)]})]
+    module = FakeModule(
+        accelerator_params(enabled=False, listeners=entries, purge_endpoint_groups=False), check_mode=True
+    )
+    with (
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_listeners", return_value=listed_listeners({"arn:a": (80, 80)})),
+        patch.object(
+            plugin,
+            "get_endpoint_groups",
+            side_effect=lambda client, module, listener_arn, changed=False: endpoint_groups.get(listener_arn, []),
+        ) as get_endpoint_groups,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(Mock(), module)
+
+    assert raised.value.values["changed"] is True
+    get_endpoint_groups.assert_called_once()
+
+
 def run_listener_writes_against_port_overrides(module, current_listeners, endpoint_groups):
     """Run ensure_listeners with listener writes that AWS rejects while a stored port override conflicts with them.
 

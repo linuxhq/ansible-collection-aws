@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - ssm_association - in check mode, predict the next association version for an update, as the real run returns it,
+    instead of the current version.
+  - ssm_document - in check mode, predict a content update as the real run returns it, the version after the latest
+    one, Active, without the old version's name, status information, or creation date, instead of the version read
+    before the update.
+...
