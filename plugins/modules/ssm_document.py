@@ -189,8 +189,8 @@ document:
       returned: always
       type: dict
     created_date:
-      description: The date the document was created.
-      returned: when available
+      description: The date the returned document version was created.
+      returned: when available, except for a create or an update predicted in check mode
       type: str
     display_name:
       description: The friendly name of the document version.
@@ -723,6 +723,19 @@ def ensure_present(client, module):
             current.update({"DocumentFormat": "JSON", "DocumentVersion": "1"})
             if module.params["wait"]:
                 current["Status"] = "Active"
+        elif resource_changed:
+            # A real update creates the version after the latest one, waits for it to become Active whatever O(wait)
+            # is, promotes it, and returns it. The module sends no version name, so the new version has none. Live, the
+            # returned creation date is that of the new version, which is not known yet.
+            latest_version = (latest if document_version == "$DEFAULT" else current).get("DocumentVersion")
+            if latest_version and latest_version.isdigit():
+                current["DocumentVersion"] = str(int(latest_version) + 1)
+            else:
+                current.pop("DocumentVersion", None)
+
+            current["Status"] = "Active"
+            for field in ("CreatedDate", "StatusInformation", "VersionName"):
+                current.pop(field, None)
 
         current.update(
             {

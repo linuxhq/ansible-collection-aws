@@ -834,6 +834,46 @@ def test_default_version_check_mode_predicts_the_promoted_latest_version():
     client.update_document_default_version.assert_not_called()
 
 
+@pytest.mark.parametrize("status", ["Active", "Failed"])
+@pytest.mark.parametrize("document_version", ["$LATEST", "$DEFAULT"])
+@pytest.mark.parametrize("wait", [False, True])
+def test_check_mode_predicts_an_updated_document_as_a_real_update_returns_it(wait, document_version, status):
+    # A real update creates the version after the latest one, waits for it to become Active whatever wait is, promotes
+    # it, and returns it without the old version's name, status information, or creation date.
+    old = {"CreatedDate": "2026-01-01T00:00:00+00:00", "DocumentFormat": "JSON", "VersionName": "old"}
+    latest = document({"schemaVersion": "1.2"}, DocumentVersion="2", Status=status, **old)
+    if status == "Failed":
+        latest["StatusInformation"] = "Invalid step"
+
+    reads = [latest]
+    if document_version == "$DEFAULT":
+        reads = [document({"schemaVersion": "0.3"}, Status="Active", **old), latest]
+
+    updated = document(
+        {"schemaVersion": "2.2"},
+        CreatedDate="2026-02-01T00:00:00+00:00",
+        DocumentFormat="JSON",
+        DocumentVersion="3",
+        Status="Active",
+    )
+    client = Mock()
+    client.update_document.return_value = {
+        "DocumentDescription": {"DocumentVersion": "3", "Name": "example", "Status": "Updating"}
+    }
+    module_params = params(document_version=document_version, wait=wait)
+    real, _wait, _get = run_present(client, FakeModule(module_params), reads + [updated])
+    check_client = Mock()
+    predicted, _wait, _get = run_present(check_client, FakeModule(module_params, check_mode=True), reads)
+
+    # Live, the creation date returned is the new version's, which check mode cannot know.
+    expected = dict(real.values["document"])
+    del expected["created_date"]
+    assert real.values["document"]["document_version"] == "3"
+    assert predicted.values == dict(real.values, document=expected)
+    check_client.update_document.assert_not_called()
+    check_client.update_document_default_version.assert_not_called()
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("document_format", ["JSON", "TEXT", "YAML"])
 def test_absent_deletes_documents_of_every_format(document_format, check_mode):

@@ -290,6 +290,23 @@ def test_update_waits_until_describe_returns_the_new_version(sleep):
     assert sleep.call_count == 2
 
 
+def test_check_mode_predicts_the_updated_association_version():
+    # A real update returns the next association version once DescribeAssociation reports it.
+    current = current_association(AssociationVersion="2", ScheduleExpression="cron(0 0 * * ? *)")
+    updated = {
+        "AssociationDescription": current_association(AssociationVersion="3", ScheduleExpression="cron(0 1 * * ? *)")
+    }
+    client = Mock(update_association=Mock(return_value=updated))
+    module_params = params(schedule_expression="cron(0 1 * * ? *)")
+    real = run_present(client, FakeModule(module_params), current)
+    check_client = Mock()
+    predicted = run_present(check_client, FakeModule(module_params, check_mode=True), current)
+
+    assert real.values["association"]["association_version"] == "3"
+    assert predicted.values == real.values
+    check_client.update_association.assert_not_called()
+
+
 def test_update_fails_when_describe_never_returns_the_new_version(sleep):
     client = Mock(
         update_association=Mock(return_value={"AssociationDescription": current_association(AssociationVersion="2")}),

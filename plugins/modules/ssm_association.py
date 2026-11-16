@@ -750,6 +750,11 @@ def ensure_present(client, module, current):
         elif changed and module.check_mode:
             association = dict(current)
             association.update(desired)
+            # Each update creates the next association version, which a real run waits for and returns.
+            current_version = current.get("AssociationVersion")
+            if current_version and current_version.isdigit():
+                association["AssociationVersion"] = str(int(current_version) + 1)
+
             if aws_targets is not None:
                 # The update replaces TargetMaps with Targets, which AWS rejects together.
                 association.pop("TargetMaps", None)
