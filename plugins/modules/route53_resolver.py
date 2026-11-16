@@ -1007,7 +1007,8 @@ def ensure_present(client, module, deadline=None):
 
             endpoint = apply_tag_deltas(endpoint, tags_to_set, tag_keys_to_unset)
 
-    if module.params["wait"] and not module.check_mode:
+    # Check mode fails too: its projection reports OPERATIONAL only for a waited endpoint write.
+    if module.params["wait"]:
         fail_if_resolver_endpoint_needs_action(module, endpoint, changed)
 
     if endpoint is not None and "Tags" not in endpoint and tags is None and not created:

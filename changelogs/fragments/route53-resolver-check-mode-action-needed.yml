@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - route53_resolver - with O(wait=true), check mode now fails like a real run when an endpoint that needs no endpoint
+    or address change, or only a tag change, has the status C(ACTION_NEEDED). Check mode previously reported success.
+...
