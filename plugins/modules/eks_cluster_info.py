@@ -550,18 +550,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.eks import has_valid_cluster_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-
-
-def validate_cluster(module, cluster, expected_name):
-    if not isinstance(cluster, dict) or cluster.get("name") != expected_name or not has_valid_cluster_tags(cluster):
-        module.fail_json(msg=f"EKS returned an invalid cluster for {expected_name}")
-
-    return cluster
 
 
 def main():
@@ -599,10 +591,6 @@ def main():
             "Unable to list AWS EKS clusters",
             **request,
         )
-        if not isinstance(cluster_names, list) or any(
-            not isinstance(cluster_name, str) or not cluster_name for cluster_name in cluster_names
-        ):
-            module.fail_json(msg="EKS returned an invalid cluster list")
 
     if cluster_names:
         require_client_methods(
@@ -624,13 +612,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to describe AWS EKS cluster {cluster_name}")
 
-        clusters.append(
-            validate_cluster(
-                module,
-                response.get("cluster") if isinstance(response, dict) else None,
-                cluster_name,
-            )
-        )
+        clusters.append(response["cluster"])
 
     clusters = boto3_resource_list_to_ansible_dict(
         clusters, transform_tags=False, force_tags=False, ignore_list=["tags"]

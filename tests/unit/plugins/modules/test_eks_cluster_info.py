@@ -6,7 +6,6 @@ from ansible_collections.linuxhq.aws.plugins.modules import eks_cluster_info as 
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
-    ModuleFail,
     assert_module_contract,
 )
 
@@ -47,33 +46,6 @@ def test_empty_name_requires_list_clusters():
         "EKS",
         {"list_clusters": ("maxResults", "nextToken")},
     )
-
-
-def test_malformed_cluster_list_is_rejected():
-    client = Mock()
-    module = FakeModule({"include": None, "name": None}, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "EKS returned an invalid cluster list"
-
-
-def test_malformed_describe_response_is_rejected():
-    client = Mock(describe_cluster=Mock(return_value={"cluster": None}))
-    module = FakeModule({"include": None, "name": "one"}, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "EKS returned an invalid cluster for one"
 
 
 def test_named_missing_cluster_returns_an_empty_list():

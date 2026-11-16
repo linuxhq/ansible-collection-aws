@@ -15,7 +15,6 @@ options:
   name:
     description:
       - SQS queue name used to limit the result set.
-      - This must not be empty when provided.
       - A queue that does not exist results in an empty list.
       - Mutually exclusive with O(queue_name_prefix).
     type: str
@@ -208,7 +207,7 @@ def get_caller_account(module):
     except (BotoCoreError, ClientError):
         return None
 
-    return response.get("Account") if isinstance(response, dict) else None
+    return response.get("Account")
 
 
 def get_queue(client, module, queue_url, read_tags=True):
@@ -223,11 +222,7 @@ def get_queue(client, module, queue_url, read_tags=True):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue {queue_url}")
 
-    attributes = response.get("Attributes", {}) if isinstance(response, dict) else None
-    if not isinstance(attributes, dict):
-        module.fail_json(msg=f"Unexpected response while getting AWS SQS queue {queue_url}")
-
-    queue = boto3_resource_to_ansible_dict(attributes, transform_tags=False, force_tags=False)
+    queue = boto3_resource_to_ansible_dict(response.get("Attributes", {}), transform_tags=False, force_tags=False)
 
     if read_tags:
         try:
@@ -237,11 +232,8 @@ def get_queue(client, module, queue_url, read_tags=True):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to list AWS SQS queue tags for {queue_url}")
 
-        tags = response.get("Tags", {}) if isinstance(response, dict) else None
-        if not isinstance(tags, dict):
-            module.fail_json(msg=f"Unexpected response while listing AWS SQS queue tags for {queue_url}")
-
-        queue["tags"] = tags
+        # ListQueueTags omits Tags for an untagged queue.
+        queue["tags"] = response.get("Tags", {})
 
     queue_arn = queue.get("queue_arn")
     queue["name"] = (queue_arn or queue_url.rsplit("/", 1)[-1]).split(":")[-1]
@@ -265,9 +257,6 @@ def main():
     name = module.params["name"]
     queue_name_prefix = module.params["queue_name_prefix"]
     queue_owner_aws_account_id = module.params["queue_owner_aws_account_id"]
-
-    if name == "":
-        module.fail_json(msg="name must not be empty")
 
     client = module.client("sqs", retry_decorator=AWSRetry.jittered_backoff())
 
@@ -304,9 +293,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to get AWS SQS queue URL for {name}")
         else:
-            queue_url = response.get("QueueUrl") if isinstance(response, dict) else None
-            if not isinstance(queue_url, str) or not queue_url:
-                module.fail_json(msg=f"Unexpected response while getting AWS SQS queue URL for {name}")
+            queue_url = response["QueueUrl"]
 
         if queue_url:
             # SQS does not apply cross-account permissions to ListQueueTags, so only the owner can read the tags.
