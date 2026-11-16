@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - global_accelerator - with O(purge_listeners=false), fail without changing anything, in check mode too, when a
+    requested listener's ports include the endpoint port of a port override stored on a retained listener, or when a
+    requested port override uses an endpoint port that a retained listener's port override uses in the same region.
+    AWS rejected these only after earlier changes in the same run.
+...

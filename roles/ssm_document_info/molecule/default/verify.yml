@@ -68,4 +68,16 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
+
+    - name: Ensure role is included with a removed name
+      ansible.builtin.include_role:
+        name: ssm_document_info
+      vars:
+        ssm_document_info_name: molecule-command-shell
+
+    - name: Ensure info with a removed name is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_document_info_list == []
+          - _ssm_document_info_dict == {}
 ...
