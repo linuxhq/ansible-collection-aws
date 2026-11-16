@@ -112,7 +112,6 @@ def test_documented_returns_cover_the_sdk_shape(shape_name):
         ({"iso_country_code": None}, "iso_country_code must be exactly two uppercase letters"),
         ({"iso_country_code": "de"}, "iso_country_code must be exactly two uppercase letters"),
         ({"message_types": []}, "message_types must not be empty"),
-        ({"tags": {"aws:team": "x"}}, "tag keys beginning with aws: are reserved and cannot be set"),
         (
             {"tags": {"Team": "R&D"}},
             "tag keys and values must contain only letters, numbers, spaces, and _ . : / = + - @",
@@ -131,6 +130,58 @@ def test_invalid_input_fails_before_any_aws_call(overrides, message, check_mode)
 
     assert raised.value.values == {"msg": message}
     connect.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_with_a_reserved_tag_key_fails_before_any_write(check_mode):
+    client = model_client()
+    module = FakeModule(params(tags={"aws:team": "x", "Team": "Ops"}), check_mode=check_mode, client=client)
+    result, _require, _paginate = run(module, describe=None)
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {"msg": "tag keys beginning with aws: are reserved and cannot be set"}
+    client.request_sender_id.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_stored_reserved_tag_with_the_requested_value_is_accepted(check_mode):
+    # pinpoint_sms_voice_phone_number and pinpoint_sms_voice_phone_pool check only the tags they would write.
+    client = model_client()
+    stored = [{"Key": "aws:cloudformation:stack-name", "Value": "s1"}, {"Key": "Team", "Value": "Ops"}]
+    module = FakeModule(
+        params(tags={"aws:cloudformation:stack-name": "s1", "Team": "Ops"}), check_mode=check_mode, client=client
+    )
+    result, _require, _paginate = run(module, describe=described(), tags=stored)
+
+    assert isinstance(result, ModuleExit)
+    assert result.values["changed"] is False
+    assert result.values["sender_id"]["tags"] == {"aws:cloudformation:stack-name": "s1", "Team": "Ops"}
+    client.tag_resource.assert_not_called()
+    client.untag_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("value", ["s2", None], ids=["changed", "added"])
+def test_reserved_tag_to_write_fails_before_update_sender_id(check_mode, value):
+    client = model_client()
+    stored = [{"Key": "Team", "Value": "Ops"}]
+    if value is None:
+        value = "s1"
+    else:
+        stored.append({"Key": "aws:cloudformation:stack-name", "Value": "s1"})
+
+    module = FakeModule(
+        params(deletion_protection_enabled=True, tags={"aws:cloudformation:stack-name": value, "Team": "Ops"}),
+        check_mode=check_mode,
+        client=client,
+    )
+    result, _require, _paginate = run(module, describe=described(), tags=stored)
+
+    assert isinstance(result, ModuleFail)
+    assert result.values == {"msg": "tag keys beginning with aws: are reserved and cannot be set"}
+    client.update_sender_id.assert_not_called()
+    client.tag_resource.assert_not_called()
+    client.untag_resource.assert_not_called()
 
 
 def test_absent_ignores_present_only_inputs():

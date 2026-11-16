@@ -272,7 +272,8 @@ options:
           - CIDR blocks that can access the public Kubernetes API endpoint.
           - This must not be empty when specified.
           - This must contain at most 40 distinct CIDR blocks.
-          - AWS rejects IPv6 CIDR blocks for an IPv4 cluster.
+          - AWS rejects IPv6 CIDR blocks for an IPv4 cluster, and for an IPv6 cluster made before October 2024,
+            which the C(eks.amazonaws.com) or C(eks.amazonaws.com.cn) domain of its endpoint identifies.
           - Each CIDR block is converted to its canonical form, as EKS stores it, for example V(203.0.113.5/24)
             becomes V(203.0.113.0/24).
           - A CIDR block that is repeated after this conversion is sent once.
@@ -951,6 +952,7 @@ state:
 import ipaddress
 import re
 import time
+from urllib.parse import urlparse
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -1759,14 +1761,27 @@ def ensure_present(client, module, deadline=None):
     if subnet_ids is not None and len(set(subnet_ids)) < 2:
         module.fail_json(msg="resources_vpc_config.subnet_ids must contain at least two distinct subnets")
 
-    # EKS rejects IPv6 public access CIDR blocks on an IPv4 cluster; main() already checked that the entries parse.
-    if (current.get("kubernetesNetworkConfig") or {}).get("ipFamily") == "ipv4" and any(
+    # EKS rejects IPv6 public access CIDR blocks on an IPv4 cluster, and on an IPv6 cluster made before October 2024,
+    # which keeps its eks.amazonaws.com endpoint; main() already checked that the entries parse.
+    if any(
         ipaddress.ip_network(cidr, strict=False).version == 6
         for cidr in vpc_config_changes.get("publicAccessCidrs") or []
     ):
-        module.fail_json(
-            msg="resources_vpc_config.public_access_cidrs must not contain IPv6 CIDR blocks for an IPv4 cluster"
-        )
+        ip_family = (current.get("kubernetesNetworkConfig") or {}).get("ipFamily")
+        if ip_family == "ipv4":
+            module.fail_json(
+                msg="resources_vpc_config.public_access_cidrs must not contain IPv6 CIDR blocks for an IPv4 cluster"
+            )
+
+        endpoint = current.get("endpoint")
+        host = (urlparse(endpoint).hostname or "") if isinstance(endpoint, str) else ""
+        if ip_family == "ipv6" and host.endswith((".eks.amazonaws.com", ".eks.amazonaws.com.cn")):
+            module.fail_json(
+                msg=(
+                    "resources_vpc_config.public_access_cidrs must not contain IPv6 CIDR blocks for an IPv6 cluster "
+                    f"made before October 2024, as its endpoint {host} shows"
+                )
+            )
 
     # EKS rejects disabling both API server endpoints; an endpoint the run leaves alone keeps the cluster's value.
     if {"endpointPrivateAccess", "endpointPublicAccess"} & set(vpc_config_changes):

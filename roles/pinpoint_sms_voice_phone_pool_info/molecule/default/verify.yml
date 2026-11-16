@@ -33,6 +33,7 @@
       vars:
         pinpoint_sms_voice_phone_pool_info_pool_ids:
           - "{{ pinpoint_sms_voice_phone_pool_info_id_filter }}"
+          - pool-00000000000000000000000000000000
 
     - name: Ensure info with pool id is verified
       ansible.builtin.assert:
@@ -40,6 +41,19 @@
           - _pinpoint_sms_voice_phone_pool_info_list | length == 1
           - _pinpoint_sms_voice_phone_pool_info_list.0.pool_id ==
               pinpoint_sms_voice_phone_pool_info_id_filter
+
+    - name: Ensure role is included with a missing pool id
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_phone_pool_info
+      vars:
+        pinpoint_sms_voice_phone_pool_info_pool_ids:
+          - pool-00000000000000000000000000000000
+
+    - name: Ensure info with a missing pool id is empty
+      ansible.builtin.assert:
+        that:
+          - _pinpoint_sms_voice_phone_pool_info_list == []
+          - _pinpoint_sms_voice_phone_pool_info_dict == {}
 
     - name: Ensure role is included with filters
       ansible.builtin.include_role:

@@ -247,6 +247,13 @@ options:
                 O(purge_endpoint_groups) deletes, are released before the
                 listener changes they conflict with, as are obsolete listeners
                 O(purge_listeners) deletes.
+              - Stored overrides this run leaves unmanaged stay in force. These
+                are the overrides of a kept listener whose
+                O(listeners[].endpoint_groups) or
+                O(listeners[].endpoint_groups[].port_overrides) is omitted, and
+                of an endpoint group O(purge_endpoint_groups=false) keeps. The
+                module fails before making any change when a listener change
+                or a requested override conflicts with one of them.
             elements: dict
             suboptions:
               endpoint_port:
@@ -259,8 +266,9 @@ options:
                     override in an endpoint group with the same
                     O(listeners[].endpoint_groups[].endpoint_group_region),
                     whichever listener it belongs to. The module checks this
-                    against O(listeners), and against the existing listeners
-                    that O(purge_listeners=false) keeps, before making any
+                    against O(listeners), against the existing listeners that
+                    O(purge_listeners=false) keeps, and against the stored
+                    overrides this run leaves unmanaged, before making any
                     change.
                   - An endpoint port can move to another listener's endpoint
                     group in one run; the endpoint groups that release it are
@@ -1883,8 +1891,43 @@ def endpoint_port_release_order(module, plans, changed=False):
     return order
 
 
+def unmanaged_port_overrides(client, module, current, desired, changed=False):
+    """Return (region, endpoint port, listener port) for each stored port override of a kept listener that this run
+    does not manage.
+
+    These belong to a listener purge_listeners=false keeps unlisted (desired None) or that is listed without
+    endpoint_groups, to an endpoint group listed without port_overrides, or to a group purge_endpoint_groups=false
+    keeps unlisted. changed is as for require_compatible_retained_listeners.
+    """
+    desired_groups = None if desired is None else desired["endpoint_groups"]
+    desired_by_region = {group["endpoint_group_region"]: group for group in desired_groups or []}
+    if (
+        desired_groups is not None
+        and module.params["purge_endpoint_groups"]
+        and all(group["port_overrides"] is not None for group in desired_groups)
+    ):
+        return set()
+
+    unmanaged = set()
+    for endpoint_group in get_endpoint_groups(client, module, current["listener_arn"], changed=changed):
+        region = endpoint_group["endpoint_group_region"]
+        if desired_groups is not None:
+            if region in desired_by_region and desired_by_region[region]["port_overrides"] is not None:
+                continue
+
+            if region not in desired_by_region and module.params["purge_endpoint_groups"]:
+                continue
+
+        unmanaged.update(
+            (region, port_override["endpoint_port"], port_override["listener_port"])
+            for port_override in endpoint_group.get("port_overrides") or []
+        )
+
+    return unmanaged
+
+
 def require_compatible_retained_listeners(client, module, current_listeners, changed=False):
-    """Fail when a listener purge_listeners=false keeps would make AWS reject a requested listener or endpoint group.
+    """Fail when a listener this run keeps would make AWS reject a requested listener or endpoint group.
 
     changed reports whether the accelerator was already modified, for failure results.
     """
@@ -1920,20 +1963,19 @@ def require_compatible_retained_listeners(client, module, current_listeners, cha
                 ),
             )
 
-    # Live: Create/UpdateListener reject port ranges that include the endpoint port of any stored port override, and
-    # Create/UpdateEndpointGroup reject an endpoint port another port override in the region uses. The stored
-    # overrides of retained listeners are listed only when this run writes listener ports or port overrides.
+    # Live: Create/UpdateListener reject port ranges that include the endpoint port of any stored port override,
+    # UpdateListener rejects port ranges that leave out the listener port of one of the listener's own, and
+    # Create/UpdateEndpointGroup reject an endpoint port another port override in the region uses. Overrides this run
+    # removes are released first; those it does not manage stay, and are listed only when this run writes listener
+    # ports or port overrides.
     written_port_ranges = [port_range for desired in desired_changes for port_range in desired["port_ranges"]]
     if not written_port_ranges and not requested_ports:
         return
 
-    for current in retained:
-        stored = {
-            (endpoint_group["endpoint_group_region"], port_override["endpoint_port"])
-            for endpoint_group in get_endpoint_groups(client, module, current["listener_arn"], changed=changed)
-            for port_override in endpoint_group.get("port_overrides") or []
-        }
-        blocked = sorted({port for region, port in stored if port_in_ranges(port, written_port_ranges)})
+    updated = {current["listener_arn"] for current, desired in updates}
+    for current, desired in matched + updates:
+        stored = unmanaged_port_overrides(client, module, current, desired, changed=changed)
+        blocked = sorted({port for region, port, listener_port in stored if port_in_ranges(port, written_port_ranges)})
         if blocked:
             module.fail_json(
                 changed=changed,
@@ -1943,8 +1985,31 @@ def require_compatible_retained_listeners(client, module, current_listeners, cha
                 ),
             )
 
+        dropped = []
+        if current["listener_arn"] in updated:
+            dropped = sorted(
+                {
+                    listener_port
+                    for region, port, listener_port in stored
+                    if not port_in_ranges(listener_port, desired["port_ranges"])
+                }
+            )
+
+        if dropped:
+            module.fail_json(
+                changed=changed,
+                msg=(
+                    f"Unable to update AWS Global Accelerator listener {current['listener_arn']}: desired ports leave "
+                    f"out listener ports {', '.join(map(str, dropped))} of port overrides this run keeps"
+                ),
+            )
+
         taken = [
-            f"{port} in {region}" for region, port in sorted(stored & requested_ports, key=lambda item: item[::-1])
+            f"{port} in {region}"
+            for region, port in sorted(
+                {(region, port) for region, port, listener_port in stored} & requested_ports,
+                key=lambda item: item[::-1],
+            )
         ]
         if taken:
             module.fail_json(
@@ -2375,12 +2440,6 @@ def ensure_present(client, module, deadline=None):
         # A real run waits for the accelerator to deploy and checks it again.
         accelerator = dict(accelerator, Status="DEPLOYED")
 
-    # Listeners that purge_listeners=false keeps are checked before the accelerator is updated.
-    current_listeners = None
-    if accelerator is not None and module.params["listeners"] is not None and not module.params["purge_listeners"]:
-        current_listeners = get_listeners(client, module, accelerator["AcceleratorArn"])
-        require_compatible_retained_listeners(client, module, current_listeners)
-
     if not module.check_mode:
         # Later writes are checked before the first change, so an older botocore fails without modifying anything.
         tag_methods = {}
@@ -2396,6 +2455,13 @@ def ensure_present(client, module, deadline=None):
         if module.params["listeners"] is not None:
             require_listener_writes(module, client)
             require_endpoint_group_writes(module, client)
+
+    # Listeners this run keeps, and their stored port overrides it does not manage, are checked before the accelerator
+    # is updated.
+    current_listeners = None
+    if accelerator is not None and module.params["listeners"] is not None:
+        current_listeners = get_listeners(client, module, accelerator["AcceleratorArn"])
+        require_compatible_retained_listeners(client, module, current_listeners)
 
     if created and not module.check_mode:
         # A fixed token would replay an earlier create, even one renamed since; AWSRetry reuses this one.

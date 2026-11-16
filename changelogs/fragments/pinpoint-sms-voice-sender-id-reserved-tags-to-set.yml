@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_sender_id - for an existing sender ID, reject only C(aws:) tag keys the module would write,
+    as pinpoint_sms_voice_phone_number and pinpoint_sms_voice_phone_pool do, so a stored C(aws:) tag passed back
+    with its stored value no longer fails. The check still runs before any change.
+...

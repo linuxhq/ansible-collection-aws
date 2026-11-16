@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - fail without changing anything, in check mode too, when a virtual private gateway connection would
+    have more than 100 static routes, counting routes kept by O(purge_routes=false). EC2 rejected the 101st route
+    only after the connection was created or its options, tunnels, and other routes were changed.
+...
