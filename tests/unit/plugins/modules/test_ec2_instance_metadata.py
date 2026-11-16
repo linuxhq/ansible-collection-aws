@@ -24,25 +24,6 @@ def test_module_contract():
     ]
 
 
-def test_rejects_hop_limit_outside_ec2_range():
-    module = FakeModule(
-        {
-            "http_endpoint": None,
-            "http_put_response_hop_limit": 65,
-            "http_tokens": None,
-            "http_tokens_enforced": None,
-            "instance_metadata_tags": None,
-        }
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "between 1 and 64" in raised.value.values["msg"]
-
-
 def test_check_mode_projects_clearing_an_account_default():
     client = Mock()
     module = FakeModule(
@@ -165,24 +146,6 @@ def test_declarative_policy_does_not_block_matching_defaults():
 
     assert result.type is ModuleExit
     assert result.value.values["changed"] is False
-
-
-def test_unconfirmed_modification_fails():
-    client = Mock()
-    client.modify_instance_metadata_defaults.return_value = {"Return": False}
-    result, _require = run_metadata(client, metadata_params(http_tokens="required"), {"http_tokens": "optional"})
-
-    assert result.type is ModuleFail
-    assert "did not confirm" in result.value.values["msg"]
-
-
-def test_unconfirmed_modification_reports_changed():
-    client = Mock()
-    client.modify_instance_metadata_defaults.return_value = {"Return": False}
-    result, _require = run_metadata(client, metadata_params(http_tokens="required"), {"managed_by": "account"})
-
-    assert result.type is ModuleFail
-    assert result.value.values["changed"] is True
 
 
 def test_modification_failure_reports_unchanged():

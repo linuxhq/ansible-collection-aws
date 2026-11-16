@@ -796,31 +796,6 @@ def test_route_search_uses_all_paginated_results():
     client.search_transit_gateway_routes.assert_not_called()
 
 
-def test_route_table_lookup_rejects_malformed_response():
-    with (
-        patch.object(
-            plugin,
-            "paginated_query_with_retries",
-            return_value={"TransitGatewayRouteTables": [{}]},
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_route_table_by_id(Mock(), FakeModule({}), "tgw-rtb-1")
-
-    assert "invalid transit gateway route table" in raised.value.values["msg"]
-
-
-def test_route_search_rejects_malformed_response():
-    with (
-        patch.object(plugin, "query_list", return_value=[None]),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.search_routes(Mock(), FakeModule({}), "tgw-rtb-1", {"type": ["static"]})
-
-    assert "invalid transit gateway routes" in raised.value.values["msg"]
-
-
 @pytest.mark.usefixtures("attachments_found")
 def test_purge_removes_only_undesired_static_routes():
     client = Mock()
@@ -1576,24 +1551,6 @@ def test_route_delete_without_wait_returns_the_route_as_deleted(state, returned)
     # The route from before the delete is never returned as the final state.
     assert route == (deleted_route if returned else None)
     wait.assert_not_called()
-
-
-def test_route_delete_without_wait_rejects_malformed_response():
-    client = Mock()
-    client.delete_transit_gateway_route.return_value = {}
-    with (
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_route_absent(
-            client,
-            FakeModule({"wait": False}),
-            "tgw-rtb-1",
-            "10.0.0.0/8",
-            {"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"},
-        )
-
-    assert raised.value.values["changed"] is True
 
 
 @pytest.mark.parametrize(

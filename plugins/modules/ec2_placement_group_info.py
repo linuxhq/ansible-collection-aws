@@ -218,15 +218,12 @@ def main():
             **request,
         ):
             # A group-name wildcard can match the same group in more than one batch.
-            group_id = placement_group.get("GroupId") if isinstance(placement_group, dict) else None
+            group_id = placement_group.get("GroupId")
             if group_id is not None and group_id in seen_group_ids:
                 continue
 
             seen_group_ids.add(group_id)
             placement_groups.append(placement_group)
-
-    if any(not isinstance(placement_group, dict) for placement_group in placement_groups):
-        module.fail_json(msg="EC2 returned invalid placement group information")
 
     if group_ids:
         placement_groups = [
@@ -247,9 +244,6 @@ def main():
             # One batch that returns the group is enough, so stop at the first match.
             for request in requests:
                 shared_groups = describe_placement_group_by_id(client, module, group_id, request)
-                if any(not isinstance(placement_group, dict) for placement_group in shared_groups):
-                    module.fail_json(msg="EC2 returned invalid placement group information")
-
                 matches = [
                     placement_group for placement_group in shared_groups if placement_group.get("GroupId") == group_id
                 ]

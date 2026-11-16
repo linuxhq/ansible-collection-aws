@@ -19,16 +19,8 @@ def test_module_contract():
 
 def test_response_metadata_is_not_returned():
     response = {"SerialConsoleAccessEnabled": True, "ResponseMetadata": {"x": 1}}
-    assert plugin.normalized_serial_console_access(FakeModule({}), response) == {"serial_console_access_enabled": True}
+    assert plugin.normalized_serial_console_access(response) == {"serial_console_access_enabled": True}
     assert response == {"SerialConsoleAccessEnabled": True, "ResponseMetadata": {"x": 1}}
-
-
-def test_rejects_invalid_serial_console_status():
-    for response in ({}, {"SerialConsoleAccessEnabled": None}, None):
-        with pytest.raises(ModuleFail) as raised:
-            plugin.normalized_serial_console_access(FakeModule({}), response)
-
-        assert "invalid serial console access status" in raised.value.values["msg"]
 
 
 def test_check_mode_projects_enabled_state_without_mutation():
@@ -130,37 +122,4 @@ def test_declarative_policy_without_change_reports_current_state():
         "managed_by": "declarative-policy",
         "serial_console_access_enabled": True,
     }
-    client.enable_serial_console_access.assert_not_called()
-
-
-def test_invalid_mutation_response_reports_changed():
-    client = Mock()
-    client.get_serial_console_access_status.return_value = {"SerialConsoleAccessEnabled": False}
-    client.enable_serial_console_access.return_value = {}
-    module = FakeModule({"state": "present"}, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(helper, "require_client_methods"),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["changed"] is True
-    assert raised.value.values["msg"] == "EC2 returned an invalid serial console access status"
-
-
-def test_invalid_status_before_a_change_reports_unchanged():
-    client = Mock()
-    client.get_serial_console_access_status.return_value = {}
-    module = FakeModule({"state": "present"}, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(helper, "require_client_methods"),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["changed"] is False
     client.enable_serial_console_access.assert_not_called()

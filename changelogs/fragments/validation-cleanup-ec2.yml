@@ -1,0 +1,13 @@
+---
+minor_changes:
+  - ec2_instance_metadata - an O(http_put_response_hop_limit) outside C(1) to C(64) and other than C(-1) is now rejected
+    by EC2 instead of by the module, so check mode no longer reports it as an error.
+  - ec2_instance_type_info - more than 200 values across O(filters) and O(instance_types) are now rejected by EC2
+    instead of by the module.
+  - ec2_pricing_info - an O(max_results) outside C(1) to C(100) and more than 50 O(filters) entries are now rejected
+    by AWS Pricing instead of by the module.
+trivial:
+  - ec2_instance_metadata, ec2_instance_type_info, ec2_placement_group_info, ec2_pricing_info, ec2_serial_console,
+    ec2_serial_console_info, ec2_transit_gateway_route_table, and ec2_transit_gateway_route_table_info - rely on the
+    EC2 and AWS Pricing response shapes instead of checking the types and presence of fields they always return.
+...

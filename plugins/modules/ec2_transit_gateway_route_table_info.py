@@ -193,34 +193,6 @@ def route_sort_key(route):
     )
 
 
-def validate_route_tables(module, route_tables):
-    for route_table in route_tables:
-        if (
-            not isinstance(route_table, dict)
-            or not isinstance(route_table.get("State"), str)
-            or not isinstance(route_table.get("TransitGatewayRouteTableId"), str)
-            or not route_table["TransitGatewayRouteTableId"]
-        ):
-            module.fail_json(msg="EC2 returned invalid transit gateway route tables")
-
-    return route_tables
-
-
-def validate_routes(module, routes):
-    if not isinstance(routes, list):
-        module.fail_json(msg="EC2 returned invalid transit gateway routes")
-
-    for route in routes:
-        if (
-            not isinstance(route, dict)
-            or not isinstance(route.get("State"), str)
-            or not isinstance(route.get("Type"), str)
-        ):
-            module.fail_json(msg="EC2 returned invalid transit gateway routes")
-
-    return routes
-
-
 def main():
     argument_spec = {
         "filters": {"type": "dict"},
@@ -264,16 +236,13 @@ def main():
             request["Filters"] = ansible_dict_to_string_filter_list(batch_filters)
 
         route_tables.extend(
-            validate_route_tables(
+            query_list(
                 module,
-                query_list(
-                    module,
-                    client,
-                    "describe_transit_gateway_route_tables",
-                    "TransitGatewayRouteTables",
-                    "Unable to describe EC2 transit gateway route tables",
-                    **request,
-                ),
+                client,
+                "describe_transit_gateway_route_tables",
+                "TransitGatewayRouteTables",
+                "Unable to describe EC2 transit gateway route tables",
+                **request,
             )
         )
 
@@ -317,10 +286,7 @@ def main():
                     msg=f"Unable to search EC2 transit gateway routes in route table {transit_gateway_route_table_id}",
                 )
 
-            route_table["Routes"] = sorted(
-                validate_routes(module, response.get("Routes", []) if isinstance(response, dict) else None),
-                key=route_sort_key,
-            )
+            route_table["Routes"] = sorted(response.get("Routes", []), key=route_sort_key)
 
         route_tables_with_routes.append(route_table)
 

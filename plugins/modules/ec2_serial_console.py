@@ -136,7 +136,7 @@ def main():
                 msg=f"Unable to {action} EC2 serial console access in region {module.region}",
             )
 
-        current = {**current, **normalized_serial_console_access(module, response, changed=True)}
+        current = {**current, **normalized_serial_console_access(response)}
 
     elif changed:
         current = {**current, "serial_console_access_enabled": desired_enabled}

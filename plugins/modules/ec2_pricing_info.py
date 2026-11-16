@@ -23,7 +23,7 @@ options:
       - Filters to apply when gathering products.
       - Filter entries are passed to the AWS Pricing C(GetProducts) API.
       - A product is returned only when it matches every filter.
-      - This must contain at most 50 entries.
+      - AWS Pricing accepts at most 50 entries.
       - When omitted or empty, every product for O(service_code) is returned,
         which can be very large.
     elements: dict
@@ -60,7 +60,7 @@ options:
   max_results:
     description:
       - The maximum number of results returned by each C(GetProducts) API call.
-      - This must be between C(1) and C(100).
+      - AWS Pricing accepts C(1) to C(100).
       - The module follows pagination and returns all matching products.
     type: int
   service_code:
@@ -274,12 +274,6 @@ def main():
     max_results = module.params["max_results"]
     service_code = module.params["service_code"]
 
-    if max_results is not None and not 1 <= max_results <= 100:
-        module.fail_json(msg="max_results must be between 1 and 100")
-
-    if len(filters) > 50:
-        module.fail_json(msg="filters must contain at most 50 entries")
-
     if not module.region:
         module.fail_json(
             msg="region is required; in the aws partition, the Pricing API is served from us-east-1, eu-central-1, and ap-south-1"
@@ -323,20 +317,9 @@ def main():
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to get AWS Price List products")
 
-    price_list = response.get("PriceList") if isinstance(response, dict) else None
-    if not isinstance(price_list, list):
-        module.fail_json(msg="AWS Pricing returned an invalid price list")
-
     products = []
-    for product in price_list:
-        try:
-            parsed = json.loads(product)
-        except (TypeError, ValueError) as e:
-            module.fail_json(msg=f"Unable to parse AWS Price List product: {e}")
-
-        if not isinstance(parsed, dict):
-            module.fail_json(msg="AWS Pricing returned a product that is not an object")
-
+    for product in response.get("PriceList", []):
+        parsed = json.loads(product)
         normalized = boto3_resource_to_ansible_dict(
             parsed,
             transform_tags=False,
@@ -348,11 +331,9 @@ def main():
 
         products.append(normalized)
 
-    response_format_version = response.get("FormatVersion")
-
     module.exit_json(
         changed=False,
-        format_version=response_format_version if isinstance(response_format_version, str) else format_version,
+        format_version=response.get("FormatVersion", format_version),
         products=products,
         service_code=service_code,
     )

@@ -127,39 +127,6 @@ def test_empty_results_do_not_require_route_search():
     assert "search_transit_gateway_routes" not in require.call_args.args[3]
 
 
-def test_rejects_malformed_route_table_response():
-    module = FakeModule(
-        {"filters": None, "transit_gateway_route_table_ids": None},
-        client=Mock(),
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail),
-    ):
-        plugin.main()
-
-
-def test_rejects_malformed_route_response():
-    module = FakeModule(
-        {"filters": None, "transit_gateway_route_table_ids": None},
-        client=Mock(),
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(
-            plugin,
-            "query_list",
-            return_value=[{"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}],
-        ),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"Routes": [None]}),
-        pytest.raises(ModuleFail),
-    ):
-        plugin.main()
-
-
 def test_route_table_ids_take_precedence_over_the_id_filter():
     module = FakeModule(
         {
