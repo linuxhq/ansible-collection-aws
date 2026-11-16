@@ -305,6 +305,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import escape_filter_value
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -456,7 +457,7 @@ def find_route_table(client, module):
         filters["transit-gateway-id"] = transit_gateway_id
 
     if name:
-        filters["tag:Name"] = name
+        filters["tag:Name"] = escape_filter_value(name)
 
     route_tables = query_list(
         module,
@@ -471,7 +472,7 @@ def find_route_table(client, module):
         validated_route_table(module, route_table)
 
     if name:
-        # The tag filter treats * and ? as wildcards, so keep only the exact name.
+        # The filter value is escaped; still keep only the exact name.
         route_tables = [route_table for route_table in route_tables if current_tags(route_table).get("Name") == name]
 
     if len(route_tables) > 1:

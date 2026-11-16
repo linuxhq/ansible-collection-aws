@@ -1695,8 +1695,8 @@ def test_untagged_route_table_result_omits_tags_as_documented():
     assert "tags" not in raised.value.values["transit_gateway_route_table"]
 
 
-@pytest.mark.parametrize("name", ["web-*", "web-?"])
-def test_name_lookup_treats_wildcard_characters_literally(name):
+@pytest.mark.parametrize("name, escaped", [("web-*", r"web-\*"), ("web-?", r"web-\?")])
+def test_name_lookup_treats_wildcard_characters_literally(name, escaped):
     def table(table_id, table_name):
         return {
             "TransitGatewayRouteTableId": table_id,
@@ -1710,10 +1710,29 @@ def test_name_lookup_treats_wildcard_characters_literally(name):
     with patch.object(plugin, "query_list", return_value=wildcard_matches + [exact]) as query:
         assert plugin.find_route_table(Mock(), module) == exact
 
-    assert {"Name": "tag:Name", "Values": [name]} in query.call_args.kwargs["Filters"]
+    assert {"Name": "tag:Name", "Values": [escaped]} in query.call_args.kwargs["Filters"]
 
     with patch.object(plugin, "query_list", return_value=wildcard_matches):
         assert plugin.find_route_table(Mock(), module) is None
+
+
+def test_long_escaped_name_is_looked_up_by_prefix_and_matched_exactly():
+    # Live, EC2 rejects a filter value over 255 characters, and escaping the * makes this name 256.
+    name = "a" * 254 + "*"
+
+    def table(table_id, table_name):
+        return {
+            "TransitGatewayRouteTableId": table_id,
+            "State": "available",
+            "Tags": [{"Key": "Name", "Value": table_name}],
+        }
+
+    exact = table("tgw-rtb-exact", name)
+    module = FakeModule({"transit_gateway_route_table_id": None, "transit_gateway_id": None, "name": name})
+    with patch.object(plugin, "query_list", return_value=[table("tgw-rtb-a", "a" * 255), exact]) as query:
+        assert plugin.find_route_table(Mock(), module) == exact
+
+    assert {"Name": "tag:Name", "Values": ["a" * 254 + "*"]} in query.call_args.kwargs["Filters"]
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -2004,3 +2023,34 @@ def test_attachment_lookup_support_is_checked_only_when_routes_name_attachments(
     assert ("describe_transit_gateway_attachments" in methods) is checked
     if checked:
         assert methods["describe_transit_gateway_attachments"] == ("Filters", "MaxResults", "NextToken")
+
+
+def test_name_with_backslash_is_found_by_its_escaped_filter_and_not_recreated():
+    # Live, EC2 filters treat \ as an escape: tag:Name=edge\? matches only edge?, and the route table
+    # tagged edge\? is found only by the escaped value edge\\\?.
+    name = r"edge\?"
+    table = {
+        "State": "available",
+        "Tags": [{"Key": "Name", "Value": name}],
+        "TransitGatewayId": "tgw-1",
+        "TransitGatewayRouteTableId": "tgw-rtb-1",
+    }
+
+    def describe(module, client, method, key, msg, Filters):
+        return [table] if {"Name": "tag:Name", "Values": [r"edge\\\?"]} in Filters else []
+
+    client = Mock()
+    module = FakeModule(
+        present_params(name=name, transit_gateway_id="tgw-1", transit_gateway_route_table_id=None), client=client
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", side_effect=describe),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values["changed"] is False
+    assert result.value.values["transit_gateway_route_table"]["transit_gateway_route_table_id"] == "tgw-rtb-1"
+    client.create_transit_gateway_route_table.assert_not_called()

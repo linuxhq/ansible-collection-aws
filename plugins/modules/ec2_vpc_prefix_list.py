@@ -266,6 +266,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_waiter_config
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import escape_filter_value
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -948,7 +949,7 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, chan
 
 def get_customer_managed_prefix_list_by_name(client, module, owner_id, changed=False):
     name = module.params["name"]
-    filters = ansible_dict_to_boto3_filter_list({"prefix-list-name": name})
+    filters = ansible_dict_to_boto3_filter_list({"prefix-list-name": escape_filter_value(name)})
 
     prefix_lists = query_list(
         module,
@@ -972,7 +973,7 @@ def get_customer_managed_prefix_list_by_name(client, module, owner_id, changed=F
             continue
 
         prefix_list = validate_prefix_list(module, prefix_list, changed=changed)
-        # The name filter treats * and ? as wildcards, so keep only the exact name.
+        # The filter value is escaped; still keep only the exact name.
         if prefix_list["PrefixListName"] == name:
             matches.append(prefix_list)
 

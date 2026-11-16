@@ -4,6 +4,7 @@ import pytest
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
+    escape_filter_value,
     filter_value_batches,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
@@ -82,3 +83,35 @@ def test_filter_value_batches_honor_a_lower_max_values():
         "EC2 accepts at most 100 filter values in each request, so filters must contain fewer than 100 values "
         "when ids is set"
     )
+
+
+@pytest.mark.parametrize(
+    "value, escaped",
+    [
+        ("main", "main"),
+        ("a*b", r"a\*b"),
+        ("a?b", r"a\?b"),
+        (r"a\b", r"a\\b"),
+        # The backslash is escaped first, so the escapes added for * and ? are not doubled.
+        (r"*a?\b", r"\*a\?\\b"),
+    ],
+)
+def test_escape_filter_value_matches_only_the_literal_value(value, escaped):
+    assert escape_filter_value(value) == escaped
+
+
+@pytest.mark.parametrize(
+    "value, escaped",
+    [
+        # An escaped value of exactly 255 characters is sent whole.
+        ("a" * 253 + "*", "a" * 253 + r"\*"),
+        # Live, EC2 rejects a longer value, so an escaped prefix is sent and callers keep only exact matches.
+        ("a" * 254 + "*", "a" * 254 + "*"),
+        ("a" * 256, "a" * 254 + "*"),
+        # An escape pair is never split.
+        ("a" * 253 + "*b", "a" * 253 + "*"),
+    ],
+)
+def test_escape_filter_value_stays_within_the_filter_value_length(value, escaped):
+    assert escape_filter_value(value) == escaped
+    assert len(escaped) <= 255
