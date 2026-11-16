@@ -3245,3 +3245,54 @@ def test_unchanged_reserved_tag_key_is_not_set(params, connection):
         plugin.ensure_present(Mock(), FakeModule(params, check_mode=True), connection)
 
     assert raised.value.values["changed"] is False
+
+
+def cidrs(count, start=0):
+    return [f"10.{index // 256}.{index % 256}.0/24" for index in range(start, start + count)]
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_creation_with_too_many_static_routes_fails_before_any_write(params, check_mode):
+    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", static_only=True, routes=cidrs(101))
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), None)
+
+    assert raised.value.values["msg"] == (
+        "VPN connection branch would have 101 static routes; a virtual private gateway connection allows at most 100"
+    )
+    assert raised.value.values.get("changed", False) is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_kept_and_added_static_routes_over_the_limit_fail_before_any_write(params, connection, check_mode):
+    connection["Routes"] = [{"DestinationCidrBlock": cidr, "State": "available"} for cidr in cidrs(95)]
+    connection["Routes"].append({"DestinationCidrBlock": "192.168.0.0/24", "State": "deleting"})
+    params.update(purge_routes=False, routes=cidrs(10, 95), tunnel_options=[{"ike_versions": ["ikev2"]}])
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
+
+    assert raised.value.values["msg"] == (
+        "VPN connection vpn-123 would have 105 static routes; a virtual private gateway connection allows at most 100"
+    )
+    assert raised.value.values.get("changed", False) is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("purge, routes", [(True, cidrs(100, 50)), (False, cidrs(5, 100))])
+def test_static_routes_up_to_the_limit_are_accepted(params, connection, purge, routes):
+    connection["Routes"] = [{"DestinationCidrBlock": cidr, "State": "available"} for cidr in cidrs(100)]
+    connection["Routes"][:5] = [dict(route, State="deleted") for route in connection["Routes"][:5]]
+    params.update(purge_routes=purge, routes=routes)
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=True), connection)["changed"] is True
+    assert client.mock_calls == []
+
+
+def test_static_route_limit_ignores_connections_without_a_virtual_private_gateway(params, connection):
+    # Live (D39), EC2 also accepts static routes on a connection attached to no gateway; its limit was not probed.
+    connection.pop("VpnGatewayId")
+    params.update(routes=cidrs(101))
+    assert ensure(Mock(), FakeModule(params, check_mode=True), connection)["changed"] is True

@@ -95,6 +95,8 @@ options:
       - Static IPv4 route destinations. Requires static routing on a virtual private gateway connection.
       - Omitted routes are unchanged. An empty list removes routes when O(purge_routes=true).
       - Waits for requested routes to become available and removed routes to disappear, except in check mode.
+      - A virtual private gateway connection allows at most 100 static routes, counting routes kept by
+        O(purge_routes=false). A larger result fails before any change.
     type: list
     elements: str
   skip_tunnel_replacement:
@@ -855,6 +857,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     run_waiter,
 )
 
+MAX_STATIC_ROUTES = 100
+
 CONNECTION_FIELDS = {
     "local_ipv4_network_cidr": "LocalIpv4NetworkCidr",
     "remote_ipv4_network_cidr": "RemoteIpv4NetworkCidr",
@@ -1526,6 +1530,26 @@ def validate_configuration(module, connection=None, changed=False):
             changed=changed,
             msg="Static routes require static_only=true and a virtual private gateway connection",
         )
+
+    # Live, EC2 accepts 100 static routes on a virtual private gateway connection and rejects the next one with
+    # ResourceCountLimitExceeded, after any earlier write of the same run.
+    gateway = connection.get("VpnGatewayId") if connection is not None else module.params["vpn_gateway_id"]
+    if gateway and module.params["routes"] is not None:
+        routes = set(module.params["routes"])
+        if connection is not None and not module.params["purge_routes"]:
+            routes |= {
+                route["DestinationCidrBlock"]
+                for route in connection.get("Routes", [])
+                if route.get("State") not in ("deleting", "deleted")
+            }
+
+        if len(routes) > MAX_STATIC_ROUTES:
+            name = connection["VpnConnectionId"] if connection is not None else module.params["name"]
+            module.fail_json(
+                changed=changed,
+                msg=f"VPN connection {name} would have {len(routes)} static routes; a virtual private gateway "
+                f"connection allows at most {MAX_STATIC_ROUTES}",
+            )
 
     # Live, EC2 also accepts an IPv6 connection attached to no gateway, which Cloud WAN can attach later.
     if connection is None and family == "ipv6" and not transit_gateway:
