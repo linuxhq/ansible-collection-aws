@@ -3608,9 +3608,100 @@ def test_repeated_remote_network_cidr_is_sent_once_on_create(check_mode):
         }
 
 
-def test_same_cidr_in_node_and_pod_networks_is_not_a_repeat():
-    # Only repeats within one list are rejected; overlap between node and pod networks is left to EKS.
-    config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": NODE_NETWORKS}
+OVERLAP_MESSAGE = "must not overlap other remote network CIDR blocks"
+RANGE_MESSAGE = "must contain CIDR blocks within 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "node_cidrs, pod_cidrs, service_cidr, message",
+    [
+        # Live: "CIDR 10.80.1.0/24 overlaps with already existing CIDR 10.80.0.0/16".
+        (
+            ["10.80.0.0/16", "10.80.1.0/24"],
+            None,
+            None,
+            (
+                f"remote_node_networks[].cidrs {OVERLAP_MESSAGE}: 10.80.1.0/24 overlaps 10.80.0.0/16 in "
+                "remote_network_config.remote_node_networks"
+            ),
+        ),
+        # Live: "Invalid remote pod network: CIDR 10.82.0.0/16 overlaps with already existing CIDR 10.82.0.0/16".
+        (
+            ["10.82.0.0/16"],
+            ["10.82.0.0/16"],
+            None,
+            (
+                f"remote_pod_networks[].cidrs {OVERLAP_MESSAGE}: 10.82.0.0/16 overlaps 10.82.0.0/16 in "
+                "remote_network_config.remote_node_networks"
+            ),
+        ),
+        (
+            ["10.83.0.0/16"],
+            ["10.83.1.0/24"],
+            None,
+            (
+                f"remote_pod_networks[].cidrs {OVERLAP_MESSAGE}: 10.83.1.0/24 overlaps 10.83.0.0/16 in "
+                "remote_network_config.remote_node_networks"
+            ),
+        ),
+        # Live: "CIDR 8.8.8.0/24 is not part of RFC 1918 or CGNAT", and the same for 10.0.0.0/7.
+        (["8.8.8.0/24"], None, None, f"remote_node_networks[].cidrs {RANGE_MESSAGE}: 8.8.8.0/24"),
+        (["10.0.0.0/7"], None, None, f"remote_node_networks[].cidrs {RANGE_MESSAGE}: 10.0.0.0/7"),
+        (["10.80.0.0/16"], ["8.8.8.0/24"], None, f"remote_pod_networks[].cidrs {RANGE_MESSAGE}: 8.8.8.0/24"),
+        # Live: "fd00:10::/64 is not a valid CIDR".
+        (["fd00:10::/64"], None, None, "remote_node_networks[].cidrs must contain IPv4 CIDR blocks: fd00:10::/64"),
+        # Live: "CIDR 172.20.0.0/24 overlaps with service CIDR 172.20.0.0/16".
+        (
+            ["172.20.0.0/24"],
+            None,
+            "172.20.0.0/16",
+            (
+                "remote_node_networks[].cidrs must not overlap the cluster's service CIDR block 172.20.0.0/16: "
+                "172.20.0.0/24"
+            ),
+        ),
+    ],
+    ids=[
+        "overlap-in-list",
+        "node-pod-equal",
+        "node-pod-overlap",
+        "public",
+        "too-large",
+        "public-pod",
+        "ipv6",
+        "service-cidr",
+    ],
+)
+def test_remote_network_cidrs_eks_rejects_fail_before_any_aws_call(
+    node_cidrs, pod_cidrs, service_cidr, message, check_mode
+):
+    # UpdateClusterConfig rejects these after other updates were applied (live), and check mode predicted success.
+    config = {
+        "remote_node_networks": [{"cidrs": node_cidrs}],
+        "remote_pod_networks": [{"cidrs": pod_cidrs}] if pod_cidrs else None,
+    }
+    params = eks_params(
+        deletion_protection=True,
+        kubernetes_network_config={"service_ipv4_cidr": service_cidr} if service_cidr else None,
+        remote_network_config=config,
+        state="present",
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": f"remote_network_config.{message}"}
+    module.client.assert_not_called()
+
+
+def test_cgnat_remote_network_cidr_is_accepted():
+    # Live: UpdateClusterConfig accepts 100.64.0.0/16.
+    config = {"remote_node_networks": [{"cidrs": ["100.64.0.0/16"]}], "remote_pod_networks": POD_NETWORKS}
     module = FakeModule(eks_params(remote_network_config=config, state="present"))
     module.client = Mock(side_effect=ModuleInitialized)
     with (
@@ -3620,6 +3711,65 @@ def test_same_cidr_in_node_and_pod_networks_is_not_a_repeat():
         plugin.main()
 
     module.client.assert_called_once()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "current_config, service_cidr, remote_network_config, message",
+    [
+        # EKS keeps the node networks of an omitted list and checks the pod networks against them.
+        (
+            {"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS},
+            None,
+            {"remote_node_networks": None, "remote_pod_networks": [{"cidrs": ["10.80.1.0/24"]}]},
+            (
+                f"remote_pod_networks[].cidrs {OVERLAP_MESSAGE}: 10.80.1.0/24 overlaps 10.80.0.0/16 in "
+                "remote_network_config.remote_node_networks"
+            ),
+        ),
+        (
+            {"remoteNodeNetworks": NODE_NETWORKS, "remotePodNetworks": POD_NETWORKS},
+            None,
+            {"remote_node_networks": [{"cidrs": ["10.81.0.0/24"]}], "remote_pod_networks": None},
+            (
+                f"remote_pod_networks[].cidrs {OVERLAP_MESSAGE}: 10.81.0.0/16 overlaps 10.81.0.0/24 in "
+                "remote_network_config.remote_node_networks"
+            ),
+        ),
+        # Live: "CIDR 172.20.0.0/24 overlaps with service CIDR 172.20.0.0/16".
+        (
+            None,
+            "172.20.0.0/16",
+            {"remote_node_networks": [{"cidrs": ["172.20.0.0/24"]}], "remote_pod_networks": None},
+            (
+                "remote_node_networks[].cidrs must not overlap the cluster's service CIDR block 172.20.0.0/16: "
+                "172.20.0.0/24"
+            ),
+        ),
+    ],
+    ids=["pods-overlap-kept-nodes", "nodes-overlap-kept-pods", "service-cidr"],
+)
+def test_remote_networks_eks_rejects_for_the_cluster_fail_before_any_update(
+    current_config, service_cidr, remote_network_config, message, check_mode
+):
+    # The deletion protection update would otherwise be applied first.
+    current = dict(STANDARD_CLUSTER, accessConfig={"authenticationMode": "API"})
+    if current_config:
+        current["remoteNetworkConfig"] = current_config
+
+    if service_cidr:
+        current["kubernetesNetworkConfig"] = dict(current["kubernetesNetworkConfig"], serviceIpv4Cidr=service_cidr)
+
+    params = eks_params(deletion_protection=True, remote_network_config=remote_network_config)
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {"msg": f"remote_network_config.{message}"}
+    assert client.mock_calls == []
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
