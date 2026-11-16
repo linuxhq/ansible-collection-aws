@@ -1717,14 +1717,14 @@ def test_absent_waits_for_an_in_progress_prefix_list_before_deleting(state):
     client.delete_managed_prefix_list.assert_called_once_with(PrefixListId="pl-1", aws_retry=True)
 
 
-@pytest.mark.parametrize("name", ["web-*", "web-?"])
-def test_lookup_treats_wildcard_characters_literally(name):
+@pytest.mark.parametrize("name, escaped", [("web-*", r"web-\*"), ("web-?", r"web-\?")])
+def test_lookup_treats_wildcard_characters_literally(name, escaped):
     wildcard_matches = [prefix_list(PrefixListId="pl-a", PrefixListName="web-a")]
     exact = prefix_list(PrefixListId="pl-exact", PrefixListName=name)
     with patch.object(plugin, "query_list", return_value=wildcard_matches + [exact]) as query:
         assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": name}), OWNER) == exact
 
-    assert query.call_args.kwargs["Filters"] == [{"Name": "prefix-list-name", "Values": [name]}]
+    assert query.call_args.kwargs["Filters"] == [{"Name": "prefix-list-name", "Values": [escaped]}]
 
     with patch.object(plugin, "query_list", return_value=wildcard_matches):
         assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": name}), OWNER) is None
@@ -1906,3 +1906,32 @@ def test_deletable_waiter_handles_every_prefix_list_state():
     acceptors = plugin.EC2_WAITER_MODEL_DATA["managed_prefix_list_deletable"]["acceptors"]
 
     assert {acceptor["expected"] for acceptor in acceptors} == set(shapes["PrefixListState"]["enum"])
+
+
+def test_name_with_backslash_is_found_by_its_escaped_filter_and_not_recreated():
+    # Live, the prefix-list-name filter treats \ as an escape: edge\? matches only edge?, and the prefix
+    # list named edge\? is found only by the escaped value edge\\\?.
+    name = r"edge\?"
+    current = prefix_list(PrefixListName=name)
+
+    def query(module, client, method, key, msg, changed=False, **kwargs):
+        if method == "get_managed_prefix_list_entries":
+            return [{"Cidr": "192.0.2.0/24"}]
+
+        matched = kwargs["Filters"] == [{"Name": "prefix-list-name", "Values": [r"edge\\\?"]}]
+        return [current] if matched else []
+
+    client = Mock()
+    module = FakeModule(main_params(name=name, wait=False), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_aws_account_id", return_value=OWNER),
+        patch.object(plugin, "query_list", side_effect=query),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values["changed"] is False
+    assert result.value.values["prefix_list"]["prefix_list_id"] == "pl-1"
+    client.create_managed_prefix_list.assert_not_called()

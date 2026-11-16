@@ -841,7 +841,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.tagging import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import scrub_none_parameters
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.filters import ansible_dict_to_string_filter_list
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
+    ansible_dict_to_string_filter_list,
+    escape_filter_value,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     ec2_tag_methods,
@@ -996,7 +999,7 @@ def find_connection(client, module, connection_id=None, changed=False):
     filters = module.params["filters"]
 
     if module.params["name"]:
-        filters = {"tag:Name": module.params["name"]}
+        filters = {"tag:Name": escape_filter_value(module.params["name"])}
 
     request = (
         {"VpnConnectionIds": [connection_id]}
@@ -1029,7 +1032,7 @@ def find_connection(client, module, connection_id=None, changed=False):
         matches.append(validate_connection(module, item, changed=changed))
 
     if not connection_id and module.params["name"]:
-        # The tag filter treats * and ? as wildcards, so keep only the exact name.
+        # The filter value is escaped; still keep only the exact name.
         matches = [
             match
             for match in matches

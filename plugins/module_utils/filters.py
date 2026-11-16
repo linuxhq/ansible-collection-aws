@@ -21,6 +21,11 @@ def filter_value(value):
     return value
 
 
+def escape_filter_value(value):
+    """Escape a literal EC2 filter value; EC2 treats \\ as an escape and * and ? as wildcards."""
+    return value.replace("\\", "\\\\").replace("*", "\\*").replace("?", "\\?")
+
+
 def ansible_dict_to_string_filter_list(filters):
     """Build boto3 Filters, converting Boolean and numeric values, including list entries, to strings."""
     return ansible_dict_to_boto3_filter_list(

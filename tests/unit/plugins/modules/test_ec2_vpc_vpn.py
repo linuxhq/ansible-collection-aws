@@ -1851,8 +1851,8 @@ def test_wait_failure_after_create_reports_changed(params, connection):
     assert raised.value.values["msg"] == "Unable to wait for VPN connection vpn-123 to become available"
 
 
-@pytest.mark.parametrize("name", ["branch-*", "branch-?"])
-def test_name_lookup_treats_wildcard_characters_literally(params, connection, name):
+@pytest.mark.parametrize("name, escaped", [("branch-*", r"branch-\*"), ("branch-?", r"branch-\?")])
+def test_name_lookup_treats_wildcard_characters_literally(params, connection, name, escaped):
     def named(connection_id, connection_name):
         return dict(
             deepcopy(connection), VpnConnectionId=connection_id, Tags=[{"Key": "Name", "Value": connection_name}]
@@ -1866,7 +1866,7 @@ def test_name_lookup_treats_wildcard_characters_literally(params, connection, na
     module = FakeModule(params)
     assert plugin.find_connection(client, module) == exact
     client.describe_vpn_connections.assert_called_once_with(
-        Filters=[{"Name": "tag:Name", "Values": [name]}], aws_retry=True
+        Filters=[{"Name": "tag:Name", "Values": [escaped]}], aws_retry=True
     )
 
     client.describe_vpn_connections.return_value = {"VpnConnections": wildcard_matches}
@@ -3296,3 +3296,24 @@ def test_static_route_limit_ignores_connections_without_a_virtual_private_gatewa
     connection.pop("VpnGatewayId")
     params.update(routes=cidrs(101))
     assert ensure(Mock(), FakeModule(params, check_mode=True), connection)["changed"] is True
+
+
+def test_name_with_backslash_is_found_by_its_escaped_filter_and_not_recreated(params, connection):
+    # Live, EC2 filters treat \ as an escape: tag:Name=edge\? matches only edge?, and the connection
+    # tagged edge\? is found only by the escaped value edge\\\?.
+    params["name"] = r"edge\?"
+    connection["Tags"] = [{"Key": "Name", "Value": r"edge\?"}]
+
+    def describe(Filters, aws_retry):
+        matched = Filters == [{"Name": "tag:Name", "Values": [r"edge\\\?"]}]
+        return {"VpnConnections": [connection] if matched else []}
+
+    client = Mock()
+    client.describe_vpn_connections.side_effect = describe
+    module = FakeModule(params)
+    found = plugin.find_connection(client, module)
+    assert found["VpnConnectionId"] == "vpn-123"
+
+    client.reset_mock()
+    assert ensure(client, module, found)["changed"] is False
+    client.create_vpn_connection.assert_not_called()
