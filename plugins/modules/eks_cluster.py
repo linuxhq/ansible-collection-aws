@@ -70,6 +70,9 @@ options:
           - EKS rejects node pools on a cluster without EKS Auto Mode compute; the module fails before any change if
             this is not empty and differs from the cluster's node pools while EKS Auto Mode compute is neither
             enabled on the cluster nor enabled by O(compute_config.enabled).
+          - EKS rejects node pools without a node role; the module fails before any change if EKS Auto Mode compute
+            would be enabled with node pools while neither O(compute_config.node_role_arn) nor the cluster's node
+            role is set.
         elements: str
         type: list
       node_role_arn:
@@ -1581,6 +1584,24 @@ def require_node_settings_with_compute(module, compute_enabled, description, cur
         )
 
 
+def require_node_role_with_node_pools(module, compute_config, description):
+    """Fail when an Auto Mode compute request carries node pools without a node role."""
+    # Live: EKS rejects it ("When Compute Config nodeRoleArn is null or empty, nodePool list cannot be populated."),
+    # but check mode would predict success, and on an update the Auto Mode request is sent after every other update.
+    compute_config = compute_config or {}
+    if (
+        compute_config.get("enabled") is True
+        and compute_config.get("nodePools")
+        and not compute_config.get("nodeRoleArn")
+    ):
+        module.fail_json(
+            msg=(
+                "compute_config.node_pools requires a node role while EKS Auto Mode compute is enabled for "
+                f"{description}; set compute_config.node_role_arn"
+            )
+        )
+
+
 def require_one_minor_version_update(module, current_version, version):
     # EKS updates one minor version at a time and rolls back only to the previous minor version, but check mode would
     # predict success, and the version update reaches EKS after the configuration updates. A rollback to the previous
@@ -1628,6 +1649,7 @@ def ensure_present(client, module, deadline=None):
         require_node_settings_with_compute(
             module, (module.params["compute_config"] or {}).get("enabled") is True, f"new EKS cluster {name}"
         )
+        require_node_role_with_node_pools(module, create_request.get("computeConfig"), f"new EKS cluster {name}")
 
         if not (create_request.get("resourcesVpcConfig") or {}).get("subnetIds"):
             module.fail_json(msg="resources_vpc_config.subnet_ids is required to create an EKS cluster")
@@ -1945,7 +1967,9 @@ def ensure_present(client, module, deadline=None):
                 )
             )
 
-        update_requests.append(auto_mode_request(current, config_request))
+        request = auto_mode_request(current, config_request)
+        require_node_role_with_node_pools(module, request.get("computeConfig"), f"existing EKS cluster {name}")
+        update_requests.append(request)
 
     if encryption_request is not None:
         changes["encryptionConfig"] = encryption_request["encryptionConfig"]

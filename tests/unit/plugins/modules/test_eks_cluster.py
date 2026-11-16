@@ -1715,6 +1715,68 @@ def test_auto_mode_node_role_without_node_pools_fails_before_any_update(current,
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    ("current", "compute_config"),
+    [
+        # Live: enabling Auto Mode on a standard cluster with node pools and no node role.
+        (STANDARD_CLUSTER, {"enabled": True, "node_pools": ["general-purpose"]}),
+        # Live: adding node pools to an Auto Mode cluster without a node role.
+        (NO_NODE_ROLE_AUTO_MODE_CLUSTER, {"enabled": True, "node_pools": ["general-purpose"]}),
+        (NO_NODE_ROLE_AUTO_MODE_CLUSTER, {"enabled": None, "node_pools": ["general-purpose"]}),
+    ],
+    ids=["enable-standard", "add-pools", "add-pools-enabled-omitted"],
+)
+def test_auto_mode_node_pools_without_a_node_role_fail_before_any_update(current, compute_config, check_mode):
+    # EKS: "When Compute Config nodeRoleArn is null or empty, nodePool list cannot be populated." (live), after the
+    # deletion protection update had already been applied.
+    params = eks_params(
+        deletion_protection=True,
+        compute_config=compute_config,
+        kubernetes_network_config={"elastic_load_balancing": {"enabled": True}},
+        storage_config={"block_storage": {"enabled": True}},
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=current),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": (
+            "compute_config.node_pools requires a node role while EKS Auto Mode compute is enabled for existing EKS "
+            "cluster example; set compute_config.node_role_arn"
+        )
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_with_auto_mode_node_pools_without_a_node_role_fails_before_any_aws_call(check_mode):
+    params = eks_params(
+        compute_config={"enabled": True, "node_pools": ["general-purpose"]},
+        kubernetes_network_config={"elastic_load_balancing": {"enabled": True}},
+        resources_vpc_config={"subnet_ids": ["subnet-a", "subnet-b"]},
+        role_arn="arn:role",
+        storage_config={"block_storage": {"enabled": True}},
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": (
+            "compute_config.node_pools requires a node role while EKS Auto Mode compute is enabled for new EKS "
+            "cluster example; set compute_config.node_role_arn"
+        )
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 def test_auto_mode_node_role_is_allowed_with_node_pools_when_the_cluster_has_no_node_role(check_mode):
     # Live probe: EKS accepts a node role with node pools on an enabled cluster that has no node pools or node role.
     params = eks_params(
