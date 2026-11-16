@@ -1730,6 +1730,17 @@ def test_lookup_treats_wildcard_characters_literally(name, escaped):
         assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": name}), OWNER) is None
 
 
+def test_long_escaped_name_is_looked_up_by_prefix_and_matched_exactly():
+    # Live, EC2 rejects a filter value over 255 characters, and escaping the * in this 255-character name makes 256.
+    name = "a" * 254 + "*"
+    exact = prefix_list(PrefixListId="pl-exact", PrefixListName=name)
+    other = prefix_list(PrefixListId="pl-a", PrefixListName="a" * 255)
+    with patch.object(plugin, "query_list", return_value=[other, exact]) as query:
+        assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": name}), OWNER) == exact
+
+    assert query.call_args.kwargs["Filters"] == [{"Name": "prefix-list-name", "Values": ["a" * 254 + "*"]}]
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_resulting_tag_limit_fails_before_modifying_entries(check_mode):
     client = Mock()

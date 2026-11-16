@@ -1716,6 +1716,25 @@ def test_name_lookup_treats_wildcard_characters_literally(name, escaped):
         assert plugin.find_route_table(Mock(), module) is None
 
 
+def test_long_escaped_name_is_looked_up_by_prefix_and_matched_exactly():
+    # Live, EC2 rejects a filter value over 255 characters, and escaping the * makes this name 256.
+    name = "a" * 254 + "*"
+
+    def table(table_id, table_name):
+        return {
+            "TransitGatewayRouteTableId": table_id,
+            "State": "available",
+            "Tags": [{"Key": "Name", "Value": table_name}],
+        }
+
+    exact = table("tgw-rtb-exact", name)
+    module = FakeModule({"transit_gateway_route_table_id": None, "transit_gateway_id": None, "name": name})
+    with patch.object(plugin, "query_list", return_value=[table("tgw-rtb-a", "a" * 255), exact]) as query:
+        assert plugin.find_route_table(Mock(), module) == exact
+
+    assert {"Name": "tag:Name", "Values": ["a" * 254 + "*"]} in query.call_args.kwargs["Filters"]
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_resulting_tag_limit_counts_the_name_tag_before_any_write(check_mode):
     client = Mock()

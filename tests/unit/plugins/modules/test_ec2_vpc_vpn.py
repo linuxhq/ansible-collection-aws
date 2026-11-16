@@ -1873,6 +1873,25 @@ def test_name_lookup_treats_wildcard_characters_literally(params, connection, na
     assert plugin.find_connection(client, module) is None
 
 
+def test_long_escaped_name_is_looked_up_by_prefix_and_matched_exactly(params, connection):
+    # Live, EC2 rejects a filter value over 255 characters, and escaping the * makes this name 256.
+    name = "a" * 254 + "*"
+
+    def named(connection_id, connection_name):
+        return dict(
+            deepcopy(connection), VpnConnectionId=connection_id, Tags=[{"Key": "Name", "Value": connection_name}]
+        )
+
+    exact = named("vpn-exact", name)
+    params.update(name=name)
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [named("vpn-a", "a" * 255), exact]}
+    assert plugin.find_connection(client, FakeModule(params)) == exact
+    client.describe_vpn_connections.assert_called_once_with(
+        Filters=[{"Name": "tag:Name", "Values": ["a" * 254 + "*"]}], aws_retry=True
+    )
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_resulting_tag_limit_fails_before_any_write(params, connection, check_mode):
     connection["Tags"] += [{"Key": f"old{index}", "Value": ""} for index in range(48)]

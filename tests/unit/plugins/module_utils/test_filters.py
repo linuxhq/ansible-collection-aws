@@ -98,3 +98,20 @@ def test_filter_value_batches_honor_a_lower_max_values():
 )
 def test_escape_filter_value_matches_only_the_literal_value(value, escaped):
     assert escape_filter_value(value) == escaped
+
+
+@pytest.mark.parametrize(
+    "value, escaped",
+    [
+        # An escaped value of exactly 255 characters is sent whole.
+        ("a" * 253 + "*", "a" * 253 + r"\*"),
+        # Live, EC2 rejects a longer value, so an escaped prefix is sent and callers keep only exact matches.
+        ("a" * 254 + "*", "a" * 254 + "*"),
+        ("a" * 256, "a" * 254 + "*"),
+        # An escape pair is never split.
+        ("a" * 253 + "*b", "a" * 253 + "*"),
+    ],
+)
+def test_escape_filter_value_stays_within_the_filter_value_length(value, escaped):
+    assert escape_filter_value(value) == escaped
+    assert len(escaped) <= 255

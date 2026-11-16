@@ -8,6 +8,8 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 # EC2 counts values across all filters in a request and rejects more than this.
 MAX_FILTER_VALUES_PER_REQUEST = 200
+# Live, EC2 rejects a filter value longer than this.
+MAX_FILTER_VALUE_LENGTH = 255
 
 
 def filter_value(value):
@@ -22,8 +24,23 @@ def filter_value(value):
 
 
 def escape_filter_value(value):
-    """Escape a literal EC2 filter value; EC2 treats \\ as an escape and * and ? as wildcards."""
-    return value.replace("\\", "\\\\").replace("*", "\\*").replace("?", "\\?")
+    """Escape a literal EC2 filter value; EC2 treats \\ as an escape and * and ? as wildcards.
+
+    EC2 rejects filter values over MAX_FILTER_VALUE_LENGTH characters, so a longer escaped value becomes an escaped
+    prefix followed by *; callers keep only exact matches.
+    """
+    escaped = [f"\\{character}" if character in "\\*?" else character for character in value]
+    if sum(len(character) for character in escaped) <= MAX_FILTER_VALUE_LENGTH:
+        return "".join(escaped)
+
+    prefix = ""
+    for character in escaped:
+        if len(prefix) + len(character) > MAX_FILTER_VALUE_LENGTH - 1:
+            break
+
+        prefix += character
+
+    return prefix + "*"
 
 
 def ansible_dict_to_string_filter_list(filters):
