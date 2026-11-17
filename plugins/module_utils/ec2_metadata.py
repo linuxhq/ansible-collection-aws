@@ -20,12 +20,8 @@ def get_instance_metadata_defaults(client, module):
             msg=f"Unable to get EC2 instance metadata defaults in region {module.region}",
         )
 
-    account_level = response.get("AccountLevel") if isinstance(response, dict) else None
-    if not isinstance(account_level, dict):
-        module.fail_json(msg=f"EC2 returned invalid instance metadata defaults in region {module.region}")
-
     return boto3_resource_to_ansible_dict(
-        account_level,
+        response.get("AccountLevel", {}),
         transform_tags=False,
         force_tags=False,
     )
