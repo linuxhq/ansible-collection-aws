@@ -181,10 +181,12 @@ def test_non_utf8_search_string_bytes_are_replaced():
 
 
 @pytest.mark.parametrize("option", ["id", "name"])
-def test_rejects_empty_filters(option):
-    result, _require, _query = run(FakeModule(params(**{option: ""})))
+def test_empty_filters_are_treated_as_omitted(option):
+    acl = {"ARN": "arn:web-acl", "Rules": [], **SUMMARY}
+    result, _require, _query = run(FakeModule(params(**{option: ""}), client=acl_client(acl)), [SUMMARY])
 
-    assert result.values["msg"] == f"{option} must not be empty"
+    assert result.values["changed"] is False
+    assert [web_acl["id"] for web_acl in result.values["web_acls"]] == ["acl-1"]
 
 
 def test_missing_name_returns_empty_list():

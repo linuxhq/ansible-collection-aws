@@ -17,7 +17,7 @@ options:
   id:
     description:
       - WAFv2 IP set ID used to limit the result set.
-      - This must not be empty when specified.
+      - An empty value is treated as omitted.
       - The module lists IP set summaries for the selected O(scope), filters by
         ID, and then gathers each full IP set definition.
       - When both O(id) and O(name) are specified, the module gets the IP set
@@ -27,7 +27,7 @@ options:
   name:
     description:
       - WAFv2 IP set name used to limit the result set.
-      - This must not be empty when specified.
+      - An empty value is treated as omitted.
       - The module lists IP set summaries for the selected O(scope), filters by
         name, and then gathers each full IP set definition.
       - When both O(id) and O(name) are specified, the module gets the IP set
@@ -126,7 +126,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
     get_resources_with_tags,
     list_resource_summaries,
-    require_lookup_params,
 )
 
 
@@ -142,7 +141,6 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    require_lookup_params(module)
 
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(

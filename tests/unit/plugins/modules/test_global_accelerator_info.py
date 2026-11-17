@@ -66,6 +66,21 @@ def test_a_different_accelerator_is_rejected():
     assert raised.value.values["msg"] == "Global Accelerator returned an invalid accelerator"
 
 
+def test_empty_arn_lists_every_accelerator():
+    module = FakeModule({"arn": "", "include_endpoint_groups": False, "include_listeners": False}, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query_list,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert query_list.call_args.args[2] == "list_accelerators"
+    module.client().describe_accelerator.assert_not_called()
+    assert raised.value.values["accelerators"] == []
+
+
 def test_empty_results_defer_listener_methods():
     module = FakeModule(
         {"arn": None, "include_endpoint_groups": True, "include_listeners": False},
