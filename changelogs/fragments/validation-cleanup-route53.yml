@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - route53_delegation_set - O(state=absent) with an empty O(name) or one longer than 128 characters now reports the
+    delegation set absent instead of failing before any AWS call.
+minor_changes:
+  - route53_delegation_set - an empty O(name) or one longer than 128 characters with O(state=present) is now rejected
+    by Route 53 instead of by the module, so check mode no longer reports it as an error.
+  - route53_zone_associate - an invalid O(vpc_region) is now rejected by Route 53 instead of by the module; with
+    O(state=absent) it matches no association and reports no change.
+trivial:
+  - route53_delegation_set, route53_delegation_set_info, and route53_zone_associate - rely on the Route 53 response
+    shape instead of checking the types and presence of fields it always returns; route53_delegation_set_info still
+    fails when Route 53 returns a different delegation set than the requested O(id).
+...

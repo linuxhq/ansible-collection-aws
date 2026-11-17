@@ -24,19 +24,15 @@ options:
         of the same document.
       - When set, only the association with this name is managed, and it is
         sent when the association is created.
-      - This must be 3 to 128 letters, numbers, underscores, hyphens, or
-        periods.
     type: str
   name:
     description:
       - The name of the Systems Manager document that the association runs.
-      - This must not be empty when O(state=present).
     required: true
     type: str
   schedule_expression:
     description:
       - The cron or rate expression that defines the association schedule.
-      - This must be 1 to 256 characters and must not be blank.
       - When omitted, an existing association keeps its current schedule, and a
         new association runs once.
     type: str
@@ -51,7 +47,7 @@ options:
   targets:
     description:
       - The targets for the association.
-      - This must contain at least 1 and at most 5 targets.
+      - This must contain at least one target when specified.
       - When omitted, an existing association keeps its current targets, and a
         new association is created without targets.
     elements: dict
@@ -59,13 +55,11 @@ options:
       key:
         description:
           - The target key.
-          - This must be 1 to 163 characters and must not be blank.
         required: true
         type: str
       values:
         description:
           - The target values.
-          - This must contain 1 to 50 distinct entries.
         elements: str
         required: true
         type: list
@@ -443,7 +437,6 @@ state:
 """
 
 import json
-import re
 import time
 
 try:
@@ -477,7 +470,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     SSM_ASSOCIATION_RESOURCE_TYPE,
     association_overview,
     list_ssm_tags,
-    require_valid_ssm_targets,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
@@ -487,7 +479,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
     ssm_tag_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 ASSOCIATION_VERSION_DELAY = 1
 ASSOCIATION_VERSION_TIMEOUT = 60
@@ -508,13 +499,6 @@ def comparable_targets(targets):
     return [unique[key] for key in sorted(unique)]
 
 
-def association_description_from_response(module, response, message, changed=False):
-    if not isinstance(response, dict) or not isinstance(response.get("AssociationDescription"), dict):
-        module.fail_json(changed=changed, msg=message)
-
-    return response["AssociationDescription"]
-
-
 def describe_association(client, module, association_id, changed=False):
     """Describe an association; changed reports earlier modifications, for failure results."""
     try:
@@ -531,12 +515,7 @@ def describe_association(client, module, association_id, changed=False):
             msg=f"Unable to describe AWS Systems Manager association {association_id}",
         )
 
-    return association_description_from_response(
-        module,
-        response,
-        f"Unexpected response while describing AWS Systems Manager association {association_id}",
-        changed=changed,
-    )
+    return response["AssociationDescription"]
 
 
 def wait_for_association_version(client, module, association_id, association_version):
@@ -676,17 +655,7 @@ def ensure_present(client, module, current):
                     msg=f"Unable to create AWS Systems Manager association {name}",
                 )
 
-            association = association_description_from_response(
-                module,
-                response,
-                f"AWS Systems Manager did not return the created association {name}",
-                changed=True,
-            )
-            if not association.get("AssociationId"):
-                module.fail_json(
-                    changed=True,
-                    msg=f"AWS Systems Manager did not return the created association {name}",
-                )
+            association = response["AssociationDescription"]
 
         if tags is not None:
             association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
@@ -731,20 +700,8 @@ def ensure_present(client, module, current):
                     msg=f"Unable to update AWS Systems Manager association {name}",
                 )
 
-            association = association_description_from_response(
-                module,
-                response,
-                f"AWS Systems Manager did not return the updated association {name}",
-                changed=True,
-            )
-            if not association.get("AssociationId") or not association.get("AssociationVersion"):
-                module.fail_json(
-                    changed=True,
-                    msg=f"AWS Systems Manager did not return the updated association {name}",
-                )
-
             association = wait_for_association_version(
-                client, module, association_id, association["AssociationVersion"]
+                client, module, association_id, response["AssociationDescription"]["AssociationVersion"]
             )
 
         elif changed and module.check_mode:
@@ -862,32 +819,16 @@ def main():
     state = module.params["state"]
     association_name = module.params["association_name"]
     name = module.params["name"]
-    schedule_expression = module.params["schedule_expression"]
     targets = module.params["targets"]
     tags = module.params["tags"]
 
-    if association_name is not None and not re.fullmatch(r"[a-zA-Z0-9_\-.]{3,128}", association_name):
-        module.fail_json(msg="association_name must be 3 to 128 letters, numbers, underscores, hyphens, or periods")
-
     if state == "present":
-        # A blank document name matches no association, so check mode would predict a create AWS refuses.
-        require_non_blank(module, name, "name")
-
-        # AWS refuses a blank schedule (InvalidSchedule), so it counts as empty.
-        if schedule_expression is not None and (not schedule_expression.strip() or len(schedule_expression) > 256):
-            module.fail_json(msg="schedule_expression must be 1 to 256 characters")
-
         # SSM rejects an empty target list, so omitting targets is the only way to keep them.
         if targets == []:
             module.fail_json(
                 changed=False,
                 msg="targets must contain at least one entry; omit targets to keep the current targets",
             )
-
-        if targets is not None and len(comparable_targets(targets)) > 5:
-            module.fail_json(msg="targets must contain at most 5 targets")
-
-        require_valid_ssm_targets(module, targets or [])
 
         require_valid_tags(module, tags, 50, restricted_characters=True)
 
@@ -928,21 +869,12 @@ def main():
         AssociationFilterList=[{"key": "Name", "value": name}],
     )
 
-    if any(not isinstance(association, dict) for association in associations):
-        module.fail_json(msg=f"Unexpected response while listing AWS Systems Manager associations for {name}")
-
     matches = [
         association
         for association in associations
         if association.get("Name") == name
         and (association_name is None or association.get("AssociationName") == association_name)
     ]
-
-    if any(
-        not isinstance(association.get("AssociationId"), str) or not association["AssociationId"]
-        for association in matches
-    ):
-        module.fail_json(msg=f"Unexpected response while listing AWS Systems Manager associations for {name}")
 
     if len(matches) > 1:
         association_ids = sorted(association["AssociationId"] for association in matches)

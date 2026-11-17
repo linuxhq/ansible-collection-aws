@@ -162,15 +162,6 @@ def test_regional_scope_is_uppercase_for_aws():
     assert query_list.call_args.kwargs["Scope"] == "REGIONAL"
 
 
-def test_cloudfront_scope_outside_us_east_1_fails_before_aws():
-    module = FakeModule(params(scope="cloudfront"), client=Mock(), region="us-west-2")
-    result, require_client_methods, query_list = run(module, [])
-
-    assert result.values["msg"] == "scope cloudfront requires the us-east-1 region, not us-west-2"
-    require_client_methods.assert_not_called()
-    query_list.assert_not_called()
-
-
 def test_byte_values_are_returned_as_json_safe_text():
     acl = {"ARN": "arn:web-acl", "CustomResponseBodies": {"body": {"Content": b"hello"}}, **SUMMARY}
     result, _require, _query = run(FakeModule(params(id="acl-1"), client=acl_client(acl)), [SUMMARY])
@@ -196,48 +187,10 @@ def test_rejects_empty_filters(option):
     assert result.values["msg"] == f"{option} must not be empty"
 
 
-def test_rejects_malformed_summary_list():
-    result, _require, _query = run(FakeModule(params(), client=Mock()), None)
-
-    assert "Unexpected response while listing" in result.values["msg"]
-
-
-@pytest.mark.parametrize(
-    ("summary", "message"),
-    [(None, "Unexpected response while listing"), ({}, "invalid ID"), ({"Id": "acl-1"}, "invalid name")],
-)
-def test_rejects_malformed_selected_summary(summary, message):
-    result, _require, _query = run(FakeModule(params(), client=Mock()), [summary])
-
-    assert message in result.values["msg"]
-
-
-def test_filtered_lookup_skips_malformed_unmatched_summary():
-    acl = {
-        "ARN": "arn:web-acl",
-        "DefaultAction": {"Allow": {}},
-        "Id": "wanted",
-        "Name": "target",
-        "VisibilityConfig": {},
-    }
-    result, _require, _query = run(
-        FakeModule(params(id="wanted"), client=acl_client(acl)), [None, {"Id": "wanted", "Name": "target"}]
-    )
-
-    assert result.values["web_acls"][0]["id"] == "wanted"
-
-
 def test_missing_name_returns_empty_list():
     result, _require, _query = run(FakeModule(params(name="missing"), client=Mock()), [SUMMARY])
 
     assert result.values["web_acls"] == []
-
-
-def test_rejects_malformed_web_acl_response():
-    client = Mock(get_web_acl=Mock(return_value={}))
-    result, _require, _query = run(FakeModule(params(), client=client), [SUMMARY])
-
-    assert result.values["msg"] == "Unexpected response while getting AWS WAFv2 web ACL main/acl-1"
 
 
 def test_id_and_name_get_the_web_acl_without_listing():

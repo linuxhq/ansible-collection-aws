@@ -1,0 +1,15 @@
+---
+bugfixes:
+  - global_accelerator - O(state=absent) with an O(name) longer than 64 characters, alone or with O(arn), now reports
+    the accelerator absent instead of failing before any AWS call.
+minor_changes:
+  - global_accelerator - an O(name) longer than 64 characters, an O(idempotency_token) longer than 255 characters, and
+    more than 2, duplicate, or invalid O(ip_addresses) are now rejected by Global Accelerator when creating an
+    accelerator instead of by the module, so check mode no longer reports them as errors.
+trivial:
+  - global_accelerator - reuse the endpoint groups already listed for a listener when deleting it instead of listing
+    them again.
+  - global_accelerator and global_accelerator_info - rely on the Global Accelerator response shape instead of checking
+    the types and presence of fields it always returns; the returned accelerator and endpoint group must still match
+    the requested ARN and region.
+...

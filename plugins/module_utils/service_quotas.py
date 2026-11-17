@@ -17,18 +17,12 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 
 def quota_from_response(module, response, description, service_code, quota_code, context_id=None, resource_scope=False):
-    if not isinstance(response, dict) or not isinstance(response.get("Quota"), dict) or not response["Quota"]:
-        module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} response")
-
     quota = response["Quota"]
     for key, expected in (("ServiceCode", service_code), ("QuotaCode", quota_code)):
         if key in quota and quota[key] != expected:
             module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota for {service_code}/{quota_code}")
 
     quota_context = quota.get("QuotaContext")
-    if quota_context is not None and not isinstance(quota_context, dict):
-        module.fail_json(msg=f"AWS Service Quotas returned an invalid quota context for {service_code}/{quota_code}")
-
     if context_id and (quota_context is None or quota_context.get("ContextId") != context_id):
         module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {service_code}/{quota_code}")
 

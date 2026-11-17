@@ -57,15 +57,28 @@ def test_module_contract():
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-@pytest.mark.parametrize("value", [-1, float("inf"), float("nan")])
-def test_rejects_invalid_quota_value(value):
+@pytest.mark.parametrize("value", [float("inf"), float("nan")])
+def test_rejects_non_finite_quota_value(value):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(value=value))),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
-    assert "between 0" in raised.value.values["msg"]
+    assert raised.value.values["msg"] == "value must be a finite number"
+
+
+def test_value_above_the_api_maximum_reaches_aws():
+    # Service Quotas, not the module, rejects a value outside its accepted range.
+    client = Mock()
+    client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
+    client.request_service_quota_increase.return_value = {"RequestedQuota": {"DesiredValue": 2e10}}
+    result, _query, _require = run(FakeModule(params(value=2e10), client=client))
+
+    assert isinstance(result, ModuleExit)
+    client.request_service_quota_increase.assert_called_once_with(
+        QuotaCode="L-1", ServiceCode="ec2", DesiredValue=2e10, aws_retry=True
+    )
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -82,20 +95,6 @@ def test_empty_context_id_fails_before_any_aws_call(check_mode):
     assert client.method_calls == []
     query.assert_not_called()
     require_client_methods.assert_not_called()
-
-
-def test_response_resource_rejects_invalid_response():
-    with pytest.raises(ModuleFail) as raised:
-        plugin.response_resource(FakeModule({}), [], "Quota", "service quota")
-
-    assert raised.value.values["msg"] == "AWS Service Quotas returned an invalid service quota response"
-
-
-def test_response_resources_rejects_invalid_entry():
-    with pytest.raises(ModuleFail) as raised:
-        plugin.response_resources(FakeModule({}), {"RequestedQuotas": [None]}, "RequestedQuotas", "quota history")
-
-    assert raised.value.values["msg"] == "AWS Service Quotas returned an invalid quota history entry"
 
 
 @pytest.mark.parametrize("quota", [{"Value": "5"}, {"Value": True}, {"Value": float("nan")}, {"Adjustable": True}])
@@ -132,7 +131,7 @@ def test_validate_current_quota_accepts_large_integer_without_crashing():
 
 @pytest.mark.parametrize(
     ("request_", "status", "message"),
-    [({}, None, "invalid request"), ({"Status": "PENDING"}, "CASE_OPENED", "mismatched request")],
+    [({"Status": "PENDING"}, "CASE_OPENED", "mismatched request"), ({"QuotaCode": "L-2"}, None, "mismatched request")],
 )
 def test_validate_quota_request_rejects_invalid_request(request_, status, message):
     with pytest.raises(ModuleFail) as raised:
@@ -345,14 +344,10 @@ def test_metric_dimension_identifiers_are_preserved():
     assert metric == {"metric_namespace": "AWS/Usage", "metric_name": "ResourceCount", "metric_dimensions": dimensions}
 
 
-@pytest.mark.parametrize(
-    "response",
-    [{}, {"RequestedQuota": {"DesiredValue": 20.0}}],
-)
-def test_invalid_request_response_reports_changed(response):
+def test_invalid_request_response_reports_changed():
     client = Mock()
     client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
-    client.request_service_quota_increase.return_value = response
+    client.request_service_quota_increase.return_value = {"RequestedQuota": {"DesiredValue": 20.0}}
     result, _query, _require = run(FakeModule(params(), client=client))
 
     assert isinstance(result, ModuleFail)
@@ -361,6 +356,6 @@ def test_invalid_request_response_reports_changed(response):
 
 def test_invalid_listed_request_reports_unchanged():
     with pytest.raises(ModuleFail) as raised:
-        plugin.validate_quota_request(FakeModule({}), {}, "ec2", "L-1", status="PENDING")
+        plugin.validate_quota_request(FakeModule({}), {"Status": "CASE_OPENED"}, "ec2", "L-1", status="PENDING")
 
     assert raised.value.values["changed"] is False

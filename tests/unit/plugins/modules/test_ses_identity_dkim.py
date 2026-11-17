@@ -55,16 +55,6 @@ def test_module_contract():
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-@pytest.mark.parametrize(
-    ("identity", "message"),
-    [("", "identity must not be empty"), ("user@example.com", "identity must be a domain name, not an email address")],
-)
-def test_rejects_invalid_identity(identity, message):
-    result, _require = run(FakeModule(params(identity=identity), client=Mock()))
-
-    assert result.values["msg"] == message
-
-
 def test_enabled_easy_dkim_is_unchanged():
     client = client_with(EASY)
     result, _require = run(FakeModule(params(), client=client))
@@ -201,13 +191,6 @@ def test_missing_identity_fails():
     result, _require = run(FakeModule(params(), client=client))
 
     assert result.values["msg"] == "AWS SES identity example.com does not exist"
-
-
-def test_rejects_invalid_dkim_attributes():
-    client = Mock(get_email_identity=Mock(return_value={"DkimAttributes": []}))
-    result, _require = run(FakeModule(params(), client=client))
-
-    assert result.values["msg"] == "AWS SES returned invalid DKIM attributes for identity example.com"
 
 
 def test_regional_easy_dkim_with_tokens_is_not_regenerated():

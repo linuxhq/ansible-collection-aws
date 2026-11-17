@@ -15,7 +15,7 @@ options:
   name:
     description:
       - The delegation set caller reference.
-      - This must be 1 to 128 characters.
+      - AWS accepts 1 to 128 characters.
       - Route53 permanently reserves a caller reference, so a name cannot be reused
         after its delegation set is deleted.
     required: true
@@ -168,19 +168,7 @@ def ensure_present(client, module):
                 msg=f"Unable to create AWS Route53 reusable delegation set {name}",
             )
 
-        delegation_set = response.get("DelegationSet") if isinstance(response, dict) else None
-        if (
-            not isinstance(delegation_set, dict)
-            or delegation_set.get("CallerReference") != name
-            or not isinstance(delegation_set.get("Id"), str)
-        ):
-            delegation_set = get_reusable_delegation_set(client, module, changed=True)
-
-        if delegation_set is None:
-            module.fail_json(
-                changed=True,
-                msg=f"AWS Route53 did not return the created reusable delegation set {name}",
-            )
+        delegation_set = response["DelegationSet"]
     elif changed and module.check_mode:
         delegation_set = {"CallerReference": name}
 
@@ -198,7 +186,7 @@ def ensure_present(client, module):
     module.exit_json(**result)
 
 
-def get_reusable_delegation_set(client, module, changed=False):
+def get_reusable_delegation_set(client, module):
     name = module.params["name"]
     delegation_sets = query_list(
         module,
@@ -206,25 +194,10 @@ def get_reusable_delegation_set(client, module, changed=False):
         "list_reusable_delegation_sets",
         "DelegationSets",
         "Unable to list AWS Route53 reusable delegation sets",
-        changed=changed,
     )
     for delegation_set in delegation_sets:
-        if not isinstance(delegation_set, dict) or not isinstance(delegation_set.get("CallerReference"), str):
-            module.fail_json(
-                changed=changed,
-                msg="Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response",
-            )
-
-        if delegation_set["CallerReference"] != name:
-            continue
-
-        if not isinstance(delegation_set.get("Id"), str):
-            module.fail_json(
-                changed=changed,
-                msg="Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response",
-            )
-
-        return delegation_set
+        if delegation_set.get("CallerReference") == name:
+            return delegation_set
 
     return None
 
@@ -242,9 +215,6 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-
-    if not 1 <= len(module.params["name"]) <= 128:
-        module.fail_json(msg="name must be 1 to 128 characters")
 
     client = module.client("route53", retry_decorator=AWSRetry.jittered_backoff())
     methods = {"list_reusable_delegation_sets": ("Marker", "MaxItems")}

@@ -50,19 +50,6 @@ def test_list_tags_fails_for_a_missing_resource_by_default(changed):
     }
 
 
-@pytest.mark.parametrize("response", [None, {"Tags": [{"Key": "Name"}]}])
-def test_list_tags_rejects_malformed_tags(response):
-    client = Mock(list_tags_for_resource=Mock(return_value=response))
-
-    with pytest.raises(ModuleFail) as raised:
-        list_tags(client, FakeModule({}), ARN, "pool", changed=True)
-
-    assert raised.value.values == {
-        "changed": True,
-        "msg": f"AWS returned malformed tags for Pinpoint SMS Voice V2 pool {ARN}",
-    }
-
-
 PHONE_ARN = "arn:aws:sms-voice:us-east-1:123456789012:phone-number/phone-1"
 SENDER_ARN = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US"
 PHONE_ID = "phone-720f0a64a09b4e1ebdcc8273b27bd3fc"

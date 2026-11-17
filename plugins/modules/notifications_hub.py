@@ -26,7 +26,6 @@ options:
       - A O(region) set through C(module_defaults) applies, as it does for other AWS modules.
       - The E(AWS_REGION) or E(AWS_DEFAULT_REGION) environment variable can also be used, in decreasing
         order of preference.
-      - This must match the AWS region name format, for example V(us-west-2).
     required: true
     type: str
   state:
@@ -100,8 +99,6 @@ state:
   type: str
 """
 
-import re
-
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -127,42 +124,14 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 REGISTER_RETRY = AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"])
 
 
-def validate_hub(module, hub, operation, require_status=True, changed=False):
-    if (
-        not isinstance(hub, dict)
-        or not isinstance(hub.get("notificationHubRegion"), str)
-        or not hub["notificationHubRegion"]
-    ):
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid hub")
-
-    status_summary = hub.get("statusSummary")
-    if (require_status or status_summary is not None) and (
-        not isinstance(status_summary, dict)
-        or not isinstance(status_summary.get("status"), str)
-        or not status_summary["status"]
-        or not isinstance(status_summary.get("reason"), str)
-    ):
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid hub")
-
-    return hub
-
-
 def list_notification_hubs(client, module):
-    hubs = query_list(
+    return query_list(
         module,
         client,
         "list_notification_hubs",
         "notificationHubs",
         "Unable to list AWS Notifications hubs",
     )
-
-    if not isinstance(hubs, list):
-        module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid response")
-
-    for hub in hubs:
-        validate_hub(module, hub, "Unable to list AWS Notifications hubs")
-
-    return hubs
 
 
 def find_notification_hub(hubs, region):
@@ -236,9 +205,6 @@ def ensure_present(client, module):
                 msg=f"Unable to create AWS Notifications hub {region}",
             )
 
-        validate_hub(
-            module, hub, f"Unable to create AWS Notifications hub {region}", require_status=False, changed=True
-        )
         if hub["notificationHubRegion"] != region:
             module.fail_json(
                 changed=True,
@@ -275,11 +241,6 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-    region = module.params["region"]
-
-    if not 2 <= len(region) <= 25 or not re.fullmatch(r"[a-z]{1,4}(?:-[a-z]{1,15})+-[0-9]", region):
-        module.fail_json(msg="region must be a valid AWS region name")
-
     client = module.client(
         "notifications",
         region="us-east-1",

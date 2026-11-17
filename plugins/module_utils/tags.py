@@ -98,17 +98,6 @@ def require_no_reserved_tag_keys(module, tags_to_set):
         module.fail_json(msg="tag keys beginning with aws: are reserved and cannot be set")
 
 
-def require_valid_tag_list(module, tags, msg, changed=False):
-    """Validate an AWS tag list; changed reports whether the resource was already modified, for failure results."""
-    if not isinstance(tags, list) or any(
-        not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value"), str)
-        for tag in tags
-    ):
-        module.fail_json(changed=changed, msg=msg)
-
-    return tags
-
-
 def apply_tag_deltas(resource, tags_to_set, tag_keys_to_unset):
     updated = dict(resource)
     tags = updated_tags(boto3_tag_list_to_ansible_dict(updated.get("Tags", [])), tags_to_set, tag_keys_to_unset)

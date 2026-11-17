@@ -20,7 +20,7 @@ options:
       - Whether to add the Session Manager connection status of each returned
         instance.
       - When V(true), the C(GetConnectionStatus) API is called once for each
-        returned instance with a valid instance ID.
+        returned instance.
       - SSM Agent can report a C(ping_status) of C(Online) before the instance
         accepts Session Manager connections, so use this connection status to
         wait for a session to be accepted.
@@ -36,10 +36,8 @@ options:
   instance_ids:
     description:
       - EC2 instance IDs or managed instance IDs used to limit the result set.
-      - Entries must not be empty.
       - This is added as an C(InstanceIds) Systems Manager instance filter and
         takes precedence over a C(InstanceIds) key in O(filters).
-      - This must contain at most 100 instance IDs.
     elements: str
     type: list
   ping_status:
@@ -96,9 +94,7 @@ EXAMPLES = r"""
 RETURN = r"""
 instance_ids:
   description:
-    - A list of matching Systems Manager managed instance IDs.
-    - Records without a valid instance ID remain in C(instances) but are omitted
-      from this list, so the two lists are not guaranteed to align by index.
+    - A list of matching Systems Manager managed instance IDs, in the order of C(instances).
   returned: always
   type: list
   elements: str
@@ -147,7 +143,7 @@ instances:
           connections.
         - Values, such as C(connected) and C(notconnected), are returned as AWS
           returns them.
-      returned: when O(connection_status=true) and the record has a valid instance ID
+      returned: when O(connection_status=true)
       type: str
       version_added: '2.6.0'
     iam_role:
@@ -252,16 +248,7 @@ def get_connection_status(module, client, instance_id):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get AWS Systems Manager connection status for {instance_id}")
 
-    status = response.get("Status") if isinstance(response, dict) else None
-    if not isinstance(status, str):
-        module.fail_json(
-            msg=(
-                "Unexpected response while getting AWS Systems Manager connection status "
-                f"for {instance_id}; status was not a string"
-            )
-        )
-
-    return status
+    return response["Status"]
 
 
 def main():
@@ -282,13 +269,6 @@ def main():
     connection_status = module.params["connection_status"]
     instance_ids = list(dict.fromkeys(module.params["instance_ids"] or []))
     ping_status = module.params["ping_status"]
-
-    if len(instance_ids) > 100:
-        module.fail_json(msg="instance_ids must contain at most 100 instance IDs")
-
-    if any(not instance_id for instance_id in instance_ids):
-        module.fail_json(msg="instance_ids must not contain empty entries")
-
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
@@ -318,36 +298,7 @@ def main():
         "Unable to describe AWS Systems Manager instances",
         **request,
     )
-    if not isinstance(instances, list):
-        module.fail_json(
-            msg="Unexpected response while describing AWS Systems Manager instances; instance list was not a list"
-        )
-
-    matching_instance_ids = []
-    connection_statuses = {}
-    for index, instance in enumerate(instances):
-        if not isinstance(instance, dict):
-            module.fail_json(
-                msg=(
-                    "Unexpected response while describing AWS Systems Manager instances; "
-                    f"instance {index} was not a dictionary"
-                )
-            )
-
-        # The complete record is kept for compatibility, but an invalid ID is
-        # left out of the convenience instance_ids list and is never used for
-        # a connection status call.
-        instance_id = instance.get("InstanceId")
-        if not isinstance(instance_id, str) or not instance_id:
-            module.warn(
-                "Unexpected response while describing AWS Systems Manager instances; "
-                f"instance {index} did not contain a valid InstanceId and was omitted from instance_ids"
-            )
-            continue
-
-        matching_instance_ids.append(instance_id)
-        if connection_status:
-            connection_statuses[index] = get_connection_status(module, client, instance_id)
+    matching_instance_ids = [instance["InstanceId"] for instance in instances]
 
     results = boto3_resource_list_to_ansible_dict(
         instances,
@@ -359,8 +310,9 @@ def main():
             )
         },
     )
-    for index, status in connection_statuses.items():
-        results[index]["connection_status"] = status
+    if connection_status:
+        for instance_id, result in zip(matching_instance_ids, results):
+            result["connection_status"] = get_connection_status(module, client, instance_id)
 
     module.exit_json(
         changed=False,

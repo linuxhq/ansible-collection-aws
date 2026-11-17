@@ -52,6 +52,34 @@
           - _global_accelerator_info_dict.keys() | list ==
               ['molecule-global-accelerator-info-00']
 
+    - name: Ensure role is included with an unknown arn
+      ansible.builtin.include_role:
+        name: global_accelerator_info
+      vars:
+        global_accelerator_info_arn:
+          "{{ global_accelerator_info_arn_filter |
+              regex_replace('accelerator/.*$', 'accelerator/00000000-0000-0000-0000-000000000000') }}"
+
+    - name: Ensure info with an unknown arn is verified
+      ansible.builtin.assert:
+        that:
+          - _global_accelerator_info_list == []
+          - _global_accelerator_info_dict == {}
+
+    - name: Ensure role is included with listeners
+      ansible.builtin.include_role:
+        name: global_accelerator_info
+      vars:
+        global_accelerator_info_include_listeners: true
+
+    - name: Ensure info with listeners is verified
+      ansible.builtin.assert:
+        that:
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners | length == 2
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              selectattr('endpoint_groups', 'defined') | list == []
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 0
+
     - name: Ensure role is included with endpoint groups
       ansible.builtin.include_role:
         name: global_accelerator_info

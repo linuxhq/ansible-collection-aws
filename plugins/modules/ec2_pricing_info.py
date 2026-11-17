@@ -204,37 +204,23 @@ def snake_name(name):
 
 def normalize_terms(terms):
     """Snake-case term keys while keeping offer term, rate, and currency code keys as AWS returns them."""
-    if not isinstance(terms, dict):
-        return terms
-
     return {
-        snake_name(term_type): (
-            {code: normalize_offer_term(offer) for code, offer in offers.items()}
-            if isinstance(offers, dict)
-            else offers
-        )
+        snake_name(term_type): {code: normalize_offer_term(offer) for code, offer in offers.items()}
         for term_type, offers in terms.items()
     }
 
 
 def normalize_offer_term(offer):
-    if not isinstance(offer, dict):
-        return offer
-
     result = camel_dict_to_snake_dict(offer, ignore_list=["priceDimensions"])
-    dimensions = offer.get("priceDimensions")
-    if isinstance(dimensions, dict):
+    if "priceDimensions" in offer:
         result["price_dimensions"] = {
-            rate_code: normalize_price_dimension(dimension) for rate_code, dimension in dimensions.items()
+            rate_code: normalize_price_dimension(dimension) for rate_code, dimension in offer["priceDimensions"].items()
         }
 
     return result
 
 
 def normalize_price_dimension(dimension):
-    if not isinstance(dimension, dict):
-        return dimension
-
     return camel_dict_to_snake_dict(dimension, ignore_list=["pricePerUnit"])
 
 
@@ -327,7 +313,7 @@ def main():
         )
 
         if "terms" in normalized:
-            normalized["terms"] = normalize_terms(parsed.get("terms"))
+            normalized["terms"] = normalize_terms(parsed["terms"])
 
         products.append(normalized)
 

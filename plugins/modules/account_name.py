@@ -24,7 +24,8 @@ options:
     type: str
   name:
     description:
-      - The desired account name, containing 1 to 50 printable ASCII characters except angle brackets.
+      - The desired account name.
+      - AWS accepts 1 to 50 printable ASCII characters except angle brackets.
       - Account names cannot be deleted.
       - Requires botocore 1.38.0 or later.
     type: str
@@ -77,8 +78,6 @@ account:
       type: str
 """
 
-import re
-
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -119,10 +118,6 @@ def main():
         supports_check_mode=True,
     )
     params = account_parameters(module)
-    name = module.params["name"]
-    if not 1 <= len(name) <= 50 or not re.fullmatch(r"[ -;=?-~]+", name):
-        module.fail_json(msg="name must contain 1 to 50 printable ASCII characters except angle brackets")
-
     client = module.client("account", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(module, client, "Account", {"get_account_information": ("AccountId",)})
     ensure_present(module, client, params)

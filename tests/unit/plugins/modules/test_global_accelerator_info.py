@@ -46,8 +46,8 @@ def test_module_contract():
     assert options["argument_spec"]["include_endpoint_groups"]["default"] is False
 
 
-def test_malformed_accelerator_is_rejected():
-    client = Mock(describe_accelerator=Mock(return_value={"Accelerator": None}))
+def test_a_different_accelerator_is_rejected():
+    client = Mock(describe_accelerator=Mock(return_value={"Accelerator": {"AcceleratorArn": "arn:other"}}))
     module = FakeModule(
         {
             "arn": "arn:accelerator",
@@ -64,28 +64,6 @@ def test_malformed_accelerator_is_rejected():
         plugin.main()
 
     assert raised.value.values["msg"] == "Global Accelerator returned an invalid accelerator"
-
-
-def test_malformed_tags_are_rejected():
-    client = Mock()
-    client.describe_accelerator.return_value = {"Accelerator": {"AcceleratorArn": "arn:accelerator"}}
-    client.list_tags_for_resource.return_value = {"Tags": None}
-    module = FakeModule(
-        {
-            "arn": "arn:accelerator",
-            "include_endpoint_groups": False,
-            "include_listeners": False,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "Global Accelerator returned invalid tags"
 
 
 def test_empty_results_defer_listener_methods():

@@ -11,17 +11,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
-def test_list_account_aliases_rejects_invalid_response():
-    module = FakeModule({})
-    with (
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.list_account_aliases(Mock(), module)
-
-    assert raised.value.values["msg"] == "Unable to list AWS IAM account aliases: AWS returned an invalid response"
-
-
 def test_list_account_aliases_uses_the_shared_paginated_query():
     client = Mock()
     module = FakeModule({})
@@ -116,38 +105,6 @@ def test_present_state_only_requires_list_before_reconciliation():
     )
 
 
-def test_invalid_alias_is_rejected_before_api_calls():
-    module = FakeModule({"name": "Invalid--Alias", "state": "present"})
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "lowercase letters" in raised.value.values["msg"]
-
-
-# Live: CreateAccountAlias rejects every 12-digit alias with EntityAlreadyExists and accepts a 13-digit one.
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("name", ["123456789013", "000000000000"])
-def test_twelve_digit_alias_is_rejected_before_api_calls(check_mode, name):
-    client = Mock()
-    module = FakeModule({"name": name, "state": "present"}, check_mode=check_mode, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "ensure_present") as ensure_present,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values == {
-        "msg": "name must be 3 to 63 characters of lowercase letters, digits, and hyphens, cannot start or end with a "
-        "hyphen or contain consecutive hyphens, and cannot be a 12-digit number"
-    }
-    ensure_present.assert_not_called()
-    assert client.mock_calls == []
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
     ("name", "state"),
@@ -156,6 +113,8 @@ def test_twelve_digit_alias_is_rejected_before_api_calls(check_mode, name):
         ("1234567890134", "present"),
         ("12345678901a", "present"),
         ("1234-5678901", "present"),
+        ("123456789013", "present"),
+        ("Invalid--Alias", "present"),
         ("123456789013", "absent"),
     ],
 )

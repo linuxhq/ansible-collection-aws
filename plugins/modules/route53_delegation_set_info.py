@@ -83,16 +83,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def validate_delegation_set(module, delegation_set, operation, expected_id=None):
-    if not isinstance(delegation_set, dict) or not isinstance(delegation_set.get("Id"), str):
-        module.fail_json(msg=f"{operation}: AWS returned an invalid response")
-
-    if expected_id is not None and delegation_set["Id"].rsplit("/", 1)[-1] != expected_id.rsplit("/", 1)[-1]:
-        module.fail_json(msg=f"{operation}: AWS returned the wrong reusable delegation set")
-
-    return delegation_set
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -119,8 +109,11 @@ def main():
                 msg=operation,
             )
         else:
-            delegation_set = response.get("DelegationSet") if isinstance(response, dict) else None
-            delegation_sets = [validate_delegation_set(module, delegation_set, operation, delegation_set_id)]
+            delegation_set = response["DelegationSet"]
+            if delegation_set["Id"].rsplit("/", 1)[-1] != delegation_set_id.rsplit("/", 1)[-1]:
+                module.fail_json(msg=f"{operation}: AWS returned the wrong reusable delegation set")
+
+            delegation_sets = [delegation_set]
     else:
         require_client_methods(module, client, "Route53", {"list_reusable_delegation_sets": ("Marker", "MaxItems")})
         delegation_sets = query_list(
@@ -130,8 +123,6 @@ def main():
             "DelegationSets",
             "Unable to list AWS Route53 reusable delegation sets",
         )
-        for delegation_set in delegation_sets:
-            validate_delegation_set(module, delegation_set, "Unable to list AWS Route53 reusable delegation sets")
 
     module.exit_json(
         changed=False,

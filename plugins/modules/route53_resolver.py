@@ -65,14 +65,14 @@ options:
   name:
     description:
       - The resolver endpoint name.
-      - This must be a nonnumeric name of at most 64 letters, numbers, spaces,
+      - AWS accepts a nonnumeric name of at most 64 letters, numbers, spaces,
         apostrophes, hyphens, or underscores.
     required: true
     type: str
   protocols:
     description:
       - The protocols for the resolver endpoint.
-      - This must contain 1 or 2 entries.
+      - AWS accepts 1 or 2 entries.
       - When omitted while creating an endpoint, AWS uses C(Do53).
       - When omitted for an existing endpoint, the current protocols are left unchanged.
     choices:
@@ -95,7 +95,7 @@ options:
     description:
       - The security group IDs for the resolver endpoint.
       - This is required when O(state=present).
-      - Entries must contain 1 to 64 characters and must not be blank.
+      - AWS accepts entries of 1 to 64 characters.
     elements: str
     type: list
   state:
@@ -366,8 +366,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver impor
     reconcile_resolver_arn_tags,
     require_ip_versions,
     resolver_resource_with_tags,
-    valid_resolver_name,
-    validate_ip_addresses,
     validate_resolver_endpoint,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -555,24 +553,13 @@ def create_resolver_endpoint(client, module, desired, deadline=None):
             msg=f"Unable to create AWS Route53 Resolver endpoint {desired['name']}",
         )
 
-    endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
-    if not isinstance(endpoint, dict) or not endpoint.get("Id"):
-        endpoint = get_resolver_endpoint_by_name(client, module, changed=True)
-
-    if endpoint is None:
-        module.fail_json(
-            changed=True,
-            msg=f"AWS Route53 Resolver did not return the created endpoint {desired['name']}",
-        )
-
-    endpoint = validate_resolver_endpoint(module, endpoint, "create_resolver_endpoint", changed=True)
+    endpoint = response["ResolverEndpoint"]
 
     if module.params["wait"]:
-        resolver_endpoint_id = endpoint.get("Id")
         endpoint = wait_for_resolver_endpoint_status(
             client,
             module,
-            resolver_endpoint_id,
+            endpoint["Id"],
             "operational",
             changed=True,
             deadline=deadline,
@@ -737,7 +724,7 @@ def ensure_present(client, module, deadline=None):
             if ip_address_status(ip_address) not in DEPARTING_IP_ADDRESS_STATUSES
         ]
         endpoint = dict(endpoint, IpAddresses=settled_ip_addresses, Status="OPERATIONAL")
-        if isinstance(endpoint.get("IpAddressCount"), int):
+        if "IpAddressCount" in endpoint:
             # The count includes departing addresses until they are removed.
             endpoint["IpAddressCount"] -= len(ip_addresses) - len(settled_ip_addresses)
 
@@ -922,21 +909,9 @@ def ensure_present(client, module, deadline=None):
                         msg=f"Unable to update AWS Route53 Resolver endpoint {module.params['name']}",
                     )
 
-                endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
-                if not isinstance(endpoint, dict) or not endpoint.get("Id"):
-                    endpoint = get_resolver_endpoint(
-                        client, module, update_params["resolver_endpoint_id"], changed=True
-                    )
-
-                if endpoint is None:
-                    module.fail_json(
-                        changed=True,
-                        msg=f"AWS Route53 Resolver did not return the updated endpoint {module.params['name']}",
-                    )
-
                 endpoint = validate_resolver_endpoint(
                     module,
-                    endpoint,
+                    response["ResolverEndpoint"],
                     "update_resolver_endpoint",
                     expected_id=update_params["resolver_endpoint_id"],
                     changed=True,
@@ -999,7 +974,6 @@ def ensure_present(client, module, deadline=None):
                 client,
                 endpoint,
                 "endpoint",
-                module.params["name"],
                 tags_to_set,
                 tag_keys_to_unset,
                 changed=resource_changed,
@@ -1189,11 +1163,9 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
         else:
             # Without a wait, the last change's response is the current endpoint, which is UPDATING and still counts
             # an address it removes.
-            changed_endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
-            if isinstance(changed_endpoint, dict) and changed_endpoint.get("Id"):
-                endpoint = validate_resolver_endpoint(
-                    module, changed_endpoint, operation_name, expected_id=resolver_endpoint_id, changed=True
-                )
+            endpoint = validate_resolver_endpoint(
+                module, response["ResolverEndpoint"], operation_name, expected_id=resolver_endpoint_id, changed=True
+            )
 
     if not module.params["wait"]:
         endpoint = dict(endpoint)
@@ -1365,10 +1337,9 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id, changed=False):
             msg=f"Unable to get AWS Route53 Resolver endpoint {resolver_endpoint_id}",
         )
 
-    endpoint = response.get("ResolverEndpoint") if isinstance(response, dict) else None
     return validate_resolver_endpoint(
         module,
-        endpoint,
+        response["ResolverEndpoint"],
         "get_resolver_endpoint",
         expected_id=resolver_endpoint_id,
         changed=changed,
@@ -1409,8 +1380,7 @@ def resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=False)
         return endpoint
 
     endpoint = dict(endpoint)
-
-    ip_addresses = query_list(
+    endpoint["IpAddresses"] = query_list(
         module,
         client,
         "list_resolver_endpoint_ip_addresses",
@@ -1419,7 +1389,6 @@ def resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=False)
         changed=changed,
         ResolverEndpointId=endpoint["Id"],
     )
-    endpoint["IpAddresses"] = validate_ip_addresses(module, ip_addresses, changed=changed)
 
     return endpoint
 
@@ -1473,10 +1442,6 @@ def main():
     state = module.params["state"]
     tags = module.params["tags"]
 
-    name = module.params["name"]
-    if not valid_resolver_name(name):
-        module.fail_json(msg="name must be a valid resolver endpoint name of at most 64 characters")
-
     if state == "present":
         if not 2 <= len(module.params["ip_addresses"] or []) <= 20:
             module.fail_json(msg="ip_addresses must contain 2 to 20 entries")
@@ -1489,15 +1454,8 @@ def main():
             if len(set(values)) != len(values):
                 module.fail_json(msg="ip_addresses entries must be unique")
 
-        if module.params["protocols"] is not None and not 1 <= len(set(module.params["protocols"])) <= 2:
-            module.fail_json(msg="protocols must contain 1 or 2 entries")
-
         if not module.params["security_group_ids"]:
             module.fail_json(msg="security_group_ids must contain at least one entry")
-
-        # AWS reads a whitespace-only ID as empty and refuses it, while check mode would predict success.
-        if any(not group_id.strip() or len(group_id) > 64 for group_id in module.params["security_group_ids"]):
-            module.fail_json(msg="security_group_ids entries must contain 1 to 64 characters")
 
         for entry in module.params["ip_addresses"]:
             if (

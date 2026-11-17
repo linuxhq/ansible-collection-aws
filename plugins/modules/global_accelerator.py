@@ -66,13 +66,11 @@ options:
       - AWS answers a creation that reuses a token with the accelerator the earlier creation made, even one renamed
         since. When that accelerator's name differs from O(name), the module fails without changing anything; use
         a new token for each new accelerator.
-      - This must contain at most 255 characters.
     type: str
   ip_addresses:
     description:
       - Static IP addresses to assign to the accelerator.
-      - These must be unique IPv4 addresses from an AWS Global Accelerator BYOIP address pool.
-      - This must contain at most 2 entries.
+      - AWS accepts up to 2 unique IPv4 addresses from an AWS Global Accelerator BYOIP address pool.
       - When omitted, AWS assigns IP addresses.
       - Additional AWS-assigned addresses do not cause updates when all requested addresses are present.
       - This can only be set when creating an accelerator.
@@ -345,7 +343,6 @@ options:
       - Name of the accelerator.
       - This is required when O(state=present).
       - O(arn) or O(name) is required.
-      - This must contain at most 64 characters.
     type: str
   purge_endpoint_groups:
     description:
@@ -680,7 +677,6 @@ state:
   type: str
 """
 
-import ipaddress
 import re
 import uuid
 
@@ -810,84 +806,12 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
 }
 
 
-def validate_accelerator(module, accelerator, expected_arn=None, changed=False):
-    ip_sets = accelerator.get("IpSets") if isinstance(accelerator, dict) else None
-    if (
-        not isinstance(accelerator, dict)
-        or not isinstance(accelerator.get("AcceleratorArn"), str)
-        or not accelerator["AcceleratorArn"]
-        or (expected_arn is not None and accelerator["AcceleratorArn"] != expected_arn)
-        or not isinstance(accelerator.get("Name"), str)
-        or not isinstance(accelerator.get("Enabled"), bool)
-        or not isinstance(accelerator.get("IpAddressType"), str)
-        or ("Status" in accelerator and not isinstance(accelerator["Status"], str))
-        or (ip_sets is not None and not isinstance(ip_sets, list))
-        or (
-            isinstance(ip_sets, list)
-            and any(
-                not isinstance(ip_set, dict)
-                or not isinstance(ip_set.get("IpAddresses"), list)
-                or any(not isinstance(address, str) for address in ip_set["IpAddresses"])
-                for ip_set in ip_sets
-            )
-        )
+def require_expected_endpoint_group(module, endpoint_group, expected_arn=None, expected_region=None):
+    """Fail when a write response names a different endpoint group than the one requested."""
+    if (expected_arn is not None and endpoint_group["EndpointGroupArn"] != expected_arn) or (
+        expected_region is not None and endpoint_group["EndpointGroupRegion"] != expected_region
     ):
-        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid accelerator")
-
-    return accelerator
-
-
-def validate_listener(module, listener, changed=False):
-    port_ranges = listener.get("PortRanges") if isinstance(listener, dict) else None
-    if (
-        not isinstance(listener, dict)
-        or not isinstance(listener.get("ListenerArn"), str)
-        or not listener["ListenerArn"]
-        or not isinstance(listener.get("ClientAffinity"), str)
-        or not isinstance(listener.get("Protocol"), str)
-        or not isinstance(port_ranges, list)
-        or any(
-            not isinstance(port_range, dict)
-            or not isinstance(port_range.get("FromPort"), int)
-            or not isinstance(port_range.get("ToPort"), int)
-            for port_range in port_ranges
-        )
-    ):
-        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid listener")
-
-    return listener
-
-
-def validate_endpoint_group(module, endpoint_group, expected_arn=None, expected_region=None, changed=False):
-    endpoint_descriptions = endpoint_group.get("EndpointDescriptions") if isinstance(endpoint_group, dict) else None
-    port_overrides = endpoint_group.get("PortOverrides") if isinstance(endpoint_group, dict) else None
-    if (
-        not isinstance(endpoint_group, dict)
-        or not isinstance(endpoint_group.get("EndpointGroupArn"), str)
-        or not endpoint_group["EndpointGroupArn"]
-        or (expected_arn is not None and endpoint_group["EndpointGroupArn"] != expected_arn)
-        or not isinstance(endpoint_group.get("EndpointGroupRegion"), str)
-        or (expected_region is not None and endpoint_group["EndpointGroupRegion"] != expected_region)
-        or (endpoint_descriptions is not None and not isinstance(endpoint_descriptions, list))
-        or (
-            isinstance(endpoint_descriptions, list)
-            and any(
-                not isinstance(endpoint, dict) or not isinstance(endpoint.get("EndpointId"), str)
-                for endpoint in endpoint_descriptions
-            )
-        )
-        or (port_overrides is not None and not isinstance(port_overrides, list))
-        or (
-            isinstance(port_overrides, list)
-            and any(
-                not isinstance(port_override, dict)
-                or not isinstance(port_override.get("EndpointPort"), int)
-                or not isinstance(port_override.get("ListenerPort"), int)
-                for port_override in port_overrides
-            )
-        )
-    ):
-        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid endpoint group")
+        module.fail_json(changed=True, msg="Global Accelerator returned an invalid endpoint group")
 
     return endpoint_group
 
@@ -911,12 +835,11 @@ def get_accelerator_by_arn(client, module, accelerator_arn, changed=False):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to describe AWS Global Accelerator {accelerator_arn}")
 
-    return validate_accelerator(
-        module,
-        response.get("Accelerator") if isinstance(response, dict) else None,
-        expected_arn=accelerator_arn,
-        changed=changed,
-    )
+    accelerator = response["Accelerator"]
+    if accelerator["AcceleratorArn"] != accelerator_arn:
+        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid accelerator")
+
+    return accelerator
 
 
 def get_accelerator(client, module):
@@ -939,12 +862,7 @@ def get_accelerator(client, module):
         "Unable to list AWS Global Accelerator accelerators",
     )
 
-    if not isinstance(accelerators, list):
-        module.fail_json(msg="Global Accelerator returned an invalid accelerator list")
-
-    accelerators = [validate_accelerator(module, accelerator) for accelerator in accelerators]
-
-    matches = [accelerator for accelerator in accelerators if accelerator.get("Name") == name]
+    matches = [accelerator for accelerator in accelerators if accelerator["Name"] == name]
 
     if len(matches) > 1:
         module.fail_json(
@@ -1017,10 +935,6 @@ def get_listeners(client, module, accelerator_arn, changed=False):
         changed=changed,
         AcceleratorArn=accelerator_arn,
     )
-    if not isinstance(listeners, list):
-        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid listener list")
-
-    listeners = [validate_listener(module, listener, changed=changed) for listener in listeners]
 
     normalized = []
     for listener in listeners:
@@ -1245,12 +1159,6 @@ def get_endpoint_groups(client, module, listener_arn, changed=False):
         changed=changed,
         ListenerArn=listener_arn,
     )
-    if not isinstance(endpoint_groups, list):
-        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid endpoint group list")
-
-    endpoint_groups = [
-        validate_endpoint_group(module, endpoint_group, changed=changed) for endpoint_group in endpoint_groups
-    ]
 
     normalized = [
         boto3_resource_to_ansible_dict(
@@ -1577,8 +1485,11 @@ def delete_endpoint_group(client, module, endpoint_group_arn, changed=False):
         )
 
 
-def delete_listener(client, module, accelerator_arn, listener_arn, changed=False, deadline=None):
-    """Delete a listener and its endpoint groups; changed reports earlier modifications, for failure results."""
+def delete_listener(client, module, accelerator_arn, listener_arn, endpoint_groups=None, changed=False, deadline=None):
+    """Delete a listener and its endpoint groups; changed reports earlier modifications, for failure results.
+
+    endpoint_groups maps listener ARNs to their listed endpoint groups, so groups already listed are not listed again.
+    """
     require_client_methods(
         module,
         client,
@@ -1586,12 +1497,12 @@ def delete_listener(client, module, accelerator_arn, listener_arn, changed=False
         {"delete_listener": ("ListenerArn",)},
         changed=changed,
     )
-    endpoint_groups = get_endpoint_groups(client, module, listener_arn, changed=changed)
-    for endpoint_group in endpoint_groups:
+    listener_groups = listed_endpoint_groups(client, module, endpoint_groups or {}, listener_arn, changed=changed)
+    for endpoint_group in listener_groups:
         delete_endpoint_group(client, module, endpoint_group["endpoint_group_arn"], changed=changed)
         changed = True
 
-    if endpoint_groups:
+    if listener_groups:
         wait_for_accelerator(client, module, accelerator_arn, "accelerator_deployed", changed=True, deadline=deadline)
 
     try:
@@ -1667,12 +1578,7 @@ def ensure_endpoint_groups(
                 )
 
             mutated = True
-            endpoint_group = validate_endpoint_group(
-                module,
-                response.get("EndpointGroup") if isinstance(response, dict) else None,
-                expected_region=region,
-                changed=True,
-            )
+            endpoint_group = require_expected_endpoint_group(module, response["EndpointGroup"], expected_region=region)
 
             results.append(
                 boto3_resource_to_ansible_dict(
@@ -1704,11 +1610,8 @@ def ensure_endpoint_groups(
                 )
 
             mutated = True
-            endpoint_group = validate_endpoint_group(
-                module,
-                response.get("EndpointGroup") if isinstance(response, dict) else None,
-                expected_arn=endpoint_group_arn,
-                changed=True,
+            endpoint_group = require_expected_endpoint_group(
+                module, response["EndpointGroup"], expected_arn=endpoint_group_arn
             )
 
             results.append(
@@ -1809,11 +1712,8 @@ def release_port_overrides(client, module, current_groups, releases, changed=Fal
             )
 
         changed = True
-        endpoint_group = validate_endpoint_group(
-            module,
-            response.get("EndpointGroup") if isinstance(response, dict) else None,
-            expected_arn=endpoint_group_arn,
-            changed=True,
+        endpoint_group = require_expected_endpoint_group(
+            module, response["EndpointGroup"], expected_arn=endpoint_group_arn
         )
         current_groups[index] = boto3_resource_to_ansible_dict(endpoint_group, transform_tags=False, force_tags=False)
 
@@ -2107,7 +2007,13 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
     if conflicting_deletes:
         for current in conflicting_deletes:
             delete_listener(
-                client, module, accelerator_arn, current["listener_arn"], changed=mutated, deadline=deadline
+                client,
+                module,
+                accelerator_arn,
+                current["listener_arn"],
+                endpoint_groups=endpoint_groups,
+                changed=mutated,
+                deadline=deadline,
             )
             mutated = True
             deletes.remove(current)
@@ -2169,11 +2075,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
             )
 
         mutated = True
-        listener = validate_listener(
-            module,
-            response.get("Listener") if isinstance(response, dict) else None,
-            changed=True,
-        )
+        listener = response["Listener"]
         result["client_affinity"] = listener["ClientAffinity"]
         result["listener_arn"] = listener["ListenerArn"]
 
@@ -2205,11 +2107,6 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
                     **request,
                     aws_retry=True,
                 )
-                listener = validate_listener(
-                    module,
-                    response.get("Listener") if isinstance(response, dict) else None,
-                    changed=True,
-                )
                 break
             except is_boto3_error_code("LimitExceededException") as e:
                 if not deletes:
@@ -2221,7 +2118,13 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
 
                 current = deletes.pop(0)
                 delete_listener(
-                    client, module, accelerator_arn, current["listener_arn"], changed=mutated, deadline=deadline
+                    client,
+                    module,
+                    accelerator_arn,
+                    current["listener_arn"],
+                    endpoint_groups=endpoint_groups,
+                    changed=mutated,
+                    deadline=deadline,
                 )
                 mutated = True
                 wait_for_accelerator(
@@ -2235,6 +2138,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
                 )
 
         mutated = True
+        listener = response["Listener"]
         result["client_affinity"] = listener["ClientAffinity"]
         result["listener_arn"] = listener["ListenerArn"]
         result_listeners.append((result, desired, desired["port_ranges"][0]["from_port"]))
@@ -2242,7 +2146,13 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
     if not module.check_mode:
         for current in deletes:
             delete_listener(
-                client, module, accelerator_arn, current["listener_arn"], changed=mutated, deadline=deadline
+                client,
+                module,
+                accelerator_arn,
+                current["listener_arn"],
+                endpoint_groups=endpoint_groups,
+                changed=mutated,
+                deadline=deadline,
             )
             mutated = True
 
@@ -2532,17 +2442,13 @@ def ensure_present(client, module, deadline=None):
                 msg=f"Unable to create AWS Global Accelerator {desired['name']}",
             )
 
-        accelerator = validate_accelerator(
-            module,
-            response.get("Accelerator") if isinstance(response, dict) else None,
-            changed=True,
-        )
-        if accelerator.get("Name") != desired["name"]:
+        accelerator = response["Accelerator"]
+        if accelerator["Name"] != desired["name"]:
             # Live: a reused token answers with the accelerator it created, under its current name.
             module.fail_json(
                 msg=(
                     f"idempotency_token {token} was already used to create AWS Global Accelerator "
-                    f"{accelerator.get('AcceleratorArn')} (now named {accelerator.get('Name')}), "
+                    f"{accelerator['AcceleratorArn']} (now named {accelerator['Name']}), "
                     f"not {desired['name']}; use a new idempotency_token or omit it"
                 ),
             )
@@ -2586,12 +2492,9 @@ def ensure_present(client, module, deadline=None):
                 msg=f"Unable to update AWS Global Accelerator {request['AcceleratorArn']}",
             )
 
-        accelerator = validate_accelerator(
-            module,
-            response.get("Accelerator") if isinstance(response, dict) else None,
-            expected_arn=request["AcceleratorArn"],
-            changed=True,
-        )
+        accelerator = response["Accelerator"]
+        if accelerator["AcceleratorArn"] != request["AcceleratorArn"]:
+            module.fail_json(changed=True, msg="Global Accelerator returned an invalid accelerator")
     elif resource_changed and module.check_mode:
         accelerator = dict(accelerator)
         # Without a wait, a real run returns the UpdateAccelerator response, which reports the change deploying.
@@ -2795,30 +2698,8 @@ def main():
     state = module.params["state"]
     require_positive_wait_bounds(module, always=True)
 
-    if len(module.params.get("name") or "") > 64:
-        module.fail_json(msg="name must contain at most 64 characters")
-
     if state == "present":
-        ip_addresses = module.params["ip_addresses"] or []
         listeners = module.params["listeners"] or []
-        if len(module.params.get("idempotency_token") or "") > 255:
-            module.fail_json(msg="idempotency_token must contain at most 255 characters")
-
-        if len(ip_addresses) > 2:
-            module.fail_json(msg="ip_addresses must contain at most 2 entries")
-
-        if any(len(address) > 45 for address in ip_addresses):
-            module.fail_json(msg="ip_addresses entries must contain at most 45 characters")
-
-        for address in ip_addresses:
-            try:
-                ipaddress.IPv4Address(address)
-            except ipaddress.AddressValueError:
-                module.fail_json(msg=f"ip_addresses entries must be valid IPv4 addresses: {address}")
-
-        if len(set(ip_addresses)) != len(ip_addresses):
-            module.fail_json(msg="ip_addresses entries must be unique")
-
         listener_port_ranges = {}
         if sum(len(listener.get("endpoint_groups") or []) for listener in listeners) > 42:
             module.fail_json(msg="listeners must contain at most 42 endpoint groups in total")

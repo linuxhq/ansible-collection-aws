@@ -109,16 +109,6 @@ def test_country_code_is_optional_for_non_country_specific_identities():
     }
 
 
-def test_current_associations_rejects_malformed_response():
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value=[]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.current_associations(Mock(), FakeModule({"pool_id": "pool-1"}))
-
-    assert "malformed" in raised.value.values["msg"]
-
-
 def test_present_rejects_wrong_association_response():
     client = Mock()
     client.associate_origination_identity.return_value = {
@@ -362,14 +352,6 @@ def test_check_mode_predicts_the_uppercase_sender_id_aws_returns():
         plugin.ensure_present(Mock(), module)
 
     assert raised.value.values["association"]["origination_identity"] == "AUP2MIX"
-
-
-def test_malformed_listed_association_reports_unchanged():
-    module = FakeModule({"origination_identity": "sender-1", "pool_id": "pool-1"})
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_association(module, {"PoolId": "pool-1"}, require_pool=False)
-
-    assert raised.value.values["changed"] is False
 
 
 def test_malformed_disassociate_response_reports_changed():

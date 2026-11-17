@@ -82,6 +82,7 @@ def test_missing_ids_are_omitted_from_results():
         "DescribePhoneNumbers",
     )
     client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
     module = FakeModule(
         {
             "filters": {"status": "ACTIVE"},
@@ -97,7 +98,7 @@ def test_missing_ids_are_omitted_from_results():
         patch.object(
             plugin,
             "paginated_query_with_retries",
-            side_effect=[missing, {"PhoneNumbers": [{"PhoneNumberId": "phone-1"}]}],
+            side_effect=[missing, {"PhoneNumbers": [{"PhoneNumberArn": "arn:phone", "PhoneNumberId": "phone-1"}]}],
         ) as query,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -159,17 +160,6 @@ def test_id_lookup_fails_on_other_errors():
     assert raised.value.values["msg"] == "Unable to describe Pinpoint SMS Voice V2 phone number phone-1"
 
 
-@pytest.mark.parametrize("response", [[], {"PhoneNumbers": "invalid"}, {"PhoneNumbers": None}])
-def test_id_lookup_rejects_malformed_response(response):
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value=response),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.describe_phone_numbers_by_id(FakeModule({}), Mock(), {"PhoneNumberIds": ["phone-1"]})
-
-    assert raised.value.values["msg"] == "AWS returned malformed Pinpoint SMS Voice V2 phone number data"
-
-
 def test_empty_result_does_not_require_tag_operations():
     module = FakeModule(
         {
@@ -190,54 +180,32 @@ def test_empty_result_does_not_require_tag_operations():
     assert require.call_args.args[3] == {"describe_phone_numbers": ("Owner", "MaxResults", "NextToken")}
 
 
-def test_rejects_max_results_above_provider_limit():
+def test_more_than_five_ids_are_described_one_at_a_time():
+    # Each ID is described in its own request, so the DescribePhoneNumbers limit of five IDs does not apply.
+    phone_number_ids = [f"phone-{index}" for index in range(6)]
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
     module = FakeModule(
-        {
-            "filters": None,
-            "max_results": 101,
-            "owner": "SELF",
-            "phone_number_ids": None,
-        }
+        {"filters": None, "max_results": None, "owner": None, "phone_number_ids": phone_number_ids},
+        client=client,
     )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[
+                {"PhoneNumbers": [{"PhoneNumberArn": f"arn:phone/{phone_number_id}", "PhoneNumberId": phone_number_id}]}
+                for phone_number_id in phone_number_ids
+            ],
+        ) as query,
+        pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "max_results must be between 1 and 100"
-
-
-def test_rejects_provider_list_limits():
-    cases = [
-        (
-            {
-                "filters": {str(index): "x" for index in range(21)},
-                "max_results": None,
-                "owner": None,
-                "phone_number_ids": None,
-            },
-            "filters must contain at most 20 entries",
-        ),
-        (
-            {
-                "filters": None,
-                "max_results": None,
-                "owner": None,
-                "phone_number_ids": [f"phone-{index}" for index in range(6)],
-            },
-            "phone_number_ids must contain at most 5 entries",
-        ),
-    ]
-    for params, message in cases:
-        module = FakeModule(params)
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            pytest.raises(ModuleFail) as raised,
-        ):
-            plugin.main()
-
-        assert raised.value.values["msg"] == message
+    assert [item.kwargs["PhoneNumberIds"] for item in query.call_args_list] == [[item] for item in phone_number_ids]
+    assert raised.value.values["phone_number_ids"] == phone_number_ids
 
 
 def test_phone_numbers_are_enriched_with_tags():
@@ -286,50 +254,3 @@ def test_phone_numbers_are_enriched_with_tags():
             {"list_tags_for_resource": ("ResourceArn",)},
         ),
     ]
-
-
-def test_rejects_malformed_phone_number():
-    module = FakeModule(
-        {
-            "filters": None,
-            "max_results": None,
-            "owner": "SELF",
-            "phone_number_ids": None,
-        }
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"PhoneNumberArn": "arn:phone"}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "malformed" in raised.value.values["msg"]
-
-
-def test_rejects_malformed_tags():
-    client = Mock()
-    client.list_tags_for_resource.return_value = {"Tags": "invalid"}
-    module = FakeModule(
-        {
-            "filters": None,
-            "max_results": None,
-            "owner": "SELF",
-            "phone_number_ids": None,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(
-            plugin,
-            "query_list",
-            return_value=[{"PhoneNumberArn": "arn:phone", "PhoneNumberId": "phone-1"}],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "malformed tags" in raised.value.values["msg"]

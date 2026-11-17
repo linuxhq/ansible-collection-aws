@@ -1,0 +1,21 @@
+---
+minor_changes:
+  - ssm_association - an O(association_name) that is not 3 to 128 letters, numbers, underscores, hyphens, or periods, a
+    blank O(name), a blank or longer than 256 character O(schedule_expression), more than 5 O(targets), and a blank or
+    too long O(targets[].key) or an empty or too long O(targets[].values) are now rejected by Systems Manager instead
+    of by the module, so check mode no longer reports them as errors.
+  - ssm_document - a blank O(document_type), and a whitespace-only O(tags) key when creating a document, are now
+    rejected by Systems Manager instead of by the module, so check mode no longer reports them as errors.
+  - ssm_document_info - an empty O(name) is now treated as omitted and lists every document instead of failing, as
+    other info modules do.
+  - ssm_instance_info - more than 100 or blank O(instance_ids) are now rejected by Systems Manager instead of by the
+    module.
+  - ssm_send_command - a blank O(document_name), O(max_concurrency), or O(max_errors), a O(timeout_seconds) outside
+    C(30) to C(2592000), more than 50 O(instance_ids) or blank entries, more than 5 O(targets), an invalid
+    O(targets[].key) or O(targets[].values), and O(parameters) values that are not lists of strings are now rejected
+    by botocore or Systems Manager instead of by the module, so check mode no longer reports them as errors.
+trivial:
+  - ssm_association, ssm_association_info, ssm_document, ssm_document_info, ssm_instance_info, and ssm_send_command -
+    rely on the Systems Manager response shape instead of checking the types and presence of fields it always
+    returns.
+...

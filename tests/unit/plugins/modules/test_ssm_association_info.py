@@ -79,19 +79,6 @@ def test_associations_include_tags():
     ]
 
 
-def test_rejects_malformed_association():
-    result, _require, _query = run(FakeModule({"filters": None}, client=Mock()), [None])
-
-    assert result.values["msg"] == "Unexpected response while listing AWS Systems Manager associations"
-
-
-def test_rejects_malformed_tags():
-    client = Mock(list_tags_for_resource=Mock(return_value={"TagList": [None]}))
-    result, _require, _query = run(FakeModule({"filters": None}, client=client), [{"AssociationId": "a-1"}])
-
-    assert result.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager association a-1"
-
-
 def test_association_deleted_before_its_tags_are_read_is_skipped():
     client = Mock(
         list_tags_for_resource=Mock(

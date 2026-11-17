@@ -63,44 +63,11 @@ def test_cloudfront_scope_is_uppercase_for_aws():
     assert query_list.call_args.kwargs["Scope"] == "CLOUDFRONT"
 
 
-def test_cloudfront_scope_outside_us_east_1_fails_before_aws():
-    module = FakeModule(params(scope="cloudfront"), client=Mock(), region="us-west-2")
-    result, require_client_methods, query_list = run(module, [])
-
-    assert result.values["msg"] == "scope cloudfront requires the us-east-1 region, not us-west-2"
-    require_client_methods.assert_not_called()
-    query_list.assert_not_called()
-
-
 @pytest.mark.parametrize("option", ["id", "name"])
 def test_rejects_empty_filters(option):
     result, _require, _query = run(FakeModule(params(**{option: ""})))
 
     assert result.values["msg"] == f"{option} must not be empty"
-
-
-@pytest.mark.parametrize(
-    ("summary", "message"),
-    [(None, "Unexpected response while listing"), ({}, "invalid ID"), ({"Id": "id-1"}, "invalid name")],
-)
-def test_rejects_malformed_selected_summary(summary, message):
-    result, _require, _query = run(FakeModule(params(), client=Mock()), [summary])
-
-    assert message in result.values["msg"]
-
-
-def test_rejects_malformed_summary_list():
-    result, _require, _query = run(FakeModule(params(), client=Mock()), None)
-
-    assert result.values["msg"] == "Unexpected response while listing AWS WAFv2 IP sets for REGIONAL"
-
-
-def test_filtered_lookup_skips_malformed_unmatched_summary():
-    result, _require, _query = run(
-        FakeModule(params(id="wanted"), client=ip_set_client()), [None, {"Id": "wanted", "Name": "target"}]
-    )
-
-    assert result.values["ip_sets"][0]["id"] == "wanted"
 
 
 def test_missing_name_returns_empty_list():
@@ -138,25 +105,6 @@ def test_ip_set_deleted_before_its_tags_are_read_is_skipped():
     result, _require, _query = run(FakeModule(params(), client=client), [IP_SET])
 
     assert result.values["ip_sets"] == []
-
-
-@pytest.mark.parametrize(
-    ("client", "message"),
-    [
-        (Mock(get_ip_set=Mock(return_value={})), "Unexpected response while getting AWS WAFv2 IP set target/wanted"),
-        (
-            Mock(
-                get_ip_set=Mock(return_value={"IPSet": IP_SET}),
-                list_tags_for_resource=Mock(return_value={"TagInfoForResource": {"TagList": [None]}}),
-            ),
-            "Unexpected response while listing tags for AWS WAFv2 IP set target/wanted",
-        ),
-    ],
-)
-def test_rejects_malformed_responses(client, message):
-    result, _require, _query = run(FakeModule(params(), client=client), [{"Id": "wanted", "Name": "target"}])
-
-    assert result.values["msg"] == message
 
 
 def test_id_and_name_get_the_ip_set_without_listing():

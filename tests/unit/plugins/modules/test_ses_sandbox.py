@@ -99,43 +99,6 @@ def test_omitted_website_only_reads_account_state():
     client.put_account_details.assert_not_called()
 
 
-def test_rejects_more_than_four_contact_addresses():
-    result, _require, _get = run(
-        FakeModule(params(additional_contact_email_addresses=[f"contact-{index}@example.com" for index in range(5)]))
-    )
-
-    assert "at most 4" in result.values["msg"]
-
-
-@pytest.mark.parametrize(
-    ("overrides", "message"),
-    [
-        ({"website_url": " "}, "website_url must not be empty"),
-        ({"use_case_description": " "}, "use_case_description must not be empty"),
-    ],
-)
-def test_rejects_blank_application_details_before_api_calls(overrides, message):
-    result, _require, get_account = run(FakeModule(params(**overrides)))
-
-    assert result.values["msg"] == message
-    get_account.assert_not_called()
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("addresses", [[""], ["ops@example.com", ""], [" "]])
-def test_rejects_blank_contact_addresses_before_api_calls(addresses, check_mode):
-    # AWS rejects blank addresses, so check mode would predict account details that can never be submitted.
-    client = Mock()
-    result, _require, get_account = run(
-        FakeModule(params(additional_contact_email_addresses=addresses), client=client, check_mode=check_mode),
-        {"details": DETAILS, "production_access_enabled": False},
-    )
-
-    assert result.values == {"msg": "additional_contact_email_addresses must not contain empty entries"}
-    get_account.assert_not_called()
-    client.put_account_details.assert_not_called()
-
-
 def test_website_url_alone_submits_a_request():
     client = Mock()
     result, _require, _get = run(

@@ -19,14 +19,12 @@ options:
     description:
       - The logging destination ARNs for the web ACL.
       - AWS WAF allows one destination per web ACL.
-      - Entries must not be empty.
       - This is required when O(state=present).
     elements: str
     type: list
   resource_arn:
     description:
       - The ARN of the WAFv2 web ACL to manage logging for.
-      - This must not be empty.
       - A regional web ACL must be in the module's region, and a CloudFront
         (C(global)) web ACL requires the C(us-east-1) region; any other region
         fails before AWS is called.
@@ -263,12 +261,7 @@ def ensure_present(client, module, web_acl):
                 msg=f"Unable to manage AWS WAFv2 logging configuration for {resource_arn}",
             )
 
-        current = response.get("LoggingConfiguration") if isinstance(response, dict) else None
-        if not isinstance(current, dict) or not current:
-            module.fail_json(
-                changed=True,
-                msg=f"AWS WAFv2 did not return the logging configuration for {resource_arn}",
-            )
+        current = response["LoggingConfiguration"]
 
     elif changed and module.check_mode:
         # A put returns the stored configuration, including the fields AWS fills in for a new one.
@@ -334,14 +327,7 @@ def get_logging_configuration(client, module):
             msg=f"Unable to get AWS WAFv2 logging configuration for {resource_arn}",
         )
 
-    if not isinstance(response, dict):
-        module.fail_json(msg=f"AWS WAFv2 returned an unexpected logging configuration response for {resource_arn}")
-
-    current = response.get("LoggingConfiguration")
-    if current is not None and not isinstance(current, dict):
-        module.fail_json(msg=f"AWS WAFv2 returned an unexpected logging configuration response for {resource_arn}")
-
-    return current
+    return response.get("LoggingConfiguration")
 
 
 def main():
@@ -361,17 +347,6 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-    resource_arn = module.params["resource_arn"]
-
-    if not resource_arn:
-        module.fail_json(msg="resource_arn must not be empty")
-
-    if state == "present" and len(module.params["log_destination_configs"] or []) != 1:
-        module.fail_json(msg="log_destination_configs must contain exactly 1 ARN")
-
-    if state == "present" and not module.params["log_destination_configs"][0]:
-        module.fail_json(msg="log_destination_configs must not contain empty entries")
-
     web_acl = web_acl_identity(module)
     client = module.client(
         "wafv2",

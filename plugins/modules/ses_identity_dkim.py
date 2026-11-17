@@ -27,8 +27,7 @@ options:
   identity:
     description:
       - The SES domain identity.
-      - This must be a domain name; DKIM is configured on domains, not email
-        addresses.
+      - AWS configures DKIM on domain identities, not email address identities.
     required: true
     type: str
   signing_enabled:
@@ -146,11 +145,7 @@ def get_dkim_attributes(client, module, changed=False):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to get AWS SES identity {identity}")
 
-    attributes = response.get("DkimAttributes", {}) if isinstance(response, dict) else None
-    if not isinstance(attributes, dict):
-        module.fail_json(changed=changed, msg=f"AWS SES returned invalid DKIM attributes for identity {identity}")
-
-    return attributes
+    return response.get("DkimAttributes", {})
 
 
 def main():
@@ -163,12 +158,6 @@ def main():
     )
     identity = module.params["identity"]
     signing_enabled = module.params["signing_enabled"]
-
-    if not identity:
-        module.fail_json(msg="identity must not be empty")
-
-    if "@" in identity:
-        module.fail_json(msg="identity must be a domain name, not an email address")
 
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(
@@ -185,8 +174,7 @@ def main():
     current = get_dkim_attributes(client, module)
     # Easy DKIM tokens exist only once AWS has generated them; AWS_SES and the
     # regional AWS_SES_<REGION> origins (deterministic Easy DKIM) are all Easy DKIM.
-    origin = current.get("SigningAttributesOrigin")
-    easy_dkim = isinstance(origin, str) and origin.startswith("AWS_SES")
+    easy_dkim = current.get("SigningAttributesOrigin", "").startswith("AWS_SES")
     generate_tokens = signing_enabled and not (easy_dkim and current.get("Tokens"))
     changed = generate_tokens or bool(current.get("SigningEnabled")) != signing_enabled
 

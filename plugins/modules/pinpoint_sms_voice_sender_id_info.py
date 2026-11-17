@@ -19,13 +19,11 @@ options:
       - A dict of filters to apply when describing sender IDs.
       - Filter names and values are passed to the Pinpoint SMS Voice V2
         C(DescribeSenderIds) API.
-      - This must contain at most 20 filters.
       - Boolean and numeric values, including list entries, are converted to strings.
     type: dict
   max_results:
     description:
       - The maximum number of results returned by each API call.
-      - This must be between 1 and 100.
       - The module follows pagination and returns all matching sender IDs.
     type: int
   owner:
@@ -43,7 +41,6 @@ options:
       - Sender IDs used to limit the result set.
       - Sender IDs that do not exist are omitted from the results.
       - A sender ID found by more than one entry, such as by its ID and by its ARN, is returned once.
-      - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
     elements: dict
     type: list
@@ -51,14 +48,12 @@ options:
       iso_country_code:
         description:
           - The two-character ISO 3166-1 alpha-2 country or region code of the sender ID.
-          - This must not be empty.
         required: true
         type: str
       sender_id:
         description:
           - The sender ID or sender ID ARN.
           - An ARN is required for a sender ID shared from another account.
-          - This must not be empty.
         required: true
         type: str
 extends_documentation_fragment:
@@ -183,7 +178,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 
 def unique_sender_ids(sender_ids):
@@ -222,29 +216,14 @@ def describe_sender_ids_by_id(module, client, request):
                 ),
             )
 
-        found = response.get("SenderIds", []) if isinstance(response, dict) else None
-        if not isinstance(found, list):
-            module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 sender ID data")
-
-        sender_ids.extend(found)
+        sender_ids.extend(response.get("SenderIds", []))
 
     # A sender ID requested both by its ID and by its ARN is returned once, keyed by the ARN AWS reports.
     unique = {}
-    for index, sender_id in enumerate(sender_ids):
-        arn = sender_id.get("SenderIdArn") if isinstance(sender_id, dict) else None
-        unique.setdefault(arn if isinstance(arn, str) else index, sender_id)
+    for sender_id in sender_ids:
+        unique.setdefault(sender_id["SenderIdArn"], sender_id)
 
     return list(unique.values())
-
-
-def validate_sender_id(module, sender_id):
-    if (
-        not isinstance(sender_id, dict)
-        or not isinstance(sender_id.get("SenderId"), str)
-        or not isinstance(sender_id.get("IsoCountryCode"), str)
-        or ("SenderIdArn" in sender_id and not isinstance(sender_id["SenderIdArn"], str))
-    ):
-        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 sender ID data")
 
 
 def main():
@@ -271,20 +250,7 @@ def main():
     max_results = module.params["max_results"]
     owner = module.params["owner"]
 
-    if max_results is not None and not 1 <= max_results <= 100:
-        module.fail_json(msg="max_results must be between 1 and 100")
-
-    if len(filters or {}) > 20:
-        module.fail_json(msg="filters must contain at most 20 entries")
-
-    for entry in module.params["sender_ids"] or []:
-        # required counts only supplied keys, so an explicit null passes it.
-        for option in ("iso_country_code", "sender_id"):
-            require_non_blank(module, entry[option] or "", f"sender_ids {option}")
-
     sender_ids = unique_sender_ids(module.params["sender_ids"] or [])
-    if len(sender_ids) > 5:
-        module.fail_json(msg="sender_ids must contain at most 5 entries")
 
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
 
@@ -322,10 +288,7 @@ def main():
             **request,
         )
 
-    for sender_id in found_sender_ids:
-        validate_sender_id(module, sender_id)
-
-    if any(sender_id.get("SenderIdArn") for sender_id in found_sender_ids):
+    if found_sender_ids:
         require_client_methods(
             module,
             client,
@@ -335,13 +298,9 @@ def main():
 
     normalized_sender_ids = []
     for sender_id in found_sender_ids:
-        arn = sender_id.get("SenderIdArn")
-        tags = []
-
-        if arn:
-            tags = list_tags(client, module, arn, "sender ID", missing_ok=True)
-            if tags is None:
-                continue
+        tags = list_tags(client, module, sender_id["SenderIdArn"], "sender ID", missing_ok=True)
+        if tags is None:
+            continue
 
         normalized_sender_ids.append(
             boto3_resource_to_ansible_dict(

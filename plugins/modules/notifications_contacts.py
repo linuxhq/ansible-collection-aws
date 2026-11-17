@@ -16,13 +16,13 @@ options:
   email_address:
     description:
       - The email address for the notifications contact.
-      - This must be 6 to 254 characters and contain C(@), as the AWS Notifications Contacts API requires.
+      - AWS accepts 6 to 254 characters that contain C(@).
     required: true
     type: str
   name:
     description:
       - The notifications contact name.
-      - This must be 1 to 64 characters and contain at least one ASCII letter,
+      - AWS accepts 1 to 64 characters that contain at least one ASCII letter,
         ASCII digit, or one of C(_), C(-), C(.), or C(~).
       - Changing the name of an existing contact fails without modifying the contact.
       - This is required when O(state=present).
@@ -109,8 +109,6 @@ state:
   type: str
 """
 
-import re
-
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -147,15 +145,6 @@ def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
     return dict(contact, tags=updated_tags(contact.get("tags", {}), tags_to_set, tag_keys_to_unset))
 
 
-def validate_contact(module, contact, operation, changed=False):
-    if not isinstance(contact, dict) or not all(
-        isinstance(contact.get(key), str) and contact[key] for key in ("address", "arn", "name")
-    ):
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid contact")
-
-    return contact
-
-
 def get_contact_by_address(client, module):
     email_address = module.params["email_address"]
 
@@ -167,11 +156,7 @@ def get_contact_by_address(client, module):
         "Unable to list AWS Notifications contacts",
     )
 
-    if not isinstance(contacts, list):
-        module.fail_json(msg="Unable to list AWS Notifications contacts: AWS returned an invalid response")
-
     for contact in contacts:
-        validate_contact(module, contact, "Unable to list AWS Notifications contacts")
         if contact["address"] == email_address:
             return contact
 
@@ -277,18 +262,6 @@ def ensure_present(client, module):
                     msg=f"Unable to create AWS Notifications contact {email_address}",
                 )
 
-            if (
-                not isinstance(create_response, dict)
-                or not isinstance(create_response.get("arn"), str)
-                or not create_response["arn"]
-            ):
-                module.fail_json(
-                    changed=True,
-                    msg=(
-                        f"Unable to create AWS Notifications contact {email_address}: AWS returned an invalid response"
-                    ),
-                )
-
             contact_arn = create_response["arn"]
 
             try:
@@ -305,20 +278,9 @@ def ensure_present(client, module):
                     msg=f"Unable to get AWS Notifications contact {contact_arn}",
                 )
 
-            if not isinstance(get_response, dict) or "emailContact" not in get_response:
-                module.fail_json(
-                    changed=True,
-                    msg=f"Unable to get AWS Notifications contact {contact_arn}: AWS returned an invalid response",
-                )
-
-            contact = get_response.get("emailContact")
-
+            contact = get_response["emailContact"]
             if contact is None:
                 contact = dict(desired_contact, arn=contact_arn)
-            else:
-                validate_contact(
-                    module, contact, f"Unable to get AWS Notifications contact {contact_arn}", changed=True
-                )
 
             if tags is not None:
                 contact["tags"] = tags
@@ -395,26 +357,9 @@ def main():
     )
     state = module.params["state"]
 
-    if state == "present":
-        email_address = module.params["email_address"]
-
-        # Match the CreateEmailContact emailAddress pattern; AWS validates the address itself.
-        if not 6 <= len(email_address) <= 254 or not re.fullmatch(r"(.+)@(.+)", email_address):
-            module.fail_json(msg="email_address must be 6 to 254 characters and contain @")
-
-        name = module.params["name"]
-        # required_if counts only supplied keys, so an explicit null name passes it.
-        if name is None:
-            module.fail_json(msg="state is present but all of the following are missing: name")
-
-        # AWS matches the API's \w against ASCII word characters only.
-        if not 1 <= len(name) <= 64 or not re.search(r"[\w\-.~]", name, flags=re.ASCII):
-            module.fail_json(
-                msg=(
-                    "name must be 1 to 64 characters and contain at least "
-                    "one ASCII letter, ASCII digit, underscore, hyphen, period, or tilde"
-                )
-            )
+    # required_if counts only supplied keys, so an explicit null name passes it.
+    if state == "present" and module.params["name"] is None:
+        module.fail_json(msg="state is present but all of the following are missing: name")
 
     require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, restricted_characters=True)
     client = module.client(

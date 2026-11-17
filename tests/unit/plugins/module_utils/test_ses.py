@@ -2,10 +2,7 @@
 
 from unittest.mock import Mock
 
-import pytest
-
 from ansible_collections.linuxhq.aws.plugins.module_utils.ses import get_account
-from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
 
 
 def test_account_response_is_normalized_without_metadata():
@@ -15,22 +12,3 @@ def test_account_response_is_normalized_without_metadata():
 
     assert get_account(client, Mock()) == {"production_access_enabled": True}
     client.get_account.assert_called_once_with(aws_retry=True)
-
-
-def test_invalid_account_response_is_rejected():
-    client = Mock(get_account=Mock(return_value=[]))
-
-    with pytest.raises(ModuleFail) as raised:
-        get_account(client, FakeModule({}))
-
-    assert raised.value.values["msg"] == "AWS Simple Email Service returned an invalid account response"
-
-
-@pytest.mark.parametrize("changed", [False, True])
-def test_account_failures_report_changed(changed):
-    client = Mock(get_account=Mock(return_value=[]))
-
-    with pytest.raises(ModuleFail) as raised:
-        get_account(client, FakeModule({}), changed=changed)
-
-    assert raised.value.values["changed"] is changed

@@ -79,29 +79,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def validate_hubs(module, hubs):
-    if not isinstance(hubs, list):
-        module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid response")
-
-    for hub in hubs:
-        if not isinstance(hub, dict):
-            module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid hub")
-
-        status_summary = hub.get("statusSummary")
-        if (
-            not isinstance(hub.get("notificationHubRegion"), str)
-            or not hub["notificationHubRegion"]
-            or hub.get("creationTime") is None
-            or not isinstance(status_summary, dict)
-            or not isinstance(status_summary.get("status"), str)
-            or not status_summary["status"]
-            or not isinstance(status_summary.get("reason"), str)
-        ):
-            module.fail_json(msg="Unable to list AWS Notifications hubs: AWS returned an invalid hub")
-
-    return hubs
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={},
@@ -127,7 +104,6 @@ def main():
         "notificationHubs",
         "Unable to list AWS Notifications hubs",
     )
-    validate_hubs(module, notification_hubs)
 
     module.exit_json(
         changed=False,

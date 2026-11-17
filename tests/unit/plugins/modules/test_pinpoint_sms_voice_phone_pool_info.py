@@ -6,7 +6,6 @@ from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_p
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
-    ModuleFail,
     assert_documents_shape,
     assert_module_contract,
     documented_returns,
@@ -129,17 +128,6 @@ def test_only_missing_ids_return_empty_results():
     assert raised.value.values["pools"] == []
 
 
-@pytest.mark.parametrize("response", [[], {"Pools": "invalid"}, {"Pools": None}])
-def test_id_lookup_rejects_malformed_response(response):
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value=response),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.describe_pools_by_id(FakeModule({}), Mock(), {"PoolIds": ["pool-1"]})
-
-    assert raised.value.values["msg"] == "AWS returned malformed Pinpoint SMS Voice V2 pool data"
-
-
 def test_empty_result_does_not_require_detail_operations():
     module = FakeModule({"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None})
     with (
@@ -154,47 +142,24 @@ def test_empty_result_does_not_require_detail_operations():
     assert require.call_args.args[3] == {"describe_pools": ("Owner", "MaxResults", "NextToken")}
 
 
-def test_rejects_nonpositive_max_results():
-    module = FakeModule({"filters": None, "max_results": 0, "owner": "SELF", "pool_ids": None})
+def test_more_than_five_ids_are_described_one_at_a_time():
+    # Each ID is described in its own request, so the DescribePools limit of five IDs does not apply.
+    pool_ids = [f"pool-{index}" for index in range(6)]
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
+    module = FakeModule({"filters": None, "max_results": None, "owner": None, "pool_ids": pool_ids}, client=client)
+    responses = [{"Pools": [{"PoolArn": f"arn:pool/{pool_id}", "PoolId": pool_id}]} for pool_id in pool_ids]
+    responses += [{"OriginationIdentities": []} for _pool_id in pool_ids]
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "paginated_query_with_retries", side_effect=responses) as query,
+        pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "max_results must be between 1 and 100"
-
-
-def test_rejects_provider_list_limits():
-    cases = [
-        (
-            {
-                "filters": {str(index): "x" for index in range(21)},
-                "max_results": None,
-                "owner": None,
-                "pool_ids": None,
-            },
-            "filters must contain at most 20 entries",
-        ),
-        (
-            {
-                "filters": None,
-                "max_results": None,
-                "owner": None,
-                "pool_ids": [f"pool-{index}" for index in range(6)],
-            },
-            "pool_ids must contain at most 5 entries",
-        ),
-    ]
-    for params, message in cases:
-        module = FakeModule(params)
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            pytest.raises(ModuleFail) as raised,
-        ):
-            plugin.main()
-
-        assert raised.value.values["msg"] == message
+    assert [item.kwargs["PoolIds"] for item in query.call_args_list[:6]] == [[pool_id] for pool_id in pool_ids]
+    assert raised.value.values["pool_ids"] == pool_ids
 
 
 def test_pools_are_enriched_with_identities_and_tags():
@@ -242,71 +207,10 @@ def test_pools_are_enriched_with_identities_and_tags():
     ]
 
 
-def test_rejects_malformed_pool():
-    module = FakeModule({"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None})
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"PoolArn": "arn:pool"}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "malformed" in raised.value.values["msg"]
-
-
-def test_rejects_malformed_origination_identities():
-    module = FakeModule({"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None})
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"PoolId": "pool-1"}]),
-        patch.object(plugin, "paginated_query_with_retries", return_value=[]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "malformed origination identities" in raised.value.values["msg"]
-
-
-def test_rejects_malformed_tags():
-    client = Mock()
-    client.list_tags_for_resource.return_value = {"Tags": "invalid"}
-    module = FakeModule(
-        {"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None},
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(
-            plugin,
-            "query_list",
-            return_value=[{"PoolArn": "arn:pool", "PoolId": "pool-1"}],
-        ),
-        patch.object(
-            plugin,
-            "paginated_query_with_retries",
-            return_value={"OriginationIdentities": []},
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "malformed tags" in raised.value.values["msg"]
-
-
 POOL_ARN = "arn:aws:sms-voice:us-east-1:111111111111:pool/pool-1"
 
 
-@pytest.mark.parametrize(
-    ("pool", "expected_pool_id"),
-    [
-        ({"PoolArn": POOL_ARN, "PoolId": "pool-1"}, POOL_ARN),
-        ({"PoolId": "pool-1"}, "pool-1"),
-    ],
-)
-def test_origination_identities_prefer_the_pool_arn(pool, expected_pool_id):
+def test_origination_identities_use_the_pool_arn():
     client = Mock()
     client.list_tags_for_resource.return_value = {"Tags": []}
     module = FakeModule(
@@ -316,7 +220,7 @@ def test_origination_identities_prefer_the_pool_arn(pool, expected_pool_id):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[pool]),
+        patch.object(plugin, "query_list", return_value=[{"PoolArn": POOL_ARN, "PoolId": "pool-1"}]),
         patch.object(
             plugin,
             "paginated_query_with_retries",
@@ -326,17 +230,19 @@ def test_origination_identities_prefer_the_pool_arn(pool, expected_pool_id):
     ):
         plugin.main()
 
-    assert paginate.call_args.kwargs["PoolId"] == expected_pool_id
+    assert paginate.call_args.kwargs["PoolId"] == POOL_ARN
     assert raised.value.values["pools"][0]["origination_identities"] == [{"origination_identity": "phone-1"}]
 
 
 def test_pools_always_return_origination_identities_and_tags():
-    module = FakeModule({"filters": None, "max_results": None, "owner": "SHARED", "pool_ids": None})
+    client = Mock()
+    client.list_tags_for_resource.return_value = {}
+    module = FakeModule({"filters": None, "max_results": None, "owner": "SHARED", "pool_ids": None}, client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"PoolId": "pool-1"}]),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": []}),
+        patch.object(plugin, "query_list", return_value=[{"PoolArn": POOL_ARN, "PoolId": "pool-1"}]),
+        patch.object(plugin, "paginated_query_with_retries", return_value={}),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()

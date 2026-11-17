@@ -38,8 +38,7 @@ options:
     description:
       - The scope of the IP sets to gather.
       - Use C(cloudfront) for global IP sets and C(regional) for regional IP sets.
-      - V(cloudfront) requires the C(us-east-1) region; any other region fails
-        before AWS is called.
+      - AWS WAFv2 accepts V(cloudfront) only in the C(us-east-1) region.
     choices:
       - cloudfront
       - regional

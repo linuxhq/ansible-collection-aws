@@ -341,17 +341,6 @@ def test_update_result_ignores_stale_default_version_refresh():
     assert result.values["document"]["document_version"] == "2"
 
 
-def test_update_fails_when_aws_omits_the_new_document_version():
-    client = Mock()
-    client.update_document.return_value = {"DocumentDescription": {}}
-    result, _wait, _get = run_present(
-        client, FakeModule(params()), lambda *args, **kwargs: document({"schemaVersion": "1.2"})
-    )
-
-    assert "no document version" in result.values["msg"]
-    client.update_document_default_version.assert_not_called()
-
-
 def test_existing_document_type_is_immutable():
     client = Mock()
     result, _wait, _get = run_present(
@@ -589,35 +578,6 @@ def test_absent_waits_on_a_document_already_deleting_without_deleting_again():
     assert not result.values["changed"]
     client.delete_document.assert_not_called()
     wait_for_document.assert_called_once()
-
-
-@pytest.mark.parametrize("response", [None, {"Content": "not-json"}, {"Content": "[]"}])
-def test_get_document_rejects_malformed_content(response):
-    client = Mock(get_document=Mock(return_value=response))
-    with pytest.raises(ModuleFail) as raised:
-        plugin.get_document(client, FakeModule(params()))
-
-    assert "Unexpected" in raised.value.values["msg"]
-
-
-def test_get_document_rejects_malformed_tags():
-    client = Mock(
-        get_document=Mock(return_value={"Content": "{}"}),
-        list_tags_for_resource=Mock(return_value={"TagList": [None]}),
-    )
-    with pytest.raises(ModuleFail) as raised:
-        plugin.get_document(client, FakeModule(params()), include_tags=True)
-
-    assert (
-        raised.value.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager document example"
-    )
-
-
-def test_create_rejects_malformed_response():
-    client = Mock(create_document=Mock(return_value={"DocumentDescription": None}))
-    result, _wait, _get = run_present(client, FakeModule(params()), [None])
-
-    assert result.values["msg"] == "AWS Systems Manager did not return the created document example"
 
 
 def test_present_validates_bounds_for_internal_promotion_wait():
@@ -1113,13 +1073,11 @@ def test_more_than_50_tags_are_rejected_before_aws(check_mode):
             {"content": None, "document_type": None},
             "state is present but all of the following are missing: content, document_type",
         ),
-        ({"document_type": ""}, "document_type must not be empty"),
-        ({"document_type": " "}, "document_type must not be empty"),
     ],
-    ids=["null-content", "null-type", "null-both", "empty-type", "blank-type"],
+    ids=["null-content", "null-type", "null-both"],
 )
-def test_null_or_blank_present_inputs_are_rejected_before_aws(overrides, message, check_mode):
-    # required_if passes an explicit null; CreateDocument refuses Content "null" and a blank DocumentType.
+def test_null_present_inputs_are_rejected_before_aws(overrides, message, check_mode):
+    # required_if passes an explicit null, which CreateDocument would receive as Content "null" or no DocumentType.
     module = FakeModule(params(**overrides), check_mode=check_mode)
     module.client = Mock()
     with (
@@ -1130,6 +1088,20 @@ def test_null_or_blank_present_inputs_are_rejected_before_aws(overrides, message
 
     assert raised.value.values == {"msg": message}
     module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("document_type", ["", " "])
+def test_blank_document_type_reaches_aws(document_type):
+    # CreateDocument, the run's first write, rejects a blank DocumentType, so the module does not validate it.
+    module = FakeModule(params(document_type=document_type), check_mode=True)
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
 
 
 def test_absent_ignores_null_content_and_document_type():
@@ -1191,17 +1163,15 @@ def test_tags_with_characters_aws_accepts_reach_aws():
     module.client.assert_called_once()
 
 
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("key", [" ", "   ", "\N{IDEOGRAPHIC SPACE}", " \N{EM SPACE}\N{LINE SEPARATOR} "])
-def test_create_rejects_blank_tag_keys_before_any_write(key, check_mode):
-    # Live: CreateDocument rejects them (ValidationException "tag key can't be whitespaces only"), so check mode
-    # would predict a document that no real run can create.
+@pytest.mark.parametrize("key", [" ", "\N{IDEOGRAPHIC SPACE}"])
+def test_create_sends_blank_tag_keys_for_aws_to_validate(key):
+    # CreateDocument, the run's only write, rejects a whitespace-only key, so the module does not validate it.
     client = Mock()
-    result, _wait, _get = run_present(client, FakeModule(params(tags={key: "x"}), check_mode=check_mode), [None, None])
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    result, _wait, _get = run_present(client, FakeModule(params(tags={key: "x"})), [None, None])
 
-    assert isinstance(result, ModuleFail)
-    assert result.values == {"msg": "tag keys must not be blank when creating an AWS Systems Manager document"}
-    assert client.mock_calls == []
+    assert result.values["changed"] is True
+    assert client.create_document.call_args.kwargs["Tags"] == [{"Key": key, "Value": "x"}]
 
 
 @pytest.mark.parametrize(

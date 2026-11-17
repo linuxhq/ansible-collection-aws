@@ -20,13 +20,11 @@ options:
       - A dict of filters to apply when describing phone pools.
       - Filter names and values are passed to the Pinpoint SMS Voice V2
         C(DescribePools) API.
-      - This must contain at most 20 filters.
       - Boolean and numeric values, including list entries, are converted to strings.
     type: dict
   max_results:
     description:
       - The maximum number of results returned by each API call.
-      - This must be between 1 and 100.
       - The module follows pagination and returns all matching phone pools.
     type: int
   owner:
@@ -45,7 +43,6 @@ options:
       - An ARN is required for a pool shared from another account.
       - A pool given as both an ID and an ARN is described once, by its ARN.
       - IDs that do not exist are omitted from the results.
-      - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
     elements: str
     type: list
@@ -217,22 +214,9 @@ def describe_pools_by_id(module, client, request):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 pool {pool_id}")
 
-        found = response.get("Pools", []) if isinstance(response, dict) else None
-        if not isinstance(found, list):
-            module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 pool data")
-
-        pools.extend(found)
+        pools.extend(response.get("Pools", []))
 
     return pools
-
-
-def validate_pool(module, pool):
-    if (
-        not isinstance(pool, dict)
-        or not isinstance(pool.get("PoolId"), str)
-        or ("PoolArn" in pool and not isinstance(pool["PoolArn"], str))
-    ):
-        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 pool data")
 
 
 def main():
@@ -252,15 +236,6 @@ def main():
     max_results = module.params["max_results"]
     owner = module.params["owner"] or "SELF"
     pool_ids = unique_resource_ids(module.params["pool_ids"] or [])
-
-    if max_results is not None and not 1 <= max_results <= 100:
-        module.fail_json(msg="max_results must be between 1 and 100")
-
-    if len(filters or {}) > 20:
-        module.fail_json(msg="filters must contain at most 20 entries")
-
-    if len(pool_ids) > 5:
-        module.fail_json(msg="pool_ids must contain at most 5 entries")
 
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
 
@@ -314,7 +289,6 @@ def main():
 
     normalized_pools = []
     for pool in pools:
-        validate_pool(module, pool)
         pool_id = pool["PoolId"]
 
         try:
@@ -322,7 +296,7 @@ def main():
                 client,
                 "list_pool_origination_identities",
                 # A shared pool requires its full ARN.
-                PoolId=pool.get("PoolArn") or pool_id,
+                PoolId=pool["PoolArn"],
             )
         except is_boto3_error_code("ResourceNotFoundException"):
             continue
@@ -332,26 +306,13 @@ def main():
                 msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
             )
 
-        origination_identities = response.get("OriginationIdentities") if isinstance(response, dict) else None
-        if not isinstance(origination_identities, list) or any(
-            not isinstance(identity, dict) or not isinstance(identity.get("OriginationIdentity"), str)
-            for identity in origination_identities
-        ):
-            module.fail_json(
-                msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
-            )
-
-        arn = pool.get("PoolArn")
-        tags = []
-
-        if arn:
-            tags = list_tags(client, module, arn, "pool", missing_ok=True)
-            if tags is None:
-                continue
+        tags = list_tags(client, module, pool["PoolArn"], "pool", missing_ok=True)
+        if tags is None:
+            continue
 
         normalized_pools.append(
             boto3_resource_to_ansible_dict(
-                dict(pool, OriginationIdentities=origination_identities, Tags=tags),
+                dict(pool, OriginationIdentities=response.get("OriginationIdentities", []), Tags=tags),
                 transform_tags=True,
                 force_tags=False,
             )

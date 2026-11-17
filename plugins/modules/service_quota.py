@@ -45,7 +45,7 @@ options:
   value:
     description:
       - The desired quota value.
-      - This must be between 0 and 10000000000.
+      - AWS accepts values from 0 to 10000000000.
     required: true
     type: float
 extends_documentation_fragment:
@@ -428,24 +428,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import 
 )
 
 
-def response_resource(module, response, key, description, changed=False):
-    if not isinstance(response, dict) or not isinstance(response.get(key), dict):
-        module.fail_json(changed=changed, msg=f"AWS Service Quotas returned an invalid {description} response")
-
-    return response[key]
-
-
-def response_resources(module, response, key, description):
-    if not isinstance(response, dict) or not isinstance(response.get(key, []), list):
-        module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} response")
-
-    resources = response.get(key, [])
-    if any(not isinstance(resource, dict) for resource in resources):
-        module.fail_json(msg=f"AWS Service Quotas returned an invalid {description} entry")
-
-    return resources
-
-
 def validate_current_quota(module, quota, service_code, quota_code):
     value = quota.get("Value")
     if (
@@ -468,11 +450,10 @@ def validate_current_quota(module, quota, service_code, quota_code):
 
 
 def validate_quota_request(module, request, service_code, quota_code, desired_value=None, status=None, changed=False):
-    """Validate a quota request; changed reports whether an increase was already requested, for failure results."""
-    msg = f"AWS Service Quotas returned an invalid request for {service_code}/{quota_code}"
-    if not request:
-        module.fail_json(changed=changed, msg=msg)
+    """Fail when a quota request is for another quota, value, or status.
 
+    changed reports whether an increase was already requested, for failure results.
+    """
     expected_values = {
         "ServiceCode": service_code,
         "QuotaCode": quota_code,
@@ -488,9 +469,6 @@ def validate_quota_request(module, request, service_code, quota_code, desired_va
             msg=f"AWS Service Quotas returned a mismatched request for {service_code}/{quota_code}",
         )
 
-    if status is not None and request.get("Status") != status:
-        module.fail_json(changed=changed, msg=msg)
-
 
 def main():
     argument_spec = {
@@ -502,8 +480,9 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
-    if not math.isfinite(module.params["value"]) or not 0 <= module.params["value"] <= 10000000000:
-        module.fail_json(msg="value must be between 0 and 10000000000")
+    # A NaN value compares as never larger than the current quota, so the run would silently request nothing.
+    if not math.isfinite(module.params["value"]):
+        module.fail_json(msg="value must be a finite number")
 
     # An empty context ID would silently turn a resource-level request into an account-level one.
     if module.params["context_id"] == "":
@@ -558,7 +537,7 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to list AWS service quota change history for {identifier}")
 
-        requests = response_resources(module, response, "RequestedQuotas", "quota change history")
+        requests = response.get("RequestedQuotas", [])
         for request in requests:
             validate_quota_request(module, request, service_code, quota_code, status=status)
 
@@ -619,7 +598,7 @@ def main():
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to request AWS service quota increase for {identifier}")
 
-            requested_quota = response_resource(module, response, "RequestedQuota", "quota increase", changed=True)
+            requested_quota = response["RequestedQuota"]
             validate_quota_request(
                 module,
                 requested_quota,

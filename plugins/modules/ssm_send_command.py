@@ -22,14 +22,11 @@ options:
   document_name:
     description:
       - The Systems Manager document name to execute.
-      - This must not be empty.
     required: true
     type: str
   instance_ids:
     description:
       - A list of instance IDs to target directly.
-      - Entries must not be empty.
-      - This must contain at most 50 entries.
       - At least one of O(instance_ids) or O(targets) is required.
       - Mutually exclusive with O(targets).
     elements: str
@@ -37,19 +34,16 @@ options:
   max_concurrency:
     description:
       - The maximum number of managed nodes that are allowed to run the command at the same time.
-      - This must not be empty when specified.
     type: str
   max_errors:
     description:
       - The maximum number of errors allowed before the command stops sending to additional targets.
-      - This must not be empty when specified.
     type: str
   parameters:
     description:
       - The document parameters to pass to the command.
       - Each value must be a list of strings, as the Systems Manager
-        C(SendCommand) API requires. The module fails before sending the
-        command, including in check mode, for any other value or list entry.
+        C(SendCommand) API requires.
       - Parameter values are not masked in the module's output and logs. Set
         C(no_log) on the task when a value is secret.
     default: {}
@@ -57,7 +51,6 @@ options:
   targets:
     description:
       - The command targets.
-      - This must contain at most 5 entries.
       - The value of O(targets[].key) is sent to AWS unchanged. Use an AWS
         target key such as C(InstanceIds) or C(tag:Name).
       - Each target requires a target key and values.
@@ -68,13 +61,11 @@ options:
       key:
         description:
           - The target key.
-          - This must be 1 to 163 characters and must not be blank.
         required: true
         type: str
       values:
         description:
           - The target values.
-          - This must contain 1 to 50 distinct entries.
         elements: str
         required: true
         type: list
@@ -87,7 +78,6 @@ options:
       - This does not limit how long a started command runs. To limit run
         time, set the document's execution timeout parameter, such as
         C(executionTimeout) for C(AWS-RunShellScript), in O(parameters).
-      - This must be between 30 and 2592000.
     type: int
   wait:
     description:
@@ -503,8 +493,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import require_valid_ssm_targets
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
@@ -519,11 +507,6 @@ SEND_COMMAND_OPTIONS = [
     "max_errors",
     "timeout_seconds",
 ]
-
-
-def is_populated_status_invalid(status):
-    """Return True for a present, non-string or empty status; None means not yet populated."""
-    return status is not None and (not isinstance(status, str) or not status)
 
 
 def normalize_command(command):
@@ -572,10 +555,6 @@ def main():
     )
 
     document_name = module.params["document_name"]
-    # AWS accepts no blank document name or instance ID, so whitespace-only values count as empty.
-    require_non_blank(module, document_name or "", "document_name")
-
-    timeout_seconds = module.params["timeout_seconds"]
     instance_ids = list(dict.fromkeys(module.params["instance_ids"] or []))
     targets = [
         {"key": key, "values": list(values)}
@@ -583,30 +562,8 @@ def main():
             (target["key"], tuple(dict.fromkeys(target["values"]))) for target in module.params["targets"] or []
         )
     ]
-    if timeout_seconds is not None and not 30 <= timeout_seconds <= 2592000:
-        module.fail_json(msg="timeout_seconds must be between 30 and 2592000")
-
     if not instance_ids and not targets:
         module.fail_json(msg="instance_ids or targets must contain at least one entry")
-
-    if len(instance_ids) > 50:
-        module.fail_json(msg="instance_ids must contain at most 50 entries")
-
-    require_non_blank(module, [instance_id or "" for instance_id in instance_ids], "instance_ids")
-
-    if len(targets) > 5:
-        module.fail_json(msg="targets must contain at most 5 entries")
-
-    require_valid_ssm_targets(module, targets)
-
-    # SendCommand accepts no blank rate control (botocore min length 1, then the AWS pattern), so it counts as empty.
-    for option in ("max_concurrency", "max_errors"):
-        require_non_blank(module, module.params[option], option)
-
-    # botocore rejects any value but a list of strings, so check mode must not report a send for it.
-    for name, values in module.params["parameters"].items():
-        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
-            module.fail_json(msg=f"parameters.{name} must be a list of strings")
 
     require_positive_wait_bounds(module)
 
@@ -638,29 +595,9 @@ def main():
             msg=f"Unable to send AWS Systems Manager command using {document_name}",
         )
 
-    command = response.get("Command", {}) if isinstance(response, dict) else None
-    if not isinstance(command, dict):
-        module.fail_json(
-            changed=True,
-            msg=f"Unexpected response while sending AWS Systems Manager command using {document_name}",
-        )
-
-    command_id = command.get("CommandId")
-    if not isinstance(command_id, str) or not command_id:
-        module.fail_json(
-            changed=True,
-            msg=f"AWS Systems Manager did not return an ID for the command using {document_name}",
-        )
-
+    command = response["Command"]
+    command_id = command["CommandId"]
     command_status = command.get("Status")
-    if is_populated_status_invalid(command_status):
-        module.fail_json(
-            changed=True,
-            msg=f"AWS Systems Manager command {command_id} did not return a valid status",
-            command=normalize_command(command),
-            command_id=command_id,
-            status=command_status,
-        )
 
     result = {
         "changed": True,
@@ -686,81 +623,15 @@ def main():
                 CommandId=command_id,
                 Details=True,
             )
-            if not isinstance(commands, list):
-                module.fail_json(
-                    changed=True,
-                    msg=(
-                        f"Unexpected response while getting AWS Systems Manager command {command_id}; "
-                        "Commands was not a list"
-                    ),
-                )
-
-            if not isinstance(invocations, list):
-                module.fail_json(
-                    changed=True,
-                    msg=(
-                        f"Unexpected response while getting AWS Systems Manager command {command_id}; "
-                        "CommandInvocations was not a list"
-                    ),
-                )
-
-            for index, invocation in enumerate(invocations):
-                if not isinstance(invocation, dict):
-                    module.fail_json(
-                        changed=True,
-                        msg=(
-                            f"Unexpected response while getting AWS Systems Manager command {command_id}; "
-                            f"invocation {index} was not a dictionary"
-                        ),
-                    )
-
             if not commands:
                 # Run Command may not expose a newly submitted command immediately.
                 sleep_until_next_poll(module, deadline)
                 continue
 
             command = commands[0]
-            if not isinstance(command, dict):
-                module.fail_json(
-                    changed=True,
-                    msg=(
-                        f"Unexpected response while getting AWS Systems Manager command {command_id}; "
-                        "command 0 was not a dictionary"
-                    ),
-                )
-
             command_status = command.get("Status")
-            if is_populated_status_invalid(command_status):
-                module.fail_json(
-                    changed=True,
-                    msg=(
-                        f"AWS Systems Manager command {command_id} was returned by list_commands "
-                        "with an invalid status"
-                    ),
-                    command=normalize_command(command),
-                    command_id=command_id,
-                    command_invocations=normalize_invocations(invocations),
-                    status=command_status,
-                )
-
-            # AWS can expose an invocation before populating its status. Retry
-            # missing statuses, but reject values that cannot become valid
-            # through another poll.
+            # AWS can expose an invocation before populating its status, so a missing status is polled again.
             invocation_statuses = [invocation.get("Status") for invocation in invocations]
-            for index, status in enumerate(invocation_statuses):
-                if is_populated_status_invalid(status):
-                    module.fail_json(
-                        changed=True,
-                        msg=(
-                            f"AWS Systems Manager command {command_id} returned invocation {index} "
-                            "without a valid status"
-                        ),
-                        command=normalize_command(command),
-                        command_id=command_id,
-                        command_invocations=normalize_invocations(invocations),
-                        status=command_status,
-                    )
-
             if command_status in TERMINAL_STATUSES and not invocations:
                 if command_status in SUCCESS_STATUSES and command.get("TargetCount") == 0:
                     module.warn(
@@ -781,11 +652,7 @@ def main():
             # The command and invocation APIs can become consistent at different times.
             target_count = command.get("TargetCount")
             invocation_ids = {invocation.get("InstanceId") for invocation in invocations}
-            all_targets_reported = target_count is None or (
-                isinstance(target_count, int)
-                and not isinstance(target_count, bool)
-                and len(invocation_ids - {None}) >= target_count
-            )
+            all_targets_reported = target_count is None or len(invocation_ids - {None}) >= target_count
             if (
                 command_status in TERMINAL_STATUSES
                 and all_targets_reported

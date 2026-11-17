@@ -1,0 +1,20 @@
+---
+minor_changes:
+  - acm_certificate_request - a blank O(domain_name) or O(subject_alternative_names) entry, an O(idempotency_token)
+    that is not 1 to 32 ASCII word characters, and more than 99 additional O(subject_alternative_names) are now
+    rejected by ACM instead of by the module, so check mode no longer reports them as errors.
+  - ses_identity_dkim - an empty O(identity) or an email address identity is now rejected by botocore or SES instead of
+    by the module, so check mode no longer reports it as an error.
+  - ses_identity_info - an empty O(name) is now treated as omitted and lists every identity instead of failing, as
+    other info modules do.
+  - ses_sandbox - more than 4 O(additional_contact_email_addresses), a blank address, and a blank O(website_url) are
+    now rejected by botocore or SES instead of by the module, so check mode no longer reports them as errors; a blank
+    O(use_case_description) is treated as unset.
+  - sns_sms_attributes - an O(delivery_status_success_sampling_rate) outside C(0) to C(100) is now rejected by SNS
+    instead of by the module, so check mode no longer reports it as an error.
+trivial:
+  - acm_certificate_request, ec2_instance_metadata, ec2_instance_metadata_info, ec2_pricing_info, ses_identity_dkim,
+    ses_identity_info, ses_sandbox, ses_sandbox_info, sns_sms_attributes, sns_sms_attributes_info,
+    sns_topic_attributes, and the ses_credential lookup - rely on the ACM, EC2, AWS Pricing, SES, and SNS response
+    shapes and option types instead of checking the types and presence of fields they always return.
+...

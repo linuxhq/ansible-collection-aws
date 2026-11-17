@@ -95,22 +95,19 @@ def test_listing_requires_pagination_parameters():
     )
 
 
-def test_get_rejects_malformed_or_wrong_delegation_set():
-    responses = (
-        None,
-        {},
-        {"DelegationSet": None},
-        {"DelegationSet": {"Id": "delegation-2"}},
+def test_get_rejects_wrong_delegation_set():
+    client = Mock(get_reusable_delegation_set=Mock(return_value={"DelegationSet": {"Id": "delegation-2"}}))
+    module = FakeModule({"id": "delegation-1"}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == (
+        "Unable to get AWS Route53 reusable delegation set delegation-1: AWS returned the wrong reusable delegation set"
     )
-    for response in responses:
-        client = Mock(get_reusable_delegation_set=Mock(return_value=response))
-        module = FakeModule({"id": "delegation-1"}, client=client)
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            pytest.raises(ModuleFail),
-        ):
-            plugin.main()
 
 
 def test_get_accepts_full_path_for_bare_response_id():
@@ -124,19 +121,3 @@ def test_get_accepts_full_path_for_bare_response_id():
         plugin.main()
 
     assert raised.value.values["delegation_sets"] == [{"id": "delegation-1"}]
-
-
-def test_listing_rejects_malformed_delegation_set():
-    module = FakeModule({"id": None}, client=Mock())
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response"
-    )

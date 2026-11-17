@@ -167,11 +167,7 @@ def get_topic_attributes(client, module, topic_arn, changed=False):
             msg=f"Unable to get AWS Simple Notification Service topic attributes for {topic_arn}",
         )
 
-    attributes = response.get("Attributes", {}) if isinstance(response, dict) else None
-    if not isinstance(attributes, dict):
-        module.fail_json(changed=changed, msg=f"Unexpected response while getting topic attributes for {topic_arn}")
-
-    return attributes
+    return response.get("Attributes", {})
 
 
 def main():

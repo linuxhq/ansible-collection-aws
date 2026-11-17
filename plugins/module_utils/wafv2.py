@@ -16,8 +16,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import query_list
 
 def get_resource_tags(client, module, resource, description):
     """Return a WAFv2 resource's tags, or None when it was deleted after it was listed."""
-    identifier = f"{resource.get('Name')}/{resource.get('Id')}"
-    request = {"ResourceARN": resource.get("ARN")}
+    identifier = f"{resource['Name']}/{resource['Id']}"
+    request = {"ResourceARN": resource["ARN"]}
     tags = []
     while True:
         try:
@@ -27,12 +27,7 @@ def get_resource_tags(client, module, resource, description):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to list tags for AWS WAFv2 {description} {identifier}")
 
-        tag_info = response.get("TagInfoForResource", {}) if isinstance(response, dict) else None
-        tag_list = tag_info.get("TagList", []) if isinstance(tag_info, dict) else None
-        if not isinstance(tag_list, list) or any(not isinstance(tag, dict) for tag in tag_list):
-            module.fail_json(msg=f"Unexpected response while listing tags for AWS WAFv2 {description} {identifier}")
-
-        tags.extend(tag_list)
+        tags.extend(response.get("TagInfoForResource", {}).get("TagList", []))
         if not response.get("NextMarker"):
             return boto3_tag_list_to_ansible_dict(tags)
 
@@ -56,10 +51,7 @@ def get_resources_with_tags(client, module, summaries, method, result_key, descr
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to get AWS WAFv2 {description} {identifier}")
 
-        resource = response.get(result_key) if isinstance(response, dict) else None
-        if not isinstance(resource, dict):
-            module.fail_json(msg=f"Unexpected response while getting AWS WAFv2 {description} {identifier}")
-
+        resource = response[result_key]
         tags = get_resource_tags(client, module, resource, description)
         if tags is None:
             continue
@@ -70,15 +62,12 @@ def get_resources_with_tags(client, module, summaries, method, result_key, descr
 
 
 def require_lookup_params(module):
-    """Validate the id, name, and scope options shared by WAFv2 info modules before any AWS call."""
+    """Validate the id and name options shared by WAFv2 info modules before any AWS call."""
     if module.params["id"] == "":
         module.fail_json(msg="id must not be empty")
 
     if module.params["name"] == "":
         module.fail_json(msg="name must not be empty")
-
-    if module.params["scope"] == "cloudfront" and module.region != "us-east-1":
-        module.fail_json(msg=f"scope cloudfront requires the us-east-1 region, not {module.region}")
 
 
 def list_resource_summaries(client, module, method, result_key, description, scope):
@@ -97,24 +86,13 @@ def list_resource_summaries(client, module, method, result_key, description, sco
         Scope=scope,
         Limit=100,
     )
-    if not isinstance(response_summaries, list):
-        module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 {description} for {scope}")
-
     summaries = []
     for summary in response_summaries:
-        summary_id = summary.get("Id") if isinstance(summary, dict) else None
-        summary_name = summary.get("Name") if isinstance(summary, dict) else None
-        if target_id and summary_id != target_id:
+        if target_id and summary["Id"] != target_id:
             continue
 
-        if target_name and summary_name != target_name:
+        if target_name and summary["Name"] != target_name:
             continue
-
-        if not isinstance(summary_id, str) or not summary_id:
-            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 {description} for {scope}; invalid ID")
-
-        if not isinstance(summary_name, str) or not summary_name:
-            module.fail_json(msg=f"Unexpected response while listing AWS WAFv2 {description} for {scope}; invalid name")
 
         summaries.append(summary)
         if target_id or target_name:

@@ -49,7 +49,7 @@ def test_listener_consolidation_releases_conflicting_ports_first(check_mode):
     remaining = {item["listener_arn"]: item["port_ranges"] for item in current}
     operations = []
 
-    def delete(c, m, accelerator_arn, arn, changed=False, deadline=None):
+    def delete(c, m, accelerator_arn, arn, endpoint_groups=None, changed=False, deadline=None):
         remaining.pop(arn)
         operations.append(("delete", arn))
 
@@ -113,6 +113,37 @@ def test_absent_does_not_validate_unused_present_options():
         plugin.main()
 
     ensure_absent.assert_called_once_with(None, module)
+
+
+@pytest.mark.parametrize("arn", [None, "arn:accelerator"])
+def test_absent_with_a_long_name_converges(arn):
+    # A name longer than CreateAccelerator accepts identifies no accelerator, so it is already absent.
+    client = Mock()
+    client.describe_accelerator.side_effect = ClientError(
+        {"Error": {"Code": "AcceleratorNotFoundException", "Message": "gone"}}, "DescribeAccelerator"
+    )
+    module = FakeModule(
+        {
+            "arn": arn,
+            "idempotency_token": None,
+            "ip_addresses": None,
+            "listeners": None,
+            "name": "n" * 65,
+            "state": "absent",
+            "tags": None,
+        },
+        client=client,
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"changed": False, "state": "absent"}
+    client.delete_accelerator.assert_not_called()
 
 
 def test_absent_tolerates_accelerator_disappearing_during_delete():
@@ -228,8 +259,8 @@ def test_module_contract():
     assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
 
-def test_describe_rejects_malformed_accelerator():
-    client = Mock(describe_accelerator=Mock(return_value={"Accelerator": None}))
+def test_describe_rejects_a_different_accelerator():
+    client = Mock(describe_accelerator=Mock(return_value={"Accelerator": {"AcceleratorArn": "arn:other"}}))
     module = FakeModule({})
     with (
         patch.object(plugin, "require_client_methods"),
@@ -238,18 +269,6 @@ def test_describe_rejects_malformed_accelerator():
         plugin.get_accelerator_by_arn(client, module, "arn:accelerator")
 
     assert raised.value.values["msg"] == "Global Accelerator returned an invalid accelerator"
-
-
-def test_listeners_reject_malformed_response_items():
-    module = FakeModule({})
-    with (
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_listeners(Mock(), module, "arn:accelerator")
-
-    assert raised.value.values["msg"] == "Global Accelerator returned an invalid listener"
 
 
 def test_listeners_keep_the_listed_port_range_order():
@@ -1030,7 +1049,7 @@ class SimulatedAccelerator:
             ClientAffinity="NONE", ListenerArn=arn, PortRanges=request["PortRanges"], Protocol=request["Protocol"]
         )
 
-    def delete(self, client, module, accelerator_arn, listener_arn, changed=False, deadline=None):
+    def delete(self, client, module, accelerator_arn, listener_arn, endpoint_groups=None, changed=False, deadline=None):
         try:
             self.write()
         except plugin.ClientError:
@@ -1485,35 +1504,6 @@ def test_listener_creation_without_purge_fails_on_unlisted_overlap(check_mode):
 
 def test_provider_limits_are_rejected():
     cases = [
-        (
-            # Live: CreateAccelerator accepts a 64-character name and rejects 65 with InvalidArgumentException.
-            {"name": "n" * 65, "ip_addresses": None, "listeners": None},
-            "name must contain at most 64 characters",
-        ),
-        (
-            {
-                "idempotency_token": "t" * 256,
-                "ip_addresses": None,
-                "listeners": None,
-            },
-            "idempotency_token must contain at most 255 characters",
-        ),
-        (
-            {"ip_addresses": ["192.0.2.1"] * 3, "listeners": None},
-            "ip_addresses must contain at most 2 entries",
-        ),
-        (
-            {"ip_addresses": ["a" * 46], "listeners": None},
-            "ip_addresses entries must contain at most 45 characters",
-        ),
-        (
-            {"ip_addresses": ["not-an-ip"], "listeners": None},
-            "ip_addresses entries must be valid IPv4 addresses: not-an-ip",
-        ),
-        (
-            {"ip_addresses": ["192.0.2.1"] * 2, "listeners": None},
-            "ip_addresses entries must be unique",
-        ),
         (
             {
                 "ip_addresses": None,
@@ -2689,6 +2679,68 @@ def test_listener_deletion_waits_for_endpoint_group_deletion():
     )
 
 
+def test_listener_deletion_reuses_listed_endpoint_groups():
+    client = Mock()
+    module = FakeModule({})
+    endpoint_groups = {"arn:listener": [{"endpoint_group_arn": "arn:group"}]}
+    with (
+        patch.object(plugin, "get_endpoint_groups") as get_endpoint_groups,
+        patch.object(plugin, "delete_endpoint_group") as delete_endpoint_group,
+        patch.object(plugin, "wait_for_accelerator"),
+        patch.object(plugin, "require_client_methods"),
+    ):
+        plugin.delete_listener(client, module, "arn:accelerator", "arn:listener", endpoint_groups=endpoint_groups)
+
+    get_endpoint_groups.assert_not_called()
+    delete_endpoint_group.assert_called_once_with(client, module, "arn:group", changed=False)
+    client.delete_listener.assert_called_once_with(ListenerArn="arn:listener", aws_retry=True)
+
+
+def test_listener_replacement_lists_the_deleted_listener_endpoint_groups_once():
+    client = Mock()
+    client.create_listener.side_effect = [
+        plugin.ClientError(
+            {"Error": {"Code": "LimitExceededException", "Message": "full"}},
+            "CreateListener",
+        ),
+        {
+            "Listener": {
+                "ClientAffinity": "NONE",
+                "ListenerArn": "arn:new",
+                "PortRanges": [{"FromPort": 443, "ToPort": 443}],
+                "Protocol": "TCP",
+            }
+        },
+    ]
+    desired = {
+        "client_affinity": "NONE",
+        "endpoint_groups": None,
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    current = {
+        "client_affinity": "NONE",
+        "listener_arn": "arn:old",
+        "port_ranges": [{"from_port": 80, "to_port": 80}],
+        "protocol": "TCP",
+    }
+    module = FakeModule({"purge_listeners": True})
+    with (
+        patch.object(plugin, "reconcile_listeners", return_value=([], [], [desired], [current])),
+        patch.object(plugin, "get_listeners", return_value=[current]),
+        patch.object(plugin, "get_endpoint_groups", return_value=[]) as get_endpoint_groups,
+        patch.object(plugin, "wait_for_accelerator"),
+        patch.object(plugin, "require_client_methods"),
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    assert changed
+    assert listeners[0]["listener_arn"] == "arn:new"
+    # The conflict check lists the obsolete listener's endpoint groups; its deletion reuses them.
+    get_endpoint_groups.assert_called_once_with(client, module, "arn:old", changed=False)
+    client.delete_listener.assert_called_once_with(ListenerArn="arn:old", aws_retry=True)
+
+
 def test_listener_creation_waits_before_endpoint_groups():
     client = Mock()
     client.create_listener.return_value = {
@@ -2772,7 +2824,9 @@ def test_listener_replacement_retries_after_freeing_quota():
     assert client.create_listener.call_count == 2
     first, second = client.create_listener.call_args_list
     assert first.kwargs["IdempotencyToken"] == second.kwargs["IdempotencyToken"]
-    delete_listener.assert_called_once_with(client, module, "arn:accelerator", "arn:old", changed=False, deadline=ANY)
+    delete_listener.assert_called_once_with(
+        client, module, "arn:accelerator", "arn:old", endpoint_groups=ANY, changed=False, deadline=ANY
+    )
     wait_for_accelerator.assert_called_once_with(
         client, module, "arn:accelerator", "accelerator_deployed", changed=True, deadline=ANY
     )
@@ -3815,22 +3869,6 @@ def test_listener_update_keeps_current_client_affinity_and_returns_the_response(
     ]
 
 
-def test_listener_update_rejects_a_malformed_response_as_changed():
-    current = review_listener("arn:a", 80, 80)
-    client = Mock()
-    client.update_listener.return_value = {}
-    module = FakeModule({"listeners": [review_desired(443, 443)], "purge_listeners": True})
-    with (
-        patch.object(plugin, "get_listeners", return_value=[current]),
-        patch.object(plugin, "get_endpoint_groups", return_value=[]),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_listeners(client, module, "arn:accelerator")
-
-    assert raised.value.values == {"changed": True, "msg": "Global Accelerator returned an invalid listener"}
-
-
 @pytest.mark.parametrize("mutated", [False, True])
 def test_listener_update_failure_reports_earlier_changes(mutated):
     current = review_listener("arn:a", 80, 80)
@@ -3841,6 +3879,7 @@ def test_listener_update_failure_reports_earlier_changes(mutated):
     module = FakeModule({"listeners": [review_desired(443, 443)], "purge_listeners": True})
     with (
         patch.object(plugin, "get_listeners", return_value=[current]),
+        patch.object(plugin, "get_endpoint_groups", return_value=[]),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -4703,7 +4742,7 @@ def run_listener_writes_against_port_overrides(module, current_listeners, endpoi
         stored.pop(arn)
         events.append(("delete_endpoint_group", arn))
 
-    def delete_listener(client, module, accelerator_arn, arn, changed=False, deadline=None):
+    def delete_listener(client, module, accelerator_arn, arn, endpoint_groups=None, changed=False, deadline=None):
         for group in endpoint_groups.get(arn, []):
             stored.pop(group["endpoint_group_arn"])
 

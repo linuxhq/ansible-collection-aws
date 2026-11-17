@@ -21,10 +21,7 @@ def error(code, operation):
 @pytest.mark.parametrize(
     ("response", "context_id", "message"),
     [
-        ([], None, "AWS Service Quotas returned an invalid service quota response"),
-        ({"Quota": {}}, None, "AWS Service Quotas returned an invalid service quota response"),
         ({"Quota": {"ServiceCode": "iam", "QuotaCode": "L-1"}}, None, "mismatched quota for ec2/L-1"),
-        ({"Quota": {"Value": 5.0, "QuotaContext": "invalid"}}, None, "invalid quota context"),
         ({"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "wrong"}}}, "expected", "mismatched quota context"),
         ({"Quota": {"Value": 5.0}}, "expected", "mismatched quota context"),
     ],

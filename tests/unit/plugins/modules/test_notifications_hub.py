@@ -9,7 +9,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleFail,
     ModuleInitialized,
     assert_module_contract,
-    assert_module_rejects,
 )
 
 ACTIVE_US_EAST_1 = {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "ACTIVE"}}
@@ -46,16 +45,12 @@ def test_module_contract():
     assert options["argument_spec"]["region"]["fallback"] == (plugin.env_fallback, ["AWS_REGION", "AWS_DEFAULT_REGION"])
 
 
-def test_invalid_region_is_rejected():
-    assert_module_rejects(
-        plugin,
-        {"region": "not-a-region", "state": "present"},
-        "region must be a valid AWS region name",
-    )
-
-
-@pytest.mark.parametrize("region", ["us-east-1", "us-gov-west-1", "eusc-de-east-1", "ap-southeast-7"])
-def test_valid_region_names_are_accepted(region):
+# AWS User Notifications, not the module, rejects a region name it does not accept.
+@pytest.mark.parametrize(
+    "region",
+    ["us-east-1", "us-gov-west-1", "eusc-de-east-1", "ap-southeast-7", "not-a-region", "US-EAST-1", "us-east"],
+)
+def test_region_names_reach_aws(region):
     module = FakeModule({"region": region, "state": "present"})
     module.client = Mock(side_effect=ModuleInitialized)
     with (
@@ -63,15 +58,6 @@ def test_valid_region_names_are_accepted(region):
         pytest.raises(ModuleInitialized),
     ):
         plugin.main()
-
-
-@pytest.mark.parametrize("region", ["abcde-east-1", "us-east", "US-EAST-1", "us-east-1-"])
-def test_region_names_outside_the_api_pattern_are_rejected(region):
-    assert_module_rejects(
-        plugin,
-        {"region": region, "state": "present"},
-        "region must be a valid AWS region name",
-    )
 
 
 def test_hub_lookup_matches_exact_region():
@@ -84,37 +70,6 @@ def test_hub_lookup_matches_exact_region():
         result = plugin.find_notification_hub(plugin.list_notification_hubs(None, module), "us-east-1")
 
     assert result == {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "ACTIVE"}}
-
-
-def test_hub_lookup_rejects_invalid_status():
-    module = FakeModule({"region": "us-east-1"})
-    with (
-        patch.object(
-            plugin,
-            "query_list",
-            return_value=[{"notificationHubRegion": "us-east-1", "statusSummary": {}}],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.list_notification_hubs(None, module)
-
-    assert raised.value.values["msg"] == "Unable to list AWS Notifications hubs: AWS returned an invalid hub"
-
-
-@pytest.mark.parametrize("status", [None, "", 1])
-def test_hub_lookup_rejects_missing_status(status):
-    module = FakeModule({"region": "us-east-1"})
-    with (
-        patch.object(
-            plugin,
-            "query_list",
-            return_value=[{"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": status}}],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.list_notification_hubs(None, module)
-
-    assert raised.value.values["msg"] == "Unable to list AWS Notifications hubs: AWS returned an invalid hub"
 
 
 def test_hub_lookup_accepts_unknown_status():
@@ -171,25 +126,6 @@ def test_register_rejects_hub_for_different_region():
         == "Unable to create AWS Notifications hub us-east-1: AWS returned a hub for a different region"
     )
     assert raised.value.values["changed"] is True
-
-
-def test_invalid_register_response_reports_changed():
-    client = Mock(register_notification_hub=Mock(return_value={}))
-    with (
-        patch.object(plugin, "list_notification_hubs", return_value=[]),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule({"region": "us-east-1"}))
-
-    assert raised.value.values["changed"] is True
-
-
-def test_invalid_listed_hub_reports_unchanged():
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_hub(FakeModule({}), {}, "Unable to list AWS Notifications hubs")
-
-    assert raised.value.values["changed"] is False
 
 
 def test_inactive_hub_is_registered_again():

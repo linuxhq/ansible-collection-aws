@@ -16,9 +16,9 @@ options:
   name:
     description:
       - The IAM account alias name.
-      - When O(state=present), this must be 3 to 63 characters of lowercase
-        letters, digits, and hyphens, cannot start or end with a hyphen or
-        contain consecutive hyphens, and cannot be a 12-digit number.
+      - AWS accepts 3 to 63 characters of lowercase letters, digits, and
+        hyphens that do not start or end with a hyphen, contain consecutive
+        hyphens, or form a 12-digit number.
     required: true
     type: str
   state:
@@ -72,8 +72,6 @@ state:
   type: str
 """
 
-import re
-
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -97,9 +95,6 @@ def list_account_aliases(client, module):
         "AccountAliases",
         "Unable to list AWS IAM account aliases",
     )
-    if not isinstance(aliases, list) or any(not isinstance(alias, str) for alias in aliases):
-        module.fail_json(msg="Unable to list AWS IAM account aliases: AWS returned an invalid response")
-
     return sorted(aliases)
 
 
@@ -190,20 +185,6 @@ def main():
     )
 
     state = module.params["state"]
-    name = module.params["name"]
-
-    # IAM also refuses a 12-digit alias (EntityAlreadyExists), which its model pattern does not express.
-    if state == "present" and (
-        not re.fullmatch(r"[a-z0-9]([a-z0-9]|-(?!-)){1,61}[a-z0-9]", name) or re.fullmatch(r"[0-9]{12}", name)
-    ):
-        module.fail_json(
-            msg=(
-                "name must be 3 to 63 characters of lowercase letters, digits, "
-                "and hyphens, cannot start or end with a hyphen or contain "
-                "consecutive hyphens, and cannot be a 12-digit number"
-            )
-        )
-
     client = module.client(
         "iam",
         retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConcurrentModification"]),

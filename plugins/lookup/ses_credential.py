@@ -74,10 +74,10 @@ class LookupModule(LookupBase):
         region = self.get_option("region")
         secret_access_key = self.get_option("aws_secret_access_key")
 
-        if not isinstance(region, str) or not region.strip():
+        if not region.strip():
             raise AnsibleLookupError("ses_credential lookup requires a non-empty region=")
 
-        if not isinstance(secret_access_key, str) or not secret_access_key.strip():
+        if not secret_access_key.strip():
             raise AnsibleLookupError("ses_credential lookup requires a non-empty aws_secret_access_key=")
 
         if terms:

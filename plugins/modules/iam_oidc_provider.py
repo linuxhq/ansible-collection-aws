@@ -46,7 +46,8 @@ options:
     description:
       - The OIDC provider URL.
       - The URL must begin with C(https://) when O(state=present).
-      - The URL must be at most 255 characters and identify a host that is not empty or whitespace-only.
+      - The URL must identify a host that is not empty or whitespace-only.
+      - AWS accepts at most 255 characters.
       - An existing provider matches only when its URL equals O(url) exactly,
         apart from the C(https://) prefix, whose case is ignored. AWS STS
         matches the C(iss) claim of a token to the provider URL exactly,
@@ -332,16 +333,6 @@ def ensure_present(client, module):
                     msg=f"Unable to create AWS IAM OIDC provider {url}",
                 )
 
-            if (
-                not isinstance(response, dict)
-                or not isinstance(response.get("OpenIDConnectProviderArn"), str)
-                or not response["OpenIDConnectProviderArn"]
-            ):
-                module.fail_json(
-                    changed=True,
-                    msg=f"Unable to create AWS IAM OIDC provider {url}: AWS returned an invalid response",
-                )
-
             arn = response["OpenIDConnectProviderArn"]
 
             current = get_provider_by_arn(client, module, arn, changed=True) or dict(
@@ -520,9 +511,6 @@ def main():
         # IAM rejects a whitespace-only host, which identifies no provider either.
         if not provider_url(module.params["url"]).partition("/")[0].strip():
             module.fail_json(msg="url must identify an OIDC provider host")
-
-        if len(module.params["url"]) > 255:
-            module.fail_json(msg="url must contain at most 255 characters")
 
         if len(set(module.params["client_id_list"] or [])) > 100:
             module.fail_json(msg="client_id_list must contain at most 100 unique entries")

@@ -49,15 +49,6 @@ def test_deleted_resource_returns_none():
     assert get_resource_tags(client, FakeModule({}), RESOURCE, "IP set") is None
 
 
-@pytest.mark.parametrize("response", [[], {"TagInfoForResource": []}, {"TagInfoForResource": {"TagList": [None]}}])
-def test_rejects_invalid_responses(response):
-    client = Mock(list_tags_for_resource=Mock(return_value=response))
-    with pytest.raises(ModuleFail) as raised:
-        get_resource_tags(client, FakeModule({}), RESOURCE, "web ACL")
-
-    assert raised.value.values["msg"] == "Unexpected response while listing tags for AWS WAFv2 web ACL main/id-1"
-
-
 def test_errors_name_the_resource():
     client = Mock()
     client.list_tags_for_resource.side_effect = ClientError(
@@ -90,25 +81,17 @@ def test_get_resources_with_tags_skips_resources_deleted_after_listing():
     assert get_tags.call_args_list[0].args == (client, module, RESOURCE, "IP set")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "message"),
-    [
-        (
-            ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "GetWebACL"),
-            "Unable to get AWS WAFv2 web ACL main/id-1",
-        ),
-        ([{"WebACL": None}], "Unexpected response while getting AWS WAFv2 web ACL main/id-1"),
-    ],
-)
-def test_get_resources_with_tags_errors_name_the_resource(side_effect, message):
+def test_get_resources_with_tags_errors_name_the_resource():
     client = Mock()
-    client.get_web_acl.side_effect = side_effect
+    client.get_web_acl.side_effect = ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "GetWebACL"
+    )
     with pytest.raises(ModuleFail) as raised:
         wafv2.get_resources_with_tags(
             client, FakeModule({}), [RESOURCE], "get_web_acl", "WebACL", "web ACL", "REGIONAL"
         )
 
-    assert raised.value.values["msg"] == message
+    assert raised.value.values["msg"] == "Unable to get AWS WAFv2 web ACL main/id-1"
 
 
 def lookup_params(**overrides):
@@ -125,15 +108,12 @@ def test_require_lookup_params_rejects_empty_identifiers(option):
     assert raised.value.values["msg"] == f"{option} must not be empty"
 
 
-def test_require_lookup_params_requires_us_east_1_for_cloudfront():
-    with pytest.raises(ModuleFail) as raised:
-        wafv2.require_lookup_params(FakeModule(lookup_params(scope="cloudfront"), region="us-west-2"))
+@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
+def test_require_lookup_params_accepts_valid_params(region):
+    # AWS WAFv2, not the module, rejects the CLOUDFRONT scope outside us-east-1.
+    module = FakeModule(lookup_params(id="id-1", scope="cloudfront"), region=region)
 
-    assert raised.value.values["msg"] == "scope cloudfront requires the us-east-1 region, not us-west-2"
-
-
-def test_require_lookup_params_accepts_valid_params():
-    assert wafv2.require_lookup_params(FakeModule(lookup_params(id="id-1", scope="cloudfront"))) is None
+    assert wafv2.require_lookup_params(module) is None
 
 
 def test_list_resource_summaries_with_id_and_name_skips_the_listing():
@@ -171,19 +151,3 @@ def test_list_resource_summaries_filters_by_id_or_name(overrides, expected):
         Scope="REGIONAL",
         Limit=100,
     )
-
-
-@pytest.mark.parametrize(
-    ("response", "message"),
-    [
-        (None, "Unexpected response while listing AWS WAFv2 IP sets for REGIONAL"),
-        ([None], "Unexpected response while listing AWS WAFv2 IP sets for REGIONAL; invalid ID"),
-        ([{"Id": "id-1"}], "Unexpected response while listing AWS WAFv2 IP sets for REGIONAL; invalid name"),
-    ],
-)
-def test_list_resource_summaries_rejects_malformed_responses(response, message):
-    module = FakeModule(lookup_params())
-    with patch.object(wafv2, "query_list", return_value=response), pytest.raises(ModuleFail) as raised:
-        wafv2.list_resource_summaries(Mock(), module, "list_ip_sets", "IPSets", "IP sets", "REGIONAL")
-
-    assert raised.value.values["msg"] == message

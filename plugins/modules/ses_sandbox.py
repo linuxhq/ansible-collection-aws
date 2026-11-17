@@ -24,8 +24,7 @@ options:
   additional_contact_email_addresses:
     description:
       - Additional contact email addresses to associate with the request.
-      - This must contain at most 4 email addresses.
-      - Entries must not be empty.
+      - AWS accepts at most 4 email addresses.
       - An empty list leaves existing contact addresses unchanged.
     default: []
     elements: str
@@ -262,7 +261,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ses import get_account
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 ACCOUNT_DETAILS_REQUEST_FIELDS = (
     ("AdditionalContactEmailAddresses", "additional_contact_email_addresses"),
@@ -297,17 +295,8 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
-    if len(set(module.params["additional_contact_email_addresses"])) > 4:
-        module.fail_json(msg="additional_contact_email_addresses must contain at most 4 addresses")
-
-    # AWS rejects blank addresses, which check mode would otherwise predict as submitted account details.
-    require_non_blank(module, module.params["additional_contact_email_addresses"], "additional_contact_email_addresses")
-
     use_case_description = module.params["use_case_description"]
     website_url = module.params["website_url"]
-    require_non_blank(module, website_url, "website_url")
-    require_non_blank(module, use_case_description, "use_case_description")
-
     ready = website_url is not None
 
     client = module.client("sesv2", retry_decorator=AWSRetry.jittered_backoff())

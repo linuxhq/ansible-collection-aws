@@ -5,10 +5,7 @@ from unittest.mock import Mock
 import pytest
 from botocore.exceptions import ClientError
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import (
-    list_accelerator_tags,
-    validate_tag_list,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import list_accelerator_tags
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleFail,
@@ -17,23 +14,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 ARN = "arn:aws:globalaccelerator::123456789012:accelerator/example"
 MISSING = ClientError({"Error": {"Code": "AcceleratorNotFoundException", "Message": "gone"}}, "ListTagsForResource")
 DENIED = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "ListTagsForResource")
-
-
-@pytest.mark.parametrize(
-    "tags",
-    [None, [None], [{"Key": "Name"}], [{"Key": 1, "Value": "value"}], [{"Key": "", "Value": "value"}]],
-)
-def test_invalid_tag_lists_are_rejected(tags):
-    with pytest.raises(ModuleFail) as raised:
-        validate_tag_list(FakeModule({}), tags)
-
-    assert raised.value.values["msg"] == "Global Accelerator returned invalid tags"
-    assert not raised.value.values.get("changed")
-
-
-def test_valid_tag_lists_are_returned():
-    tags = [{"Key": "Name", "Value": ""}]
-    assert validate_tag_list(FakeModule({}), tags) is tags
 
 
 @pytest.mark.parametrize("missing_ok", [False, True])
@@ -63,11 +43,7 @@ def test_list_accelerator_tags_reports_errors(error, missing_ok):
     assert raised.value.values == {"msg": f"Unable to list tags for AWS Global Accelerator {ARN}"}
 
 
-@pytest.mark.parametrize("response", [None, {}, {"Tags": [{"Key": "", "Value": "value"}]}])
-def test_list_accelerator_tags_rejects_malformed_responses(response):
-    client = Mock(list_tags_for_resource=Mock(return_value=response))
-    with pytest.raises(ModuleFail) as raised:
-        list_accelerator_tags(client, FakeModule({}), ARN)
+def test_list_accelerator_tags_defaults_to_no_tags():
+    client = Mock(list_tags_for_resource=Mock(return_value={}))
 
-    assert raised.value.values["msg"] == "Global Accelerator returned invalid tags"
-    assert not raised.value.values.get("changed")
+    assert list_accelerator_tags(client, FakeModule({}), ARN) == []

@@ -33,7 +33,6 @@ options:
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
-      - When provided, this must be exactly two uppercase letters.
       - This field is optional for origination identities that are not
         country-specific.
       - Creating a pool without this requires botocore 1.42.80 or later; the
@@ -267,7 +266,6 @@ state:
   type: str
 """
 
-import re
 import time
 
 try:
@@ -330,28 +328,7 @@ def describe_pools(client, module, changed=False, **request):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg="Unable to describe Pinpoint SMS Voice V2 pools")
 
-    pools = response.get("Pools") if isinstance(response, dict) else None
-    if not isinstance(pools, list):
-        module.fail_json(changed=changed, msg="AWS returned malformed Pinpoint SMS Voice V2 pool data")
-
-    for pool in pools:
-        validate_pool(module, pool, "describing pools", changed=changed)
-
-    return pools
-
-
-def validate_pool(module, pool, context, changed=False):
-    if (
-        not isinstance(pool, dict)
-        or not isinstance(pool.get("PoolId"), str)
-        or not isinstance(pool.get("Status"), str)
-        or ("PoolArn" in pool and not isinstance(pool["PoolArn"], str))
-        or ("DeletionProtectionEnabled" in pool and not isinstance(pool["DeletionProtectionEnabled"], bool))
-        or ("MessageType" in pool and not isinstance(pool["MessageType"], str))
-    ):
-        module.fail_json(changed=changed, msg=f"AWS returned a malformed Pinpoint SMS Voice V2 pool while {context}")
-
-    return pool
+    return response.get("Pools", [])
 
 
 def pool_with_origination_identities(client, module, pool, changed=False, missing_ok=False):
@@ -378,17 +355,7 @@ def pool_with_origination_identities(client, module, pool, changed=False, missin
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=msg)
 
-    pool["OriginationIdentities"] = response.get("OriginationIdentities") if isinstance(response, dict) else None
-    if not isinstance(pool["OriginationIdentities"], list) or any(
-        not isinstance(identity, dict)
-        or not any(isinstance(identity.get(key), str) for key in ("OriginationIdentity", "OriginationIdentityArn"))
-        for identity in pool["OriginationIdentities"]
-    ):
-        module.fail_json(
-            changed=changed,
-            msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
-        )
-
+    pool["OriginationIdentities"] = response.get("OriginationIdentities", [])
     return pool
 
 
@@ -601,13 +568,7 @@ def require_no_notify_configurations(client, module, pool):
             e, msg=f"Unable to describe Pinpoint SMS Voice V2 notify configurations for pool {pool_id}"
         )
 
-    configurations = response.get("NotifyConfigurations") if isinstance(response, dict) else None
-    if not isinstance(configurations, list) or not all(
-        isinstance(configuration, dict) and configuration.get("NotifyConfigurationId")
-        for configuration in configurations
-    ):
-        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 notify configuration data")
-
+    configurations = response.get("NotifyConfigurations", [])
     if configurations:
         configuration_ids = sorted(configuration["NotifyConfigurationId"] for configuration in configurations)
         module.fail_json(
@@ -668,7 +629,6 @@ def ensure_absent(client, module):
                 )
 
             mutated = True
-            validate_pool(module, current, "disabling deletion protection", changed=True)
 
         if current.get("Status") != "ACTIVE" or current.get("DeletionProtectionEnabled"):
             current = wait_for_pool_active(client, module, pool_id, changed=mutated)
@@ -688,7 +648,6 @@ def ensure_absent(client, module):
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to delete Pinpoint SMS Voice V2 pool {pool_id}")
 
         if response is not None:
-            validate_pool(module, response, "deleting a pool", changed=True)
             response.pop("ResponseMetadata", None)
 
     exit_result(module, changed, response)
@@ -803,7 +762,6 @@ def ensure_present(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg="Unable to create Pinpoint SMS Voice V2 pool")
 
-            validate_pool(module, current, "creating a pool", changed=True)
             pool_id = current["PoolId"]
             if module.params["client_token"] is not None and is_replayed_deleted_resource(
                 lambda: select_pool_by_id(
@@ -855,7 +813,6 @@ def ensure_present(client, module):
                         msg=f"Unable to update Pinpoint SMS Voice V2 pool {current['PoolId']}",
                     )
 
-                validate_pool(module, current, "updating a pool", changed=True)
                 current.pop("ResponseMetadata", None)
                 current["OriginationIdentities"] = previous.get("OriginationIdentities", [])
                 current["Tags"] = previous.get("Tags", [])
@@ -866,18 +823,10 @@ def ensure_present(client, module):
                     active["Tags"] = current["Tags"]
                     current = active
 
-            arn = current.get("PoolArn")
-
-            if (tags_to_set or tag_keys_to_unset) and not arn:
-                module.fail_json(
-                    changed=pool_changed,
-                    msg=f"Unable to tag Pinpoint SMS Voice V2 pool {current['PoolId']}: AWS did not return its ARN",
-                )
-
             reconcile_arn_tags(
                 module,
                 client,
-                arn,
+                current["PoolArn"],
                 tags_to_set,
                 tag_keys_to_unset,
                 "Pinpoint SMS Voice V2 pool",
@@ -960,11 +909,6 @@ def main():
     state = module.params["state"]
 
     if state == "present":
-        iso_country_code = module.params["iso_country_code"]
-
-        if iso_country_code is not None and not re.fullmatch(r"[A-Z]{2}", iso_country_code):
-            module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
-
         require_valid_tags(module, module.params["tags"], 200)
         tags = dict(module.params["tags"] or {})
         tags["Name"] = module.params["name"]

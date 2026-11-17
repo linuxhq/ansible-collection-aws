@@ -26,8 +26,7 @@ options:
       - Only used when none of O(group_name), O(role_name), or O(user_name) is provided.
       - When any of O(group_name), O(role_name), or O(user_name) is provided,
         this option is ignored and a warning is returned.
-      - Must begin with C(/), contain only ASCII characters from C(!) through DEL (no spaces), and contain at most 512
-        characters.
+      - AWS accepts a prefix that begins and ends with C(/) and contains at most 512 characters.
     type: str
   policy_name:
     description:
@@ -203,8 +202,6 @@ user_policies:
       elements: str
 """
 
-import re
-
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -223,33 +220,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 ENTITY_TYPES = ("Group", "Role", "User")
-PATH_PREFIX_PATTERN = re.compile(r"/[\x21-\x7f]*")
-
-
-def validate_policy_names(module, response, entity_type, name):
-    valid = (
-        isinstance(response, dict)
-        and isinstance(response.get("PolicyNames"), list)
-        and all(isinstance(policy_name, str) for policy_name in response["PolicyNames"])
-    )
-    if not valid:
-        module.fail_json(
-            msg=(f"Unable to list AWS IAM {entity_type.lower()} policies for {name}: AWS returned an invalid response")
-        )
-
-    return response["PolicyNames"]
-
-
-def validate_policy_document(module, response, entity_type, name, policy_name):
-    if not isinstance(response, dict) or not isinstance(response.get("PolicyDocument"), dict):
-        module.fail_json(
-            msg=(
-                f"Unable to get AWS IAM {entity_type.lower()} policy {policy_name} "
-                f"for {name}: AWS returned an invalid response"
-            )
-        )
-
-    return response["PolicyDocument"]
 
 
 def build_entity_policies(client, module, entity_type, names):
@@ -283,7 +253,7 @@ def build_entity_policies(client, module, entity_type, names):
                 msg=f"Unable to list AWS IAM {entity_type.lower()} policies for {name}",
             )
 
-        all_policy_names = validate_policy_names(module, response, entity_type, name)
+        all_policy_names = response["PolicyNames"]
 
         policy_names = all_policy_names
         if desired_policy_name:
@@ -316,12 +286,10 @@ def build_entity_policies(client, module, entity_type, names):
                     msg=f"Unable to get AWS IAM {entity_type.lower()} policy {policy_name} for {name}",
                 )
 
-            policy_document = validate_policy_document(module, response, entity_type, name, policy_name)
-
             policies.append(
                 {
                     "policy_name": policy_name,
-                    "policy_document": policy_document,
+                    "policy_document": response["PolicyDocument"],
                 }
             )
 
@@ -375,12 +343,6 @@ def entity_names(client, module, entity_type):
         **request,
     )
 
-    valid = isinstance(entities, list) and all(
-        isinstance(entity, dict) and isinstance(entity.get(name_key), str) and entity[name_key] for entity in entities
-    )
-    if not valid:
-        module.fail_json(msg=f"Unable to list AWS IAM {entity_type.lower()}s: AWS returned an invalid response")
-
     return [entity[name_key] for entity in entities]
 
 
@@ -398,14 +360,6 @@ def main():
         supports_check_mode=True,
     )
     path_prefix = module.params["path_prefix"]
-    if path_prefix and (not PATH_PREFIX_PATTERN.fullmatch(path_prefix) or len(path_prefix) > 512):
-        module.fail_json(
-            msg=(
-                "path_prefix must begin with /, contain only ASCII characters from ! through DEL (no spaces), "
-                "and contain at most 512 characters"
-            )
-        )
-
     if path_prefix and any(module.params[f"{entity_type.lower()}_name"] for entity_type in ENTITY_TYPES):
         module.warn("path_prefix is ignored when group_name, role_name, or user_name is given")
 

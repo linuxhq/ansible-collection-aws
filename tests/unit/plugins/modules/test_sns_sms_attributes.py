@@ -59,13 +59,6 @@ def test_client_retries_throttled():
     jittered_backoff.assert_called_once_with(catch_extra_error_codes=["Throttled"])
 
 
-@pytest.mark.parametrize("rate", [-1, 101])
-def test_rejects_sampling_rate_outside_percent(rate):
-    result, _require = run(FakeModule(params(delivery_status_success_sampling_rate=rate)))
-
-    assert "between 0 and 100" in result.values["msg"]
-
-
 def test_zero_sampling_rate_is_sent():
     client = Mock()
     client.get_sms_attributes.return_value = {"attributes": {}}
@@ -114,14 +107,6 @@ def test_report_only_mode_does_not_require_set_method():
     assert not result.values["changed"]
     require_client_methods.assert_called_once_with(module, client, "SNS", {"get_sms_attributes": ()})
     client.set_sms_attributes.assert_not_called()
-
-
-def test_rejects_malformed_get_response():
-    client = Mock()
-    client.get_sms_attributes.return_value = {"attributes": []}
-    result, _require = run(FakeModule(params(), client=client))
-
-    assert "Unexpected response" in result.values["msg"]
 
 
 def test_empty_string_matches_omitted_attribute():
@@ -188,15 +173,6 @@ def test_read_failure_after_setting_attributes_reports_changed():
     assert result.values["changed"] is True
     assert result.values["msg"] == "Unable to get AWS Simple Notification Service SMS attributes"
     client.set_sms_attributes.assert_called_once()
-
-
-def test_malformed_read_after_setting_attributes_reports_changed():
-    client = Mock(get_sms_attributes=Mock(side_effect=[{"attributes": {}}, {"attributes": []}]))
-    result, _require = run(FakeModule(params(default_sms_type="Transactional"), client=client))
-
-    assert isinstance(result, ModuleFail)
-    assert result.values["changed"] is True
-    assert "Unexpected response" in result.values["msg"]
 
 
 def test_set_failure_reports_unchanged():

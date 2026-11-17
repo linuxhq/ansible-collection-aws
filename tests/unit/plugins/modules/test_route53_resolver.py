@@ -180,16 +180,6 @@ def test_direction_values_are_not_gated_on_botocore(direction):
     module.require_botocore_at_least.assert_not_called()
 
 
-def test_get_rejects_malformed_response():
-    client = Mock(get_resolver_endpoint=Mock(return_value=[]))
-    module = FakeModule({"name": "endpoint"})
-
-    with pytest.raises(ModuleFail) as raised:
-        plugin.get_resolver_endpoint(client, module, "rslvr-endpt-1")
-
-    assert raised.value.values["msg"] == "get_resolver_endpoint: AWS returned an invalid resolver endpoint"
-
-
 def test_get_rejects_unexpected_endpoint_id():
     client = Mock(get_resolver_endpoint=Mock(return_value={"ResolverEndpoint": {"Id": "rslvr-endpt-2"}}))
     module = FakeModule({"name": "endpoint"})
@@ -198,58 +188,6 @@ def test_get_rejects_unexpected_endpoint_id():
         plugin.get_resolver_endpoint(client, module, "rslvr-endpt-1")
 
     assert "unexpected resolver endpoint ID" in raised.value.values["msg"]
-
-
-def test_create_rereads_endpoint_when_response_is_lean():
-    client = Mock(create_resolver_endpoint=Mock(return_value={}))
-    module = FakeModule({"tags": None, "wait": False})
-    desired = {
-        "direction": "OUTBOUND",
-        "ip_addresses": [{"subnet_id": "subnet-1"}],
-        "name": "main",
-        "protocols": ["Do53"],
-        "resolver_endpoint_type": "IPV4",
-        "security_group_ids": ["sg-1"],
-    }
-    endpoint = {"Id": "rslvr-endpt-1", "Name": "main"}
-
-    with patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint) as get:
-        result = plugin.create_resolver_endpoint(client, module, desired)
-
-    get.assert_called_once_with(client, module, changed=True)
-    assert result["Id"] == "rslvr-endpt-1"
-
-
-def test_list_by_name_rejects_malformed_endpoint():
-    module = FakeModule({"name": "endpoint"})
-    with (
-        patch.object(plugin, "query_list", return_value=[{"Name": "endpoint"}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_resolver_endpoint_by_name(Mock(), module)
-
-    assert "without a valid ID" in raised.value.values["msg"]
-
-
-def test_ip_and_tag_enrichment_reject_malformed_entries():
-    module = FakeModule({"name": "endpoint"})
-    endpoint = {"Arn": "arn:aws:route53resolver:::endpoint", "Id": "rslvr-endpt-1"}
-
-    with (
-        patch.object(plugin, "query_list", return_value=[{"Ip": "192.0.2.1"}]),
-        pytest.raises(ModuleFail) as ip_raised,
-    ):
-        plugin.resolver_endpoint_with_ip_addresses(Mock(), module, endpoint)
-
-    assert "without a subnet ID" in ip_raised.value.values["msg"]
-
-    with (
-        patch.object(route53_resolver_utils, "query_list", return_value=[{"Key": "Name"}]),
-        pytest.raises(ModuleFail) as tag_raised,
-    ):
-        plugin.resolver_resource_with_tags(Mock(), module, endpoint, "endpoint")
-
-    assert "invalid tag" in tag_raised.value.values["msg"]
 
 
 def test_absent_waits_for_deleting_endpoint_without_deleting_again():
@@ -319,12 +257,19 @@ def test_documented_returns_cover_the_sdk_shapes():
     assert_documents_shape(contains["ip_addresses"]["contains"], "route53resolver", "IpAddressResponse")
 
 
-def test_absent_rejects_invalid_name():
-    assert_module_rejects(
-        plugin,
-        {"name": "", "state": "absent", "tags": None},
-        "name must be a valid resolver endpoint name of at most 64 characters",
-    )
+@pytest.mark.parametrize("name", ["123", "e" * 65])
+def test_absent_with_a_name_aws_refuses_reaches_the_lookup(name):
+    # No endpoint can have such a name, so the lookup finds nothing and the run converges.
+    module = FakeModule(endpoint_params(name=name, state="absent"))
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+    ):
+        plugin.main()
+
+    ensure_absent.assert_called_once_with(module.client.return_value, module)
 
 
 def test_empty_tags_do_not_gate_tag_resource():
@@ -375,10 +320,6 @@ def test_endpoint_list_limits_are_rejected():
     }
     cases = [
         (
-            dict(base, name="123"),
-            "name must be a valid resolver endpoint name of at most 64 characters",
-        ),
-        (
             dict(base, ip_addresses=[{"subnet_id": "subnet-1"}]),
             "ip_addresses must contain 2 to 20 entries",
         ),
@@ -413,14 +354,9 @@ def test_endpoint_list_limits_are_rejected():
             ),
             "ip_addresses entries must be unique",
         ),
-        (dict(base, protocols=[]), "protocols must contain 1 or 2 entries"),
         (
             dict(base, security_group_ids=[]),
             "security_group_ids must contain at least one entry",
-        ),
-        (
-            dict(base, security_group_ids=["s" * 65]),
-            "security_group_ids entries must contain 1 to 64 characters",
         ),
         (
             dict(
@@ -463,24 +399,13 @@ def test_endpoint_list_limits_are_rejected():
 
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("blank", ["", " "])
-@pytest.mark.parametrize(
-    "option,message",
-    [
-        ("security_group_ids", "security_group_ids entries must contain 1 to 64 characters"),
-        ("subnet_id", "ip_addresses[].subnet_id must contain 1 to 32 characters"),
-    ],
-)
-def test_blank_identifiers_are_rejected_before_any_aws_call(check_mode, blank, option, message):
-    # Live: AWS reads a whitespace-only security group or subnet ID as empty and refuses it.
+def test_blank_subnet_ids_are_rejected_before_any_aws_call(check_mode, blank):
+    # Live: AWS reads a whitespace-only subnet ID as empty and refuses it.
     ip_addresses = [
         {"ip": "192.0.2.1", "ipv6": None, "subnet_id": "subnet-1"},
-        {"ip": None, "ipv6": None, "subnet_id": blank if option == "subnet_id" else "subnet-2"},
+        {"ip": None, "ipv6": None, "subnet_id": blank},
     ]
-    security_group_ids = ["sg-1", blank] if option == "security_group_ids" else ["sg-1"]
-    module = FakeModule(
-        endpoint_params(ip_addresses=ip_addresses, security_group_ids=security_group_ids, state="present"),
-        check_mode=check_mode,
-    )
+    module = FakeModule(endpoint_params(ip_addresses=ip_addresses, state="present"), check_mode=check_mode)
     module.client = Mock()
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -489,7 +414,7 @@ def test_blank_identifiers_are_rejected_before_any_aws_call(check_mode, blank, o
     ):
         plugin.main()
 
-    assert raised.value.values == {"msg": message}
+    assert raised.value.values == {"msg": "ip_addresses[].subnet_id must contain 1 to 32 characters"}
     module.client.assert_not_called()
     ensure_present.assert_not_called()
 
@@ -893,7 +818,7 @@ def test_create_retries_reuse_the_creator_request_id():
 
 
 def test_ip_reconciliation_adds_and_removes_only_differences():
-    client = Mock()
+    client = ip_change_client()
     module = Mock(params={"wait": False})
     endpoint = {
         "Id": "rslvr-1",
@@ -936,7 +861,7 @@ def test_ip_replacements_stay_within_provider_count_bounds():
             "ip_addresses": [{"subnet_id": f"subnet-{index}"} for index in range(1, count)]
             + [{"subnet_id": "subnet-new"}],
         }
-        client = Mock()
+        client = ip_change_client()
         with (patch.object(plugin, "wait_for_resolver_endpoint_status"),):
             plugin.reconcile_resolver_endpoint_ip_addresses(
                 client,
@@ -1112,92 +1037,6 @@ def test_waited_endpoint_is_enriched_before_ip_reconciliation():
     reconcile.assert_called_once_with(client, module, updated, ANY, changed=True, deadline=ANY)
 
 
-def test_update_rereads_endpoint_when_response_is_lean():
-    client = Mock(update_resolver_endpoint=Mock(return_value={}))
-    module = FakeModule(
-        {
-            "direction": "OUTBOUND",
-            "ip_addresses": [
-                {"subnet_id": "subnet-1"},
-                {"subnet_id": "subnet-2"},
-            ],
-            "name": "main",
-            "protocols": ["DoH"],
-            "purge_tags": True,
-            "resolver_endpoint_type": "IPV4",
-            "security_group_ids": ["sg-1"],
-            "tags": None,
-            "wait": False,
-            "wait_timeout": 300,
-        }
-    )
-    current = {
-        "Direction": "OUTBOUND",
-        "Id": "rslvr-1",
-        "IpAddresses": [
-            {"SubnetId": "subnet-1"},
-            {"SubnetId": "subnet-2"},
-        ],
-        "Protocols": ["Do53"],
-        "ResolverEndpointType": "IPV4",
-        "SecurityGroupIds": ["sg-1"],
-    }
-    updated = dict(current, Protocols=["DoH"])
-    with (
-        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-        patch.object(plugin, "get_resolver_endpoint", return_value=updated) as get,
-        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", return_value=updated),
-        pytest.raises(ModuleExit),
-    ):
-        plugin.ensure_present(client, module)
-
-    get.assert_called_once_with(client, module, "rslvr-1", changed=True)
-
-
-def test_tag_change_rejects_endpoint_without_arn():
-    client = Mock()
-    module = FakeModule(
-        {
-            "direction": "OUTBOUND",
-            "ip_addresses": [
-                {"subnet_id": "subnet-1"},
-                {"subnet_id": "subnet-2"},
-            ],
-            "name": "main",
-            "protocols": ["Do53"],
-            "purge_tags": True,
-            "resolver_endpoint_type": "IPV4",
-            "security_group_ids": ["sg-1"],
-            "tags": {"Name": "main"},
-            "wait": False,
-            "wait_timeout": 300,
-        }
-    )
-    current = {
-        "Direction": "OUTBOUND",
-        "Id": "rslvr-1",
-        "IpAddresses": [
-            {"SubnetId": "subnet-1"},
-            {"SubnetId": "subnet-2"},
-        ],
-        "Protocols": ["Do53"],
-        "ResolverEndpointType": "IPV4",
-        "SecurityGroupIds": ["sg-1"],
-    }
-    with (
-        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert "invalid endpoint ARN" in raised.value.values["msg"]
-    client.tag_resource.assert_not_called()
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("field,value", [("direction", "INBOUND"), ("security_group_ids", ["sg-2"])])
 def test_immutable_changes_never_mutate_endpoint(check_mode, field, value):
@@ -1329,6 +1168,14 @@ def in_flight_endpoint(**overrides):
     return endpoint
 
 
+def ip_change_client():
+    """Return a client whose IP address changes return the in-flight endpoint, as AWS does."""
+    client = Mock()
+    client.associate_resolver_endpoint_ip_address.return_value = {"ResolverEndpoint": in_flight_endpoint()}
+    client.disassociate_resolver_endpoint_ip_address.return_value = {"ResolverEndpoint": in_flight_endpoint()}
+    return client
+
+
 IP_ADDRESS_STATUS_CLASSES = {
     "ATTACHED": "kept",
     "ATTACHING": "kept",
@@ -1381,7 +1228,7 @@ def test_kept_address_satisfies_its_request_without_replacement(status):
 
 @pytest.mark.parametrize("status", ["DELETE_FAILED_FAS_EXPIRED", "UPDATE_FAILED"])
 def test_unwanted_kept_address_is_disassociated_again(status):
-    client = Mock()
+    client = ip_change_client()
     endpoint = existing_endpoint(
         IpAddresses=[
             {"Ip": "192.0.2.1", "IpId": "rni-1", "SubnetId": "subnet-1", "Status": "ATTACHED"},
@@ -1445,7 +1292,7 @@ def test_wait_failure_message_does_not_claim_a_timeout():
 
 
 def test_failed_addresses_are_replaced_and_departing_addresses_are_ignored():
-    client = Mock()
+    client = ip_change_client()
     module = FakeModule(endpoint_params())
     endpoint = existing_endpoint(
         IpAddresses=[
@@ -1732,7 +1579,7 @@ def endpoint_with_failed_address():
 
 
 def test_failed_address_dropped_from_the_request_is_removed():
-    client = Mock()
+    client = ip_change_client()
     with (
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint_with_failed_address()),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
@@ -1790,7 +1637,7 @@ def test_removing_a_failed_address_predicts_the_addresses_a_real_run_returns(wai
     params = endpoint_params(ip_addresses=[{"ip": "192.0.2.1", "subnet_id": "subnet-1"}, {"subnet_id": "subnet-2"}])
     results = {}
     for check_mode in (False, True):
-        client = Mock()
+        client = ip_change_client()
         with (
             patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint_with_failed_address()),
             patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
@@ -2687,25 +2534,6 @@ def test_unwaited_address_change_returns_the_last_change_response(current_ips, r
         assert results[True][field] == results[False][field] == expected
 
     assert results[True]["ip_addresses"] == results[False]["ip_addresses"]
-
-
-def test_unwaited_address_change_with_a_lean_response_keeps_the_endpoint_read_before_it():
-    client = Mock()
-    client.associate_resolver_endpoint_ip_address.return_value = {}
-    params = endpoint_params(ip_addresses=endpoint_params()["ip_addresses"] + [{"ip": "192.0.2.3", "subnet_id": "s"}])
-    with (
-        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint(IpAddressCount=2)),
-        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "wait_for_resolver_endpoint_status") as wait_for_status,
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params))
-
-    endpoint = raised.value.values["resolver_endpoint"]
-    assert (endpoint["status"], endpoint["ip_address_count"], len(endpoint["ip_addresses"])) == ("OPERATIONAL", 2, 3)
-    client.associate_resolver_endpoint_ip_address.assert_called_once()
-    wait_for_status.assert_not_called()
 
 
 def test_unwaited_address_change_rejects_a_response_for_another_endpoint():

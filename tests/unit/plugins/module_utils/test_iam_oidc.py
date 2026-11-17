@@ -13,7 +13,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     list_provider_summaries,
     provider_url,
 )
-from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
+from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule
 
 
 def test_provider_url_removes_only_the_https_prefix():
@@ -41,18 +41,6 @@ def test_provider_includes_arn_without_response_metadata():
     client.get_open_id_connect_provider.assert_called_once_with(OpenIDConnectProviderArn="arn:provider", aws_retry=True)
 
 
-def test_provider_rejects_invalid_response():
-    client = Mock(get_open_id_connect_provider=Mock(return_value={}))
-    module = Mock()
-    module.fail_json.side_effect = SystemExit
-    with pytest.raises(SystemExit):
-        get_provider_by_arn(client, module, "arn:provider")
-
-    module.fail_json.assert_called_once_with(
-        changed=False, msg="Unable to get AWS IAM OIDC provider arn:provider: AWS returned an invalid response"
-    )
-
-
 def test_provider_treats_missing_lists_as_empty():
     client = Mock(get_open_id_connect_provider=Mock(return_value={"Url": "example.com/id"}))
     assert get_provider_by_arn(client, Mock(), "arn:provider") == {
@@ -61,30 +49,6 @@ def test_provider_treats_missing_lists_as_empty():
         "ThumbprintList": [],
         "Url": "example.com/id",
     }
-
-
-@pytest.mark.parametrize(
-    "fields",
-    [
-        {"ClientIDList": None},
-        {"ThumbprintList": "abc"},
-        {"ClientIDList": [1]},
-        {"ThumbprintList": [None]},
-        {"Tags": None},
-        {"Tags": [{"Key": "Name"}]},
-    ],
-)
-@pytest.mark.parametrize("changed", [False, True])
-def test_provider_rejects_present_invalid_fields(fields, changed):
-    client = Mock(get_open_id_connect_provider=Mock(return_value=dict({"Url": "example.com/id"}, **fields)))
-    module = Mock()
-    module.fail_json.side_effect = SystemExit
-    with pytest.raises(SystemExit):
-        get_provider_by_arn(client, module, "arn:provider", changed=changed)
-
-    module.fail_json.assert_called_once_with(
-        changed=changed, msg="Unable to get AWS IAM OIDC provider arn:provider: AWS returned an invalid response"
-    )
 
 
 def test_provider_lookup_lists_providers_and_reads_the_exact_match():
@@ -189,18 +153,7 @@ def test_provider_lookup_finds_nothing_when_the_exact_provider_disappears():
     assert [call.args[2] for call in get.call_args_list] == ["arn:aws:iam::1:oidc-provider/sts.windows.net/t/"]
 
 
-def test_provider_lookup_rejects_invalid_summaries():
-    module = FakeModule({})
-    with (
-        patch.object(iam_oidc, "query_list", return_value=[{}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        get_provider_by_url(Mock(), module, "https://example.com/id")
-
-    assert raised.value.values["msg"] == "Unable to list AWS IAM OIDC providers: AWS returned an invalid response"
-
-
-def test_list_provider_summaries_returns_validated_summaries():
+def test_list_provider_summaries_returns_the_listed_summaries():
     client = Mock()
     module = FakeModule({})
     providers = [{"Arn": "arn:aws:iam::1:oidc-provider/example.com"}]

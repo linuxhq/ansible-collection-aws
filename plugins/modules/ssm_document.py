@@ -41,7 +41,6 @@ options:
     description:
       - The Systems Manager document type to create.
       - Required when O(state=present).
-      - This must not be empty when O(state=present).
     type: str
   document_version:
     description:
@@ -109,9 +108,6 @@ notes:
   - O(tags) accepts at most 50 entries; keys must contain 1 to 128 characters
     and values at most 256 characters, and both may contain only letters,
     numbers, spaces, C(_), C(.), C(:), C(/), C(=), C(+), C(-), and C(@).
-  - When the document is created, O(tags) keys must not be made only of
-    whitespace, because AWS rejects them; no-break spaces count as text. Tags
-    added to an existing document accept such keys.
 extends_documentation_fragment:
   - amazon.aws.common.modules
   - amazon.aws.region.modules
@@ -301,7 +297,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
     ssm_tag_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
@@ -335,17 +330,6 @@ SSM_DOCUMENT_WAITER_MODEL_DATA = {
 }
 TRANSITIONAL_STATUSES = ("Creating", "Updating")
 UPDATABLE_DOCUMENT_VERSIONS = ("$DEFAULT", "$LATEST")
-# CreateDocument rejects a tag key made only of whitespace but counts these no-break spaces as text. AddTagsToResource
-# accepts and stores a blank key, so only a create rejects one.
-NO_BREAK_SPACES = "\xa0\u2007\u202f"
-
-
-def document_description_from_response(module, response, message):
-    # Only create and update responses are read here, so the document has already changed.
-    if not isinstance(response, dict) or not isinstance(response.get("DocumentDescription"), dict):
-        module.fail_json(changed=True, msg=message)
-
-    return response["DocumentDescription"]
 
 
 def comparable_document(document):
@@ -412,12 +396,6 @@ def wait_for_document(client, module, state, document_version=None, changed=Fals
         response = client.describe_document(**request, aws_retry=True)
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to describe AWS Systems Manager document {name}")
-
-    if not isinstance(response, dict) or not isinstance(response.get("Document"), dict):
-        module.fail_json(
-            changed=changed,
-            msg=f"Unexpected response while describing AWS Systems Manager document {name}",
-        )
 
     if response["Document"].get("Status") == "Failed":
         fail_failed_document(module, response["Document"], changed=changed)
@@ -527,11 +505,6 @@ def ensure_present(client, module):
         # A created document has only version 1, so a later numbered version can never exist.
         module.fail_json(changed=False, msg=f"AWS Systems Manager document {name} has no version {document_version}")
 
-    if current is None and any(
-        all(char.isspace() and char not in NO_BREAK_SPACES for char in key) for key in tags or {}
-    ):
-        module.fail_json(msg="tag keys must not be blank when creating an AWS Systems Manager document")
-
     if current is None:
         changed = True
         resource_changed = True
@@ -567,11 +540,7 @@ def ensure_present(client, module):
             if latest.get("Status") == "Failed":
                 fail_failed_document(module, latest)
 
-            default_version_to_promote = latest.get("DocumentVersion")
-            if not default_version_to_promote:
-                module.fail_json(
-                    msg=f"Unable to promote the latest AWS Systems Manager document {name}: AWS returned no document version"
-                )
+            default_version_to_promote = latest["DocumentVersion"]
 
             if "Tags" in current:
                 # Tags belong to the document rather than a version, so the tags read with the default version apply.
@@ -582,11 +551,7 @@ def ensure_present(client, module):
     if current is not None and not resource_changed and document_version == "$LATEST":
         default = get_document(client, module, document_version="$DEFAULT")
         if (default or {}).get("DocumentVersion") != current.get("DocumentVersion"):
-            default_version_to_promote = current.get("DocumentVersion")
-            if not default_version_to_promote:
-                module.fail_json(
-                    msg=f"Unable to promote AWS Systems Manager document {name}: AWS returned no document version"
-                )
+            default_version_to_promote = current["DocumentVersion"]
 
             latest = current
             changed = True
@@ -625,13 +590,7 @@ def ensure_present(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to create AWS Systems Manager document {name}")
 
-            current = document_description_from_response(
-                module,
-                response,
-                f"AWS Systems Manager did not return the created document {name}",
-            )
-            if not current.get("DocumentVersion"):
-                module.fail_json(changed=True, msg=f"AWS Systems Manager did not return the created document {name}")
+            current = response["DocumentDescription"]
 
             if module.params["wait"]:
                 wait_for_document(client, module, "active", current["DocumentVersion"], changed=True, deadline=deadline)
@@ -661,17 +620,8 @@ def ensure_present(client, module):
                 except (BotoCoreError, ClientError) as e:
                     module.fail_json_aws(e, msg=f"Unable to update AWS Systems Manager document {name}")
 
-                updated = document_description_from_response(
-                    module,
-                    response,
-                    f"AWS Systems Manager did not return the updated document {name}",
-                )
-                new_version = updated.get("DocumentVersion")
-                if not new_version:
-                    module.fail_json(
-                        changed=True,
-                        msg=f"Unable to promote updated AWS Systems Manager document {name}: AWS returned no document version",
-                    )
+                updated = response["DocumentDescription"]
+                new_version = updated["DocumentVersion"]
 
                 # A new version can be promoted only after AWS has validated it.
                 wait_for_document(client, module, "active", new_version, changed=True, deadline=deadline)
@@ -790,18 +740,6 @@ def get_document(client, module, include_tags=False, document_version=None, chan
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to get AWS Systems Manager document {name}")
 
-    if not isinstance(document, dict):
-        module.fail_json(changed=changed, msg=f"Unexpected response while getting AWS Systems Manager document {name}")
-
-    content = document.get("Content")
-    try:
-        parsed_content = json.loads(content) if isinstance(content, str) else None
-    except (TypeError, ValueError):
-        parsed_content = None
-
-    if not isinstance(parsed_content, dict):
-        module.fail_json(changed=changed, msg=f"Unexpected content while getting AWS Systems Manager document {name}")
-
     document.pop("ResponseMetadata", None)
 
     if include_tags:
@@ -857,9 +795,6 @@ def main():
         missing = [option for option in ("content", "document_type") if module.params[option] is None]
         if missing:
             module.fail_json(msg=f"state is present but all of the following are missing: {', '.join(missing)}")
-
-        # AWS rejects a blank document type, which check mode would otherwise predict as a new document.
-        require_non_blank(module, module.params["document_type"], "document_type")
 
     require_valid_tags(module, tags if state == "present" else None, 50, restricted_characters=True)
     # Updated versions are always waited on before they are promoted.

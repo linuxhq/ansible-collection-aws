@@ -200,32 +200,13 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
-    AWS_OWNED_RULE_OWNER,
-    response_items,
-    validate_resolver_rule,
-    validate_tags,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import AWS_OWNED_RULE_OWNER
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
 
 ACTIVE_ASSOCIATION_STATUSES = ("COMPLETE", "OVERRIDDEN")
-
-
-def validate_association(module, association):
-    if not isinstance(association, dict):
-        module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association")
-
-    resolver_rule_id = association.get("ResolverRuleId")
-    if not isinstance(resolver_rule_id, str) or not resolver_rule_id:
-        module.fail_json(msg="list_resolver_rule_associations: AWS returned an association without a rule ID")
-
-    if "VPCId" in association and not isinstance(association["VPCId"], str):
-        module.fail_json(msg="list_resolver_rule_associations: AWS returned an invalid association VPC ID")
-
-    return association
 
 
 def main():
@@ -257,7 +238,6 @@ def main():
         "Unable to list AWS Route53 Resolver rules",
         **request,
     )
-    resolver_rules = [validate_resolver_rule(module, rule, "list_resolver_rules") for rule in resolver_rules]
 
     if not resolver_rules:
         associations = []
@@ -288,9 +268,7 @@ def main():
 
     associations_by_rule_id = {}
     for association in associations:
-        association = validate_association(module, association)
-        resolver_rule_id = association["ResolverRuleId"]
-        associations_by_rule_id.setdefault(resolver_rule_id, []).append(association)
+        associations_by_rule_id.setdefault(association.get("ResolverRuleId"), []).append(association)
 
     normalized_rules = []
     for rule in resolver_rules:
@@ -317,7 +295,7 @@ def main():
                     msg=f"Unable to list tags for AWS Route53 Resolver rule {rule['Arn']}",
                 )
             else:
-                tags = validate_tags(module, response_items(module, response, "Tags", "list_tags_for_resource"))
+                tags = response.get("Tags", [])
 
         normalized_rule = boto3_resource_to_ansible_dict(
             dict(rule, Tags=tags),

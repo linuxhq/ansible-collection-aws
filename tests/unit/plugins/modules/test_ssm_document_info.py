@@ -80,10 +80,14 @@ def test_yaml_and_text_content_is_returned_as_a_string_even_in_json_syntax(docum
     assert plugin.content_transform(None, document_format) == {}
 
 
-def test_empty_name_is_rejected():
-    result, _require, _query = run(FakeModule(params(name="")))
+def test_empty_name_lists_every_document():
+    client = Mock()
+    result, require_client_methods, query_list = run(FakeModule(params(name=""), client=client))
 
-    assert result.values["msg"] == "name must not be empty"
+    assert result.values == {"changed": False, "document": {}, "documents": []}
+    assert "list_documents" in require_client_methods.call_args.args[3]
+    query_list.assert_called_once()
+    client.describe_document.assert_not_called()
 
 
 def test_version_name_omits_document_version_and_loads_content_and_tags():
@@ -136,30 +140,6 @@ def test_null_filter_value_is_rejected_before_listing():
 
     assert result.values["msg"] == "filters.tag:team must not contain a null value"
     query_list.assert_not_called()
-
-
-def test_rejects_malformed_document_identifier():
-    result, _require, _query = run(FakeModule(params(), client=Mock()), [None])
-
-    assert result.values["msg"] == "Unexpected response while listing AWS Systems Manager documents"
-
-
-def test_rejects_malformed_get_response():
-    client = Mock(describe_document=Mock(return_value=described()), get_document=Mock(return_value=None))
-    result, _require, _query = run(FakeModule(params(name="example"), client=client))
-
-    assert result.values["msg"] == "Unexpected response while getting AWS Systems Manager document example"
-
-
-def test_rejects_malformed_tags():
-    client = Mock(
-        describe_document=Mock(return_value=described()),
-        get_document=Mock(return_value={"Content": "{}", "Name": "example"}),
-        list_tags_for_resource=Mock(return_value={"TagList": [None]}),
-    )
-    result, _require, _query = run(FakeModule(params(name="example"), client=client))
-
-    assert result.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager document example"
 
 
 def missing_version_error(operation="GetDocument"):
@@ -231,12 +211,4 @@ def test_named_document_that_cannot_be_served_in_the_requested_format_returns_em
     assert result.values["document"] == {}
     assert result.values["documents"] == []
     client.describe_document.assert_called_once_with(DocumentVersion="$LATEST", Name="example", aws_retry=True)
-    client.get_document.assert_not_called()
-
-
-def test_named_document_rejects_malformed_describe_response():
-    client = Mock(describe_document=Mock(return_value={"Document": {}}))
-    result, _require, _query = run(FakeModule(params(name="example"), client=client))
-
-    assert result.values["msg"] == "Unexpected response while describing AWS Systems Manager document example"
     client.get_document.assert_not_called()

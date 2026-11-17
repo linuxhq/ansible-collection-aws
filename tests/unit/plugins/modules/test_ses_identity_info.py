@@ -122,14 +122,6 @@ def test_verification_tokens_are_requested_in_batches_of_one_hundred():
     )
 
 
-def test_rejects_invalid_verification_attributes():
-    ses, sesv2 = clients({"example.com": {"IdentityType": "DOMAIN"}})
-    ses.get_identity_verification_attributes.return_value = {"VerificationAttributes": []}
-    result, _require, _query = run(FakeModule({"identity_type": None, "name": "example.com"}), ses, sesv2)
-
-    assert result.values["msg"] == "AWS SES returned invalid identity verification attributes"
-
-
 def test_verification_tokens_are_requested_only_for_domains():
     identities = {
         "example.com": {"IdentityType": "DOMAIN"},
@@ -151,37 +143,14 @@ def test_email_identities_skip_verification_token_lookup():
     ses.get_identity_verification_attributes.assert_not_called()
 
 
-def test_empty_name_is_rejected():
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule({"identity_type": None, "name": ""})),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
+def test_empty_name_lists_every_identity():
+    ses, sesv2 = clients({"user@example.com": {"IdentityType": "EMAIL_ADDRESS"}})
+    result, _require, query_list = run(
+        FakeModule({"identity_type": None, "name": ""}), ses, sesv2, ["user@example.com"]
+    )
 
-    assert raised.value.values["msg"] == "name must not be empty"
-
-
-@pytest.mark.parametrize("names", [[None], None])
-def test_validate_identity_names_rejects_invalid_names(names):
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_identity_names(FakeModule({}), names)
-
-    assert raised.value.values["msg"] == "AWS SES returned an invalid identity name"
-
-
-@pytest.mark.parametrize(
-    ("details", "message"),
-    [
-        ([], "invalid details"),
-        ({"Tags": [{"Key": "missing-value"}]}, "invalid tags"),
-        ({"Policies": []}, "invalid policies"),
-    ],
-)
-def test_validate_identity_details_rejects_invalid_details(details, message):
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_identity_details(FakeModule({}), details, "example.com")
-
-    assert message in raised.value.values["msg"]
+    query_list.assert_called_once()
+    assert [identity["name"] for identity in result.values["identities"]] == ["user@example.com"]
 
 
 def test_return_documents_every_get_email_identity_field():
