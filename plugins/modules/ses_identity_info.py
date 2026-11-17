@@ -24,7 +24,7 @@ options:
   name:
     description:
       - SES identity name used to limit the result set.
-      - This must not be empty when provided.
+      - An empty value is treated as omitted and lists every identity.
       - An identity that does not exist results in an empty list.
       - Mutually exclusive with O(identity_type).
     type: str
@@ -225,27 +225,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
-
-
-def validate_identity_names(module, identity_names):
-    if not isinstance(identity_names, list) or any(
-        not isinstance(identity_name, str) or not identity_name for identity_name in identity_names
-    ):
-        module.fail_json(msg="AWS SES returned an invalid identity name")
-
-
-def validate_identity_details(module, details, identity_name):
-    if not isinstance(details, dict):
-        module.fail_json(msg=f"AWS SES returned invalid details for identity {identity_name}")
-
-    require_valid_tag_list(
-        module, details.get("Tags", []), f"AWS SES returned invalid tags for identity {identity_name}"
-    )
-
-    policies = details.get("Policies", {})
-    if not isinstance(policies, dict):
-        module.fail_json(msg=f"AWS SES returned invalid policies for identity {identity_name}")
 
 
 def get_verification_tokens(module, ses_client, identity_names):
@@ -258,12 +237,8 @@ def get_verification_tokens(module, ses_client, identity_names):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg="Unable to get AWS SES identity verification attributes")
 
-        attributes = response.get("VerificationAttributes", {}) if isinstance(response, dict) else None
-        if not isinstance(attributes, dict) or any(not isinstance(value, dict) for value in attributes.values()):
-            module.fail_json(msg="AWS SES returned invalid identity verification attributes")
-
-        for identity_name, value in attributes.items():
-            if isinstance(value.get("VerificationToken"), str):
+        for identity_name, value in response["VerificationAttributes"].items():
+            if "VerificationToken" in value:
                 tokens[identity_name] = value["VerificationToken"]
 
     return tokens
@@ -281,12 +256,9 @@ def main():
     identity_type = module.params["identity_type"]
     name = module.params["name"]
 
-    if name == "":
-        module.fail_json(msg="name must not be empty")
-
     ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     ses_methods = {"get_identity_verification_attributes": ("Identities",)}
-    if name is None:
+    if not name:
         ses_methods["list_identities"] = ("IdentityType", "MaxItems", "NextToken")
 
     require_client_methods(module, ses_client, "SES", ses_methods)
@@ -301,7 +273,7 @@ def main():
 
     identities = []
 
-    if name is not None:
+    if name:
         identity_names = [name]
     else:
         identity_names = query_list(
@@ -312,7 +284,6 @@ def main():
             "Unable to list AWS SES identities",
             **scrub_none_parameters({"IdentityType": identity_type}),
         )
-        validate_identity_names(module, identity_names)
 
     for identity_name in identity_names:
         try:
@@ -328,7 +299,6 @@ def main():
                 msg=f"Unable to get AWS SES identity {identity_name}",
             )
 
-        validate_identity_details(module, details, identity_name)
         details.pop("ResponseMetadata", None)
         identity = boto3_resource_to_ansible_dict(
             details,
