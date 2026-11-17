@@ -374,6 +374,13 @@ ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA = {
                 "matcher": "path",
                 "state": "retry",
             },
+            # A failed delete leaves the rule FAILED; wait_for_resolver_rule_status reports its status message.
+            {
+                "argument": "ResolverRule.Status",
+                "expected": "FAILED",
+                "matcher": "path",
+                "state": "success",
+            },
         ],
     },
 }
@@ -679,10 +686,17 @@ def wait_for_resolver_rule_status(
         ResolverRuleId=resolver_rule_id,
     )
 
-    if state == "deleted":
-        return None
-
     rule = get_resolver_rule(client, module, resolver_rule_id, changed=changed)
+    if state == "deleted" and rule is not None:
+        module.fail_json(
+            changed=changed,
+            msg=(
+                f"AWS Route53 Resolver rule {module.params['name']} was not deleted; it is {rule.get('Status')}: "
+                f"{rule.get('StatusMessage') or 'no status message was returned'}"
+            ),
+            resolver_rule=boto3_resource_to_ansible_dict(rule, transform_tags=False, force_tags=False),
+        )
+
     if rule is not None and rule.get("Status") == "FAILED" and not allow_failed:
         module.fail_json(
             changed=changed,

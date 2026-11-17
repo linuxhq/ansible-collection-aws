@@ -473,7 +473,16 @@ def test_deleting_rule_waits_before_recreation_with_final_wait_disabled():
             },
         ),
         # A non-FORWARD rule has no endpoint or targets; rule_type choices only accept FORWARD.
-        ("rule_type", {"DomainName": "example.com", "Id": "rslvr-rr-1", "Name": "main", "RuleType": "SYSTEM"}),
+        (
+            "rule_type",
+            {
+                "Arn": "arn:rule",
+                "DomainName": "example.com",
+                "Id": "rslvr-rr-1",
+                "Name": "main",
+                "RuleType": "SYSTEM",
+            },
+        ),
     ],
 )
 def test_immutable_changes_preserve_rule(check_mode, field, current):
@@ -501,6 +510,7 @@ def test_immutable_changes_preserve_rule(check_mode, field, current):
 
     with (
         lookup,
+        patch.object(route53_resolver_utils, "query_list", return_value=[]),
         patch.object(plugin, "delete_resolver_rule") as delete,
         patch.object(plugin, "create_resolver_rule") as create,
         pytest.raises(ModuleFail) as raised,
@@ -687,7 +697,32 @@ def test_waiting_for_a_complete_rule_stops_when_it_is_deleting():
     complete = {a["expected"]: a["state"] for a in model["resolver_rule_complete"]["acceptors"]}
     deleted = {a["expected"]: a["state"] for a in model["resolver_rule_deleted"]["acceptors"]}
     assert complete == {"COMPLETE": "success", "UPDATING": "retry", "DELETING": "failure", "FAILED": "success"}
-    assert deleted == {"ResourceNotFoundException": "success", "DELETING": "retry"}
+    # A failed delete stops the wait, which then reports the rule's status message.
+    assert deleted == {"ResourceNotFoundException": "success", "DELETING": "retry", "FAILED": "success"}
+
+
+def test_a_completed_delete_returns_no_rule():
+    with (
+        patch.object(plugin, "custom_waiter"),
+        patch.object(plugin, "run_waiter"),
+        patch.object(plugin, "get_resolver_rule", return_value=None),
+    ):
+        assert plugin.wait_for_resolver_rule_status(Mock(), FakeModule(rule_params()), "rslvr-rr-1", "deleted") is None
+
+
+def test_a_failed_delete_reports_the_rule_status_message():
+    rule = {"Id": "rslvr-rr-1", "Status": "FAILED", "StatusMessage": "Rule is in use"}
+    with (
+        patch.object(plugin, "custom_waiter"),
+        patch.object(plugin, "run_waiter"),
+        patch.object(plugin, "get_resolver_rule", return_value=rule),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_resolver_rule_status(Mock(), FakeModule(rule_params()), "rslvr-rr-1", "deleted", changed=True)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == "AWS Route53 Resolver rule main was not deleted; it is FAILED: Rule is in use"
+    assert raised.value.values["resolver_rule"]["status"] == "FAILED"
 
 
 def test_lookup_skips_shared_and_aws_owned_rules():
@@ -1039,6 +1074,7 @@ def test_waits_after_a_re_run_share_one_wait_timeout_budget():
         patch.object(
             plugin, "get_resolver_rule_by_name", return_value={"Id": "rslvr-rr-1", "Name": "main", "Status": "DELETING"}
         ),
+        patch.object(plugin, "get_resolver_rule", return_value=None),
         patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 700]),
         pytest.raises(ModuleFail),
@@ -1054,6 +1090,7 @@ def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
         patch.object(
             plugin, "get_resolver_rule_by_name", return_value={"Id": "rslvr-rr-1", "Name": "main", "Status": "DELETING"}
         ),
+        patch.object(plugin, "get_resolver_rule", return_value=None),
         patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 1901]),
         pytest.raises(ModuleFail) as raised,

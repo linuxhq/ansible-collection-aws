@@ -264,24 +264,22 @@ def main():
 
         ip_addresses = response.get("IpAddresses", [])
 
-        tags = []
-        endpoint_arn = endpoint.get("Arn")
-        if endpoint_arn:
-            try:
-                response = paginated_query_with_retries(
-                    client,
-                    "list_tags_for_resource",
-                    ResourceArn=endpoint_arn,
-                )
-            except is_boto3_error_code("ResourceNotFoundException"):
-                continue
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e,
-                    msg=f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint_arn}",
-                )
+        endpoint_arn = endpoint["Arn"]
+        try:
+            response = paginated_query_with_retries(
+                client,
+                "list_tags_for_resource",
+                ResourceArn=endpoint_arn,
+            )
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(
+                e,
+                msg=f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint_arn}",
+            )
 
-            tags = response.get("Tags", [])
+        tags = response.get("Tags", [])
 
         normalized_endpoints.append(
             boto3_resource_to_ansible_dict(

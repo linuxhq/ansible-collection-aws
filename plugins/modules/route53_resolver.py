@@ -490,6 +490,19 @@ ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA = {
                 "matcher": "path",
                 "state": "retry",
             },
+            # A failed delete returns the endpoint to a settled state; wait_for_resolver_endpoint_status reports it.
+            {
+                "argument": "ResolverEndpoint.Status",
+                "expected": "OPERATIONAL",
+                "matcher": "path",
+                "state": "success",
+            },
+            {
+                "argument": "ResolverEndpoint.Status",
+                "expected": "ACTION_NEEDED",
+                "matcher": "path",
+                "state": "success",
+            },
         ],
     },
 }
@@ -1119,6 +1132,8 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
     if not changes:
         return endpoint
 
+    # Addresses listed before an addition; an address missing from them was added by this run.
+    known_ip_ids = {listed["IpId"] for listed in endpoint.get("IpAddresses") or []}
     for index, (operation, ip_address) in enumerate(changes):
         if operation == "remove":
             normalized_ip_address = boto3_resource_to_ansible_dict(ip_address, transform_tags=False, force_tags=False)
@@ -1153,9 +1168,12 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
 
         if index < len(changes) - 1:
             # An endpoint that still has a failed address stays ACTION_NEEDED until it is removed.
-            wait_for_resolver_endpoint_status(
+            settled = wait_for_resolver_endpoint_status(
                 client, module, resolver_endpoint_id, "settled", changed=True, deadline=deadline
             )
+            # A failed address leaves the endpoint ACTION_NEEDED.
+            if operation == "add" and settled is not None and settled.get("Status") == "ACTION_NEEDED":
+                known_ip_ids = fail_if_added_ip_address_failed(client, module, settled, known_ip_ids)
         elif module.params["wait"]:
             endpoint = wait_for_resolver_endpoint_status(
                 client, module, resolver_endpoint_id, "operational", changed=True, deadline=deadline
@@ -1177,6 +1195,26 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
     return resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=True)
 
 
+def fail_if_added_ip_address_failed(client, module, endpoint, known_ip_ids):
+    """Fail before later changes remove working addresses when an added address failed; return the listed IDs."""
+    endpoint = resolver_endpoint_with_ip_addresses(client, module, endpoint, changed=True)
+    for ip_address in endpoint["IpAddresses"]:
+        status = ip_address_status(ip_address)
+        if ip_address["IpId"] not in known_ip_ids and status in FAILED_IP_ADDRESS_STATUSES:
+            module.fail_json(
+                changed=True,
+                msg=(
+                    f"AWS Route53 Resolver endpoint {module.params['name']} address {ip_address['IpId']} in subnet "
+                    f"{ip_address.get('SubnetId')} is {status}: "
+                    f"{ip_address.get('StatusMessage') or 'no status message was returned'}. "
+                    "The remaining address changes were not made."
+                ),
+                resolver_endpoint=boto3_resource_to_ansible_dict(endpoint, transform_tags=True, force_tags=False),
+            )
+
+    return known_ip_ids | {ip_address["IpId"] for ip_address in endpoint["IpAddresses"]}
+
+
 def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, state, changed=False, deadline=None):
     """Wait for an endpoint status; changed reports whether the endpoint was already modified.
 
@@ -1194,10 +1232,20 @@ def wait_for_resolver_endpoint_status(client, module, resolver_endpoint_id, stat
         ResolverEndpointId=resolver_endpoint_id,
     )
 
+    endpoint = get_resolver_endpoint(client, module, resolver_endpoint_id, changed=changed)
     if state == "deleted":
+        if endpoint is not None:
+            module.fail_json(
+                changed=changed,
+                msg=(
+                    f"AWS Route53 Resolver endpoint {module.params['name']} was not deleted; it is "
+                    f"{endpoint.get('Status')}: {endpoint.get('StatusMessage') or 'no status message was returned'}"
+                ),
+                resolver_endpoint=boto3_resource_to_ansible_dict(endpoint, transform_tags=True, force_tags=False),
+            )
+
         return None
 
-    endpoint = get_resolver_endpoint(client, module, resolver_endpoint_id, changed=changed)
     if state == "operational" and endpoint is not None and endpoint.get("Status") == "ACTION_NEEDED":
         # Report the blocker before later address repairs or comparisons of the write that led here.
         fail_if_resolver_endpoint_needs_action(
