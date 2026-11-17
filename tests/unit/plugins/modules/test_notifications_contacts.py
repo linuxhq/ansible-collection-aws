@@ -13,11 +13,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_rejects,
 )
 
-NAME_MESSAGE = (
-    "name must be 1 to 64 characters and contain at least "
-    "one ASCII letter, ASCII digit, underscore, hyphen, period, or tilde"
-)
-
 
 def test_absent_reports_unchanged_for_contact_disappearing_during_delete():
     client = Mock()
@@ -88,18 +83,6 @@ def test_module_contract():
     assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
 
-def test_list_rejects_invalid_contacts():
-    client = Mock()
-    module = FakeModule({"email_address": "ops@example.com"})
-    with (
-        patch.object(plugin, "query_list", return_value=[{"address": "ops@example.com"}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_contact_by_address(client, module)
-
-    assert raised.value.values["msg"] == "Unable to list AWS Notifications contacts: AWS returned an invalid contact"
-
-
 def test_tag_deltas_remove_and_replace_tags():
     contact = {"arn": "arn:contact", "tags": {"keep": "old", "remove": "yes"}}
     assert plugin.apply_tag_deltas(contact, {"keep": "new"}, ["remove"]) == {
@@ -138,113 +121,15 @@ def test_tag_only_update_does_not_recreate_the_contact():
     client.create_email_contact.assert_not_called()
 
 
-def test_tag_update_rejects_invalid_tag_response():
-    client = Mock()
-    client.list_tags_for_resource.return_value = {"tags": []}
+# User Notifications Contacts, not the module, rejects an address or name it does not accept.
+@pytest.mark.parametrize(
+    ("email_address", "name"),
+    [("ops@example.com", name) for name in ("山田a", "é-", "~", "_", "Z", "7", "山田", " ", "x" * 65)]
+    + [("invalid", "Operations"), ("a@b.c", "Operations")],
+)
+def test_address_and_name_reach_aws(email_address, name):
     module = FakeModule(
-        {
-            "email_address": "ops@example.com",
-            "name": "Operations",
-            "purge_tags": True,
-            "tags": {"keep": "new"},
-        }
-    )
-    contact = {"address": "ops@example.com", "arn": "arn:contact", "name": "Operations"}
-    with (
-        patch.object(plugin, "get_contact_by_address", return_value=contact),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert (
-        raised.value.values["msg"]
-        == "Unable to list tags for AWS Notifications contact arn:contact: AWS returned an invalid response"
-    )
-
-
-def test_create_rejects_invalid_response():
-    client = Mock()
-    client.create_email_contact.return_value = {}
-    module = FakeModule(
-        {
-            "email_address": "ops@example.com",
-            "name": "Operations",
-            "purge_tags": True,
-            "tags": None,
-        }
-    )
-    with (
-        patch.object(plugin, "get_contact_by_address", return_value=None),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert (
-        raised.value.values["msg"]
-        == "Unable to create AWS Notifications contact ops@example.com: AWS returned an invalid response"
-    )
-    assert raised.value.values["changed"] is True
-
-
-def test_create_rejects_post_create_response_without_contact():
-    client = Mock()
-    client.create_email_contact.return_value = {"arn": "arn:new"}
-    client.get_email_contact.return_value = {}
-    module = FakeModule(
-        {
-            "email_address": "ops@example.com",
-            "name": "Operations",
-            "purge_tags": True,
-            "tags": None,
-        }
-    )
-    with (
-        patch.object(plugin, "get_contact_by_address", return_value=None),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert (
-        raised.value.values["msg"]
-        == "Unable to get AWS Notifications contact arn:new: AWS returned an invalid response"
-    )
-    assert raised.value.values["changed"] is True
-
-
-def test_contact_address_and_name_are_validated_before_api_calls():
-    base = {"state": "present", "tags": None}
-    cases = [
-        (
-            dict(base, email_address="invalid", name="Operations"),
-            "email_address must be 6 to 254 characters and contain @",
-        ),
-        (
-            dict(base, email_address="a@b.c", name="Operations"),
-            "email_address must be 6 to 254 characters and contain @",
-        ),
-        (
-            dict(base, email_address="ops@example.com", name=" "),
-            NAME_MESSAGE,
-        ),
-    ]
-    for params, message in cases:
-        assert_module_rejects(plugin, params, message)
-
-
-@pytest.mark.parametrize("name", ["山田", "é", "²", "٣", "山田 é"])
-def test_name_without_an_ascii_word_character_is_rejected_before_api_calls(name):
-    # CreateEmailContact rejects these names with a ValidationException: AWS matches its \w against ASCII only.
-    params = {"email_address": "ops@example.com", "name": name, "purge_tags": True, "state": "present", "tags": None}
-    assert_module_rejects(plugin, params, NAME_MESSAGE)
-
-
-@pytest.mark.parametrize("name", ["山田a", "é-", "~", "_", "Z", "7"])
-def test_name_with_one_ascii_word_character_or_symbol_is_accepted(name):
-    module = FakeModule(
-        {"email_address": "ops@example.com", "name": name, "purge_tags": True, "state": "present", "tags": None}
+        {"email_address": email_address, "name": name, "purge_tags": True, "state": "present", "tags": None}
     )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),

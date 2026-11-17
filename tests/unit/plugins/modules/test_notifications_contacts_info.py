@@ -7,7 +7,6 @@ from ansible_collections.linuxhq.aws.plugins.modules import notifications_contac
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
-    ModuleFail,
     assert_module_contract,
 )
 
@@ -64,61 +63,6 @@ def test_list_requires_pagination_parameters():
         client,
         "NotificationsContacts",
         {"list_email_contacts": ("maxResults", "nextToken")},
-    )
-
-
-def test_get_rejects_missing_contact_key():
-    client = Mock(get_email_contact=Mock(return_value={}))
-    module = FakeModule({"arn": "arn:contact"}, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "Unable to get AWS Notifications contact arn:contact: AWS returned an invalid response"
-    )
-
-
-def test_list_rejects_invalid_contact():
-    client = Mock()
-    module = FakeModule({"arn": None}, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "query_list", return_value=[{"arn": "arn:contact"}]),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "Unable to list AWS Notifications contacts: AWS returned an invalid contact"
-
-
-def test_list_rejects_invalid_tag_response():
-    client = Mock(list_tags_for_resource=Mock(return_value={"tags": []}))
-    module = FakeModule({"arn": None}, client=client)
-    contact = {
-        "address": "a@example.com",
-        "arn": "arn:contact",
-        "creationTime": "2026-01-01T00:00:00Z",
-        "name": "Operations",
-        "status": "active",
-        "updateTime": "2026-01-01T00:00:00Z",
-    }
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "query_list", return_value=[contact]),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "Unable to list tags for AWS Notifications contact arn:contact: AWS returned an invalid response"
     )
 
 

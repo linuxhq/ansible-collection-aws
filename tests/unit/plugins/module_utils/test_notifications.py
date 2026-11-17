@@ -6,10 +6,7 @@ from unittest.mock import Mock
 import pytest
 from botocore.exceptions import ClientError
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import (
-    contact_tags,
-    list_contact_tags,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.notifications import list_contact_tags
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleFail,
@@ -31,21 +28,10 @@ DENIED = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "den
         ({"tags": {"Name": "ops"}}, {"Name": "ops"}),
     ],
 )
-def test_contact_tags_returns_listed_tags(response, expected):
-    assert contact_tags(FakeModule({}), response, "arn:contact") == expected
+def test_list_contact_tags_returns_listed_tags(response, expected):
+    client = Mock(list_tags_for_resource=Mock(return_value=response))
 
-
-@pytest.mark.parametrize(
-    "response",
-    [None, {"tags": None}, {"tags": []}, {"tags": {"Name": 1}}, {"tags": {1: "ops"}}],
-)
-def test_contact_tags_rejects_invalid_responses(response):
-    with pytest.raises(ModuleFail) as raised:
-        contact_tags(FakeModule({}), response, "arn:contact")
-
-    assert raised.value.values == {
-        "msg": "Unable to list tags for AWS Notifications contact arn:contact: AWS returned an invalid response"
-    }
+    assert list_contact_tags(client, FakeModule({}), "arn:contact") == expected
 
 
 @pytest.mark.parametrize("missing_ok", [False, True])
@@ -73,13 +59,3 @@ def test_list_contact_tags_reports_errors(error, missing_ok):
         list_contact_tags(client, FakeModule({}), "arn:contact", missing_ok=missing_ok)
 
     assert raised.value.values == {"msg": "Unable to list tags for AWS Notifications contact arn:contact"}
-
-
-def test_list_contact_tags_rejects_malformed_responses():
-    client = Mock(list_tags_for_resource=Mock(return_value={"tags": {"Name": 1}}))
-    with pytest.raises(ModuleFail) as raised:
-        list_contact_tags(client, FakeModule({}), "arn:contact")
-
-    assert raised.value.values == {
-        "msg": "Unable to list tags for AWS Notifications contact arn:contact: AWS returned an invalid response"
-    }

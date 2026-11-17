@@ -38,8 +38,7 @@ options:
     description:
       - The scope of the web ACLs to gather.
       - Use C(cloudfront) for global web ACLs and C(regional) for regional web ACLs.
-      - V(cloudfront) requires the C(us-east-1) region; any other region fails
-        before AWS is called.
+      - AWS WAFv2 accepts V(cloudfront) only in the C(us-east-1) region.
     choices:
       - cloudfront
       - regional

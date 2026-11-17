@@ -1,0 +1,19 @@
+---
+minor_changes:
+  - notifications_contacts - an O(email_address) or O(name) that User Notifications Contacts does not accept is now
+    rejected by AWS instead of by the module, so check mode no longer reports it as an error.
+  - notifications_hub - an O(region) that is not an AWS region name is now rejected by AWS User Notifications instead
+    of by the module, so check mode no longer reports it as an error, and O(state=absent) reports no change.
+  - service_quota - an O(value) outside C(0) to C(10000000000) is now rejected by Service Quotas instead of by the
+    module, so check mode no longer reports it as an error; a non-finite O(value) still fails before any AWS call.
+  - wafv2_ip_set_info and wafv2_web_acl_info - O(scope=cloudfront) outside the C(us-east-1) region is now rejected by
+    AWS WAFv2 instead of by the module.
+  - wafv2_web_acl_logging - an empty O(resource_arn) now fails as an ARN that is not a WAFv2 web ACL ARN, and a
+    O(log_destination_configs) with other than one entry or with an empty entry is now rejected by AWS WAFv2 instead of
+    by the module, so check mode no longer reports it as an error.
+trivial:
+  - notifications_contacts, notifications_contacts_info, notifications_hub, notifications_hub_info, service_quota,
+    service_quota_info, wafv2_ip_set_info, wafv2_web_acl_info, and wafv2_web_acl_logging - rely on the AWS User
+    Notifications, Service Quotas, and AWS WAFv2 response shapes instead of checking the types and presence of fields
+    they always return.
+...

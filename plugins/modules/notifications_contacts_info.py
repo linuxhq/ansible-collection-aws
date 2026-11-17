@@ -99,19 +99,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def validate_contact(module, contact, operation):
-    valid_strings = ("address", "arn", "name", "status")
-    if (
-        not isinstance(contact, dict)
-        or not all(isinstance(contact.get(key), str) and contact[key] for key in valid_strings)
-        or contact.get("creationTime") is None
-        or contact.get("updateTime") is None
-    ):
-        module.fail_json(msg=f"{operation}: AWS returned an invalid contact")
-
-    return contact
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -134,13 +121,7 @@ def main():
                 msg=f"Unable to get AWS Notifications contact {arn}",
             )
 
-        if not isinstance(response, dict) or "emailContact" not in response:
-            module.fail_json(msg=f"Unable to get AWS Notifications contact {arn}: AWS returned an invalid response")
-
-        contact = response.get("emailContact")
-        if contact is not None:
-            validate_contact(module, contact, f"Unable to get AWS Notifications contact {arn}")
-
+        contact = response["emailContact"]
         email_contacts = [contact] if contact is not None else []
     else:
         require_client_methods(
@@ -153,12 +134,6 @@ def main():
             "emailContacts",
             "Unable to list AWS Notifications contacts",
         )
-
-        if not isinstance(email_contacts, list):
-            module.fail_json(msg="Unable to list AWS Notifications contacts: AWS returned an invalid response")
-
-        for contact in email_contacts:
-            validate_contact(module, contact, "Unable to list AWS Notifications contacts")
 
     if email_contacts:
         require_client_methods(

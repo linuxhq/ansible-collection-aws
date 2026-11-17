@@ -107,6 +107,7 @@ def test_web_acl_identity_is_read_from_the_arn(resource_arn, region, web_acl):
             ),
         ),
         ("arn:web-acl", "us-east-1", "resource_arn must be an AWS WAFv2 web ACL ARN, not arn:web-acl"),
+        ("", "us-east-1", "resource_arn must be an AWS WAFv2 web ACL ARN, not "),
         (
             "arn:aws:wafv2:us-east-1:123456789012:regional/ipset/main/set-1",
             "us-east-1",
@@ -123,24 +124,13 @@ def test_unusable_arn_fails_before_aws(resource_arn, region, message):
     require_client_methods.assert_not_called()
 
 
-@pytest.mark.parametrize("destinations", [[], ["arn:first", "arn:second"]])
-def test_present_requires_exactly_one_logging_destination(destinations):
-    result, _require = run_main(FakeModule(params(log_destination_configs=destinations)))
+# AWS WAFv2, not the module, rejects a destination list it does not accept.
+@pytest.mark.parametrize("destinations", [["arn:first", "arn:second"], [""]])
+def test_destination_lists_reach_aws(destinations):
+    result, require_client_methods = run_main(FakeModule(params(log_destination_configs=destinations)))
 
-    assert "exactly 1" in result.values["msg"]
-
-
-@pytest.mark.parametrize(
-    ("overrides", "message"),
-    [
-        ({"resource_arn": ""}, "resource_arn must not be empty"),
-        ({"log_destination_configs": [""]}, "log_destination_configs must not contain empty entries"),
-    ],
-)
-def test_rejects_empty_arns(overrides, message):
-    result, _require = run_main(FakeModule(params(**overrides)))
-
-    assert result.values["msg"] == message
+    assert result.values == {"web_acl": WEB_ACL}
+    require_client_methods.assert_called_once()
 
 
 def test_check_mode_returns_desired_logging_configuration():
@@ -233,24 +223,6 @@ def test_destination_update_preserves_unmanaged_logging_settings():
         },
         aws_retry=True,
     )
-
-
-def test_put_rejects_malformed_response_and_reports_change():
-    client = Mock()
-    client.put_logging_configuration.return_value = []
-    result = run_present(client, FakeModule(params(log_destination_configs=["arn:new"])), None)
-
-    assert result.values["changed"]
-    assert "did not return the logging configuration" in result.values["msg"]
-
-
-@pytest.mark.parametrize("response", [[], {"LoggingConfiguration": []}])
-def test_get_rejects_malformed_response(response):
-    client = Mock(get_logging_configuration=Mock(return_value=response))
-    with pytest.raises(ModuleFail) as raised:
-        plugin.get_logging_configuration(client, FakeModule(params()))
-
-    assert "unexpected logging configuration response" in raised.value.values["msg"]
 
 
 def test_absent_reports_no_change_when_configuration_disappears_during_delete():
