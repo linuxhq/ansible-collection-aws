@@ -399,14 +399,24 @@ EC2_WAITER_MODEL_DATA = {
 }
 
 # Before a delete, a failed create, modify, or restore is also a final state; such a prefix list can be deleted.
+# A prefix list another actor deletes during the wait ends it too: live, EC2 accepts a delete of a
+# delete-in-progress prefix list, and delete_prefix_list reports one that is gone as unchanged.
 EC2_WAITER_MODEL_DATA = dict(
     EC2_WAITER_MODEL_DATA,
     managed_prefix_list_deletable=dict(
         EC2_WAITER_MODEL_DATA["managed_prefix_list_ready"],
         acceptors=[
+            {
+                "expected": "InvalidPrefixListID.NotFound",
+                "matcher": "error",
+                "state": "success",
+            }
+        ]
+        + [
             (
                 dict(acceptor, state="success")
-                if acceptor["expected"] in ("create-failed", "modify-failed", "restore-failed")
+                if acceptor["expected"]
+                in ("create-failed", "modify-failed", "restore-failed", "delete-in-progress", "delete-complete")
                 else acceptor
             )
             for acceptor in EC2_WAITER_MODEL_DATA["managed_prefix_list_ready"]["acceptors"]

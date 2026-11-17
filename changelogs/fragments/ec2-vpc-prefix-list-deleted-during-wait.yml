@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - with O(state=absent), a prefix list that another actor deletes while the module waits for
+    an in-progress create, modify, or restore to finish no longer fails the run.
+...
