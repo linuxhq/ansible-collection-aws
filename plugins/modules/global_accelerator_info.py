@@ -310,28 +310,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def validate_accelerator(module, accelerator, expected_arn=None):
-    if (
-        not isinstance(accelerator, dict)
-        or not isinstance(accelerator.get("AcceleratorArn"), str)
-        or not accelerator["AcceleratorArn"]
-        or (expected_arn is not None and accelerator["AcceleratorArn"] != expected_arn)
-    ):
-        module.fail_json(msg="Global Accelerator returned an invalid accelerator")
-
-    return accelerator
-
-
-def validate_resource_list(module, resources, resource_name, arn_key):
-    if not isinstance(resources, list) or any(
-        not isinstance(resource, dict) or not isinstance(resource.get(arn_key), str) or not resource[arn_key]
-        for resource in resources
-    ):
-        module.fail_json(msg=f"Global Accelerator returned an invalid {resource_name} list")
-
-    return resources
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={
@@ -367,12 +345,6 @@ def main():
             "Accelerators",
             "Unable to list AWS Global Accelerator accelerators",
         )
-        validate_resource_list(
-            module,
-            accelerators,
-            "accelerator",
-            "AcceleratorArn",
-        )
     else:
         require_client_methods(
             module,
@@ -394,13 +366,10 @@ def main():
             )
 
         if response is not None:
-            accelerators.append(
-                validate_accelerator(
-                    module,
-                    response.get("Accelerator") if isinstance(response, dict) else None,
-                    expected_arn=arn,
-                )
-            )
+            if response["Accelerator"]["AcceleratorArn"] != arn:
+                module.fail_json(msg="Global Accelerator returned an invalid accelerator")
+
+            accelerators.append(response["Accelerator"])
 
     if accelerators:
         require_client_methods(
@@ -444,12 +413,7 @@ def main():
                 msg=f"Unable to list AWS Global Accelerator listeners for {accelerator_arn}",
             )
 
-        listeners = validate_resource_list(
-            module,
-            response.get("Listeners") if isinstance(response, dict) else None,
-            "listener",
-            "ListenerArn",
-        )
+        listeners = response.get("Listeners", [])
 
         available_listeners = []
         for listener in listeners:
@@ -487,12 +451,7 @@ def main():
                     msg=f"Unable to list AWS Global Accelerator endpoint groups for {listener_arn}",
                 )
 
-            listener["EndpointGroups"] = validate_resource_list(
-                module,
-                response.get("EndpointGroups") if isinstance(response, dict) else None,
-                "endpoint group",
-                "EndpointGroupArn",
-            )
+            listener["EndpointGroups"] = response.get("EndpointGroups", [])
             available_listeners.append(listener)
 
         accelerator["Listeners"] = available_listeners
