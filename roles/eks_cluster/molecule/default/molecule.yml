@@ -144,7 +144,6 @@ provisioner:
             delete_instance_profile: true
             managed_policies:
               - AmazonEKSClusterPolicy
-              - AmazonS3FullAccess
 
         kms_key_info_filters:
           alias: molecule-eks

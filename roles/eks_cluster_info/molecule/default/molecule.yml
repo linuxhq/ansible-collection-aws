@@ -107,7 +107,6 @@ provisioner:
             delete_instance_profile: true
             managed_policies:
               - AmazonEKSClusterPolicy
-              - AmazonS3FullAccess
 
 scenario:
   test_sequence:

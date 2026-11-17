@@ -1,13 +1,49 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
+  tasks:
+    - name: Ensure information about created aws elastic container registry repositories is gathered
+      ansible.builtin.include_role:
+        name: ecs_ecr_info
+      vars:
+        ecs_ecr_info_repository_names:
+          "{{ ecs_ecr_list |
+              map(attribute='name') }}"
+
+    - name: Ensure created aws elastic container registry repositories are verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _ecs_ecr_info_dict[_repository.name] is defined
+          - _ecs_ecr_info_dict[_repository.name].image_scanning_configuration.scan_on_push ==
+              _repository.scan_on_push
+          - _ecs_ecr_info_dict[_repository.name].image_tag_mutability ==
+              _repository.image_tag_mutability | upper
+      loop: "{{ ecs_ecr_list }}"
+      loop_control:
+        label: "{{ _repository.name }}"
+        loop_var: _repository
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ecs_ecr_list:
           "{{ ecs_ecr_list |
               map('combine', {'state': 'absent'}) }}"
 
-  roles:
-    - ecs_ecr
+    - name: Ensure aws elastic container registry repositories are absent
+      ansible.builtin.include_role:
+        name: ecs_ecr
+
+    - name: Ensure information about removed aws elastic container registry repositories is gathered
+      ansible.builtin.include_role:
+        name: ecs_ecr_info
+      vars:
+        ecs_ecr_info_repository_names:
+          "{{ ecs_ecr_list |
+              map(attribute='name') }}"
+
+    - name: Ensure removed aws elastic container registry repositories are verified
+      ansible.builtin.assert:
+        that:
+          - _ecs_ecr_info_list == []
 ...

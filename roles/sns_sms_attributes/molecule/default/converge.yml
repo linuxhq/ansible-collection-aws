@@ -1,6 +1,26 @@
 ---
 - name: Converge
   hosts: all
+  pre_tasks:
+    - name: Ensure original aws simple notification service sms attributes are gathered
+      linuxhq.aws.sns_sms_attributes_info:
+        validate_certs: true
+      register: __sns_sms_attributes_original
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    # The second converge keeps the attributes saved before the first one changed them.
+    - name: Ensure original aws simple notification service sms attributes are saved
+      ansible.builtin.copy:
+        content: "{{ __sns_sms_attributes_original.attributes | to_json }}"
+        dest: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-sms-attributes.json"
+        force: false
+        mode: '0600'
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
   roles:
     - sns_sms_attributes
 
