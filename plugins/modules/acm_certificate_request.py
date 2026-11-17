@@ -39,7 +39,6 @@ options:
   domain_name:
     description:
       - Fully qualified domain name for the certificate.
-      - This must not be empty.
     required: true
     type: str
   idempotency_token:
@@ -57,15 +56,13 @@ options:
         ACM listed the returned certificate, in any status, before the request, or when the certificate was created
         more than a few seconds before the request, so the clocks of the managed node and AWS must agree to within a
         few seconds.
-      - ACM requires a token of 1 to 32 ASCII word characters.
+      - ACM accepts a token of 1 to 32 ASCII word characters.
       - This option is only used when requesting a certificate.
     type: str
   subject_alternative_names:
     description:
       - Subject alternative names for the certificate.
-      - Entries must not be empty.
-      - This must contain at most 99 additional entries after normalization because ACM allows at most 100 domain names
-        including O(domain_name).
+      - ACM allows at most 100 domain names per certificate, including O(domain_name).
       - The default ACM quota is 10 domain names per certificate; 100 is the maximum after a quota increase.
     elements: str
     type: list
@@ -101,7 +98,6 @@ certificate_arn:
   type: str
 """
 
-import re
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -133,7 +129,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 # Every ACM CertificateStatus, so a certificate in any status is listed.
 CERTIFICATE_STATUSES = [
@@ -171,9 +166,8 @@ def summary_can_match(summary, desired_names):
     if summary.get("Type", "AMAZON_ISSUED") != "AMAZON_ISSUED" or summary.get("ManagedBy"):
         return False
 
-    names = summary.get("SubjectAlternativeNameSummaries")
-    if summary.get("HasAdditionalSubjectAlternativeNames") is False and isinstance(names, list):
-        return {name.lower() for name in names if isinstance(name, str)} == desired_names
+    if summary.get("HasAdditionalSubjectAlternativeNames") is False and "SubjectAlternativeNameSummaries" in summary:
+        return {name.lower() for name in summary["SubjectAlternativeNameSummaries"]} == desired_names
 
     return True
 
@@ -192,24 +186,10 @@ def find_matching_certificate(module, client, normalized_domain_name, desired_na
 
     candidate_summaries = []
     for summary in summaries:
-        if not isinstance(summary, dict):
-            module.fail_json(msg="AWS Certificate Manager returned an invalid certificate summary")
-
-        summary_domain_name = summary.get("DomainName")
         # The key-type filter also lists certificates without a domain name, such as
         # imported ones with no common name or DNS name; they cannot match.
-        if summary_domain_name is None:
+        if "DomainName" not in summary or summary["DomainName"].lower() != normalized_domain_name:
             continue
-
-        if not isinstance(summary_domain_name, str):
-            module.fail_json(msg="AWS Certificate Manager returned an invalid certificate summary")
-
-        if summary_domain_name.lower() != normalized_domain_name:
-            continue
-
-        certificate_arn = summary.get("CertificateArn")
-        if not isinstance(certificate_arn, str) or not certificate_arn:
-            module.fail_json(msg="AWS Certificate Manager returned an invalid matching certificate summary")
 
         # Only describe certificates the summary cannot rule out; the details are rechecked below.
         if summary_can_match(summary, desired_names):
@@ -240,12 +220,7 @@ def find_matching_certificate(module, client, normalized_domain_name, desired_na
                 msg=f"Unable to describe AWS Certificate Manager certificate {certificate_arn}",
             )
 
-        certificate = response.get("Certificate")
-        if not isinstance(certificate, dict) or not certificate.get("Status"):
-            module.fail_json(
-                msg=f"AWS Certificate Manager did not return a status for certificate {certificate_arn}",
-            )
-
+        certificate = response["Certificate"]
         if certificate["Status"] not in {"PENDING_VALIDATION", "ISSUED"}:
             continue
 
@@ -262,12 +237,7 @@ def find_matching_certificate(module, client, normalized_domain_name, desired_na
         if certificate_names != desired_names:
             continue
 
-        created_at = certificate.get("CreatedAt")
-        if created_at is None:
-            module.fail_json(
-                msg=f"AWS Certificate Manager did not return a creation time for certificate {certificate_arn}",
-            )
-
+        created_at = certificate["CreatedAt"]
         if matched is None or created_at > matched["CreatedAt"]:
             matched = {
                 "CertificateArn": certificate_arn,
@@ -290,11 +260,9 @@ def list_certificate_arns(module, client, normalized_domain_name):
     )
 
     return {
-        summary.get("CertificateArn")
+        summary["CertificateArn"]
         for summary in summaries
-        if isinstance(summary, dict)
-        and isinstance(summary.get("DomainName"), str)
-        and summary["DomainName"].lower() == normalized_domain_name
+        if "DomainName" in summary and summary["DomainName"].lower() == normalized_domain_name
     }
 
 
@@ -327,14 +295,7 @@ def request_certificate(module, client, domain_name, idempotency_token, subject_
             msg=f"Unable to request AWS Certificate Manager certificate {domain_name}",
         )
 
-    certificate_arn = response.get("CertificateArn")
-    if not certificate_arn:
-        module.fail_json(
-            changed=True,
-            msg=f"AWS Certificate Manager did not return an ARN for certificate {domain_name}",
-        )
-
-    return certificate_arn
+    return response["CertificateArn"]
 
 
 def describe_requested_certificate(module, client, certificate_arn):
@@ -362,19 +323,10 @@ def describe_requested_certificate(module, client, certificate_arn):
                 certificate_arn=certificate_arn,
             )
 
-        certificate = response.get("Certificate") if isinstance(response, dict) else None
-        if not isinstance(certificate, dict) or not certificate.get("Status"):
-            module.fail_json(
-                changed=True,
-                msg=f"AWS Certificate Manager did not return a status for certificate {certificate_arn}",
-                certificate_arn=certificate_arn,
-            )
-
-        options = certificate.get("DomainValidationOptions")
+        certificate = response["Certificate"]
+        options = certificate.get("DomainValidationOptions", [])
         if certificate["Status"] != "PENDING_VALIDATION" or (
-            isinstance(options, list)
-            and options
-            and all(isinstance(option, dict) and option.get("ResourceRecord") for option in options)
+            options and all("ResourceRecord" in option for option in options)
         ):
             break
 
@@ -409,15 +361,8 @@ def require_requested_certificate(
             certificate_arn=certificate_arn,
         )
 
-    created_at = certificate.get("CreatedAt")
-    if not isinstance(created_at, datetime):
-        module.fail_json(
-            changed=True,
-            msg=f"AWS Certificate Manager did not return a creation time for certificate {certificate_arn}",
-            certificate_arn=certificate_arn,
-        )
-
-    names = {name.lower() for name in certificate.get("SubjectAlternativeNames") or [] if isinstance(name, str)}
+    created_at = certificate["CreatedAt"]
+    names = {name.lower() for name in certificate.get("SubjectAlternativeNames", [])}
     if status in ("PENDING_VALIDATION", "ISSUED") and names == desired_names:
         return
 
@@ -456,7 +401,7 @@ def wait_for_certificate_listing(module, client, certificate_arn):
             f"Unable to list AWS Certificate Manager certificates after requesting certificate {certificate_arn}",
             changed=True,
         )
-        if any(isinstance(summary, dict) and summary.get("CertificateArn") == certificate_arn for summary in summaries):
+        if any(summary["CertificateArn"] == certificate_arn for summary in summaries):
             return
 
     module.warn(
@@ -484,15 +429,8 @@ def ensure_certificate_tags(module, client, certificate_arn, tags, purge_tags):
             msg=f"Unable to list tags for AWS Certificate Manager certificate {certificate_arn}",
         )
 
-    current_tags = response.get("Tags", []) if isinstance(response, dict) else None
-    if not isinstance(current_tags, list) or any(
-        not isinstance(tag, dict) or not isinstance(tag.get("Key"), str) or not isinstance(tag.get("Value", ""), str)
-        for tag in current_tags
-    ):
-        module.fail_json(msg=f"AWS Certificate Manager returned invalid tags for certificate {certificate_arn}")
-
     # ACM tags may omit Value, which is equivalent to an empty value.
-    current_tags = {tag["Key"]: tag.get("Value", "") for tag in current_tags}
+    current_tags = {tag["Key"]: tag.get("Value", "") for tag in response.get("Tags", [])}
 
     tags_to_set, tag_keys_to_unset = compare_aws_tags(
         current_tags,
@@ -575,16 +513,6 @@ def main():
         )
     )
     tags = module.params["tags"]
-
-    # ACM rejects blank names, which check mode would otherwise predict as a new certificate request.
-    require_non_blank(module, domain_name, "domain_name")
-    require_non_blank(module, subject_alternative_names, "subject_alternative_names")
-
-    if idempotency_token is not None and not re.fullmatch(r"\w{1,32}", idempotency_token, flags=re.ASCII):
-        module.fail_json(msg="ACM certificate request idempotency_token must be 1 to 32 ASCII word characters")
-
-    if len(subject_alternative_names) > 99:
-        module.fail_json(msg="subject_alternative_names must contain at most 99 additional entries")
 
     require_valid_tags(module, tags, 50, restricted_characters=True)
 

@@ -142,80 +142,6 @@ def test_module_contract():
     assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
 
-def test_rejects_invalid_idempotency_token_before_api_calls():
-    module = FakeModule(
-        {
-            "domain_name": "example.com",
-            "idempotency_token": "contains-hyphens",
-            "purge_tags": True,
-            "subject_alternative_names": [],
-            "tags": None,
-        }
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "idempotency_token" in raised.value.values["msg"]
-
-
-def test_rejects_too_many_subject_alternative_names():
-    module = FakeModule(
-        {
-            "domain_name": "example.com",
-            "idempotency_token": None,
-            "purge_tags": True,
-            "subject_alternative_names": [f"name-{index}.example.com" for index in range(100)],
-            "tags": None,
-        }
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "at most 99" in raised.value.values["msg"]
-
-
-@pytest.mark.parametrize("check_mode", [True, False])
-@pytest.mark.parametrize(
-    ("domain_name", "subject_alternative_names", "message"),
-    [
-        ("", None, "domain_name must not be empty"),
-        (" ", None, "domain_name must not be empty"),
-        ("example.com", ["www.example.com", ""], "subject_alternative_names must not contain empty entries"),
-        ("example.com", [" "], "subject_alternative_names must not contain empty entries"),
-    ],
-)
-def test_rejects_blank_names_before_api_calls(check_mode, domain_name, subject_alternative_names, message):
-    # A blank name never matches a certificate, so check mode would predict a request that ACM rejects.
-    module = FakeModule(
-        {
-            "domain_name": domain_name,
-            "idempotency_token": None,
-            "purge_tags": True,
-            "subject_alternative_names": subject_alternative_names,
-            "tags": None,
-        },
-        check_mode=check_mode,
-    )
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[]) as query,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values == {"msg": message}
-    module.client.assert_not_called()
-    query.assert_not_called()
-
-
 def test_reuses_the_newest_matching_dns_certificate():
     client = Mock()
     client.describe_certificate.side_effect = [
@@ -312,131 +238,6 @@ def test_replaces_candidate_that_is_no_longer_pending_or_issued():
 
     assert raised.value.values["changed"]
     assert raised.value.values["certificate_arn"] == "arn:new"
-
-
-def test_rejects_candidate_with_missing_described_status():
-    client = Mock()
-    client.describe_certificate.return_value = {"Certificate": {}}
-    module = FakeModule(
-        {
-            "domain_name": "example.com",
-            "idempotency_token": None,
-            "purge_tags": True,
-            "subject_alternative_names": [],
-            "tags": None,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(
-            plugin,
-            "query_list",
-            return_value=[
-                {
-                    "CertificateArn": "arn:missing-status",
-                    "DomainName": "example.com",
-                }
-            ],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "did not return a status" in raised.value.values["msg"]
-    client.request_certificate.assert_not_called()
-
-
-def test_rejects_matching_certificate_summary_without_arn():
-    client = Mock()
-    module = FakeModule(
-        {
-            "domain_name": "example.com",
-            "idempotency_token": None,
-            "purge_tags": True,
-            "subject_alternative_names": [],
-            "tags": None,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"CertificateArn": 7, "DomainName": "example.com"}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "invalid matching certificate summary" in raised.value.values["msg"]
-    client.request_certificate.assert_not_called()
-
-
-@pytest.mark.parametrize("malformed", [None, {"DomainName": 7}], ids=["not-a-dict", "non-string-domain"])
-def test_rejects_malformed_certificate_summaries(malformed):
-    client = Mock()
-    client.request_certificate.return_value = {"CertificateArn": "arn:new"}
-    module = FakeModule(
-        {
-            "domain_name": "example.com",
-            "idempotency_token": None,
-            "purge_tags": True,
-            "subject_alternative_names": [],
-            "tags": None,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(
-            plugin,
-            "query_list",
-            return_value=[{"CertificateArn": "arn:no-domain"}, malformed, {"DomainName": "other.example.com"}],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "invalid certificate summary" in raised.value.values["msg"]
-    client.request_certificate.assert_not_called()
-    client.describe_certificate.assert_not_called()
-
-
-def test_rejects_matching_certificate_without_creation_time():
-    client = Mock()
-    client.describe_certificate.return_value = {
-        "Certificate": {
-            "DomainValidationOptions": [{"ValidationMethod": "DNS"}],
-            "Status": "ISSUED",
-            "SubjectAlternativeNames": ["example.com"],
-            "Type": "AMAZON_ISSUED",
-        }
-    }
-    module = FakeModule(
-        {
-            "domain_name": "example.com",
-            "idempotency_token": None,
-            "purge_tags": True,
-            "subject_alternative_names": [],
-            "tags": None,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(
-            plugin,
-            "query_list",
-            return_value=[{"CertificateArn": "arn:missing-created-at", "DomainName": "example.com"}],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "did not return a creation time" in raised.value.values["msg"]
-    client.request_certificate.assert_not_called()
 
 
 REQUESTED_NAMES = ["example.com", "www.example.com", "api.example.com"]
@@ -676,7 +477,6 @@ def test_list_certificate_arns_matches_the_domain_name_in_any_status():
         {"CertificateArn": "arn:failed", "DomainName": "Example.com", "Status": "FAILED"},
         {"CertificateArn": "arn:other", "DomainName": "other.example.com"},
         {"CertificateArn": "arn:no-domain"},
-        "invalid",
     ]
     with patch.object(plugin, "query_list", return_value=summaries) as query:
         assert plugin.list_certificate_arns(FakeModule({}), Mock(), "example.com") == {"arn:failed"}
@@ -684,20 +484,6 @@ def test_list_certificate_arns_matches_the_domain_name_in_any_status():
     assert query.call_args.kwargs == {
         "CertificateStatuses": plugin.CERTIFICATE_STATUSES,
         "Includes": {"keyTypes": plugin.CERTIFICATE_KEY_TYPES},
-    }
-
-
-@pytest.mark.parametrize("created_at", [None, "2026-11-13T00:00:00Z"])
-def test_supplied_token_certificate_without_a_creation_time_fails_as_changed(created_at):
-    result, _query = run_token_request(
-        {"CreatedAt": created_at, "Status": "FAILED", "SubjectAlternativeNames": ["example.com", "www.example.com"]}
-    )
-
-    assert isinstance(result, ModuleFail)
-    assert result.values == {
-        "changed": True,
-        "msg": "AWS Certificate Manager did not return a creation time for certificate arn:replayed",
-        "certificate_arn": "arn:replayed",
     }
 
 
@@ -899,20 +685,6 @@ def test_key_only_tags_are_updated_and_purged():
     )
 
 
-@pytest.mark.parametrize(
-    "response",
-    [None, {"Tags": None}, {"Tags": ["Name"]}, {"Tags": [{"Value": "web"}]}, {"Tags": [{"Key": "Name", "Value": 1}]}],
-)
-def test_rejects_invalid_certificate_tags(response):
-    client = Mock()
-    client.list_tags_for_certificate.return_value = response
-
-    result = run_tagged_request(client, {"Name": "web"})
-
-    assert result["msg"] == "AWS Certificate Manager returned invalid tags for certificate arn:match"
-    client.add_tags_to_certificate.assert_not_called()
-
-
 @pytest.mark.parametrize(("current_tags", "changed"), [([{"Key": "Old", "Value": "x"}], True), ([], False)])
 def test_tag_failure_reports_whether_tags_were_removed(current_tags, changed):
     client = Mock()
@@ -1016,29 +788,6 @@ def test_merged_tags_under_the_limit_are_added():
     client.add_tags_to_certificate.assert_called_once_with(
         CertificateArn="arn:match", Tags=[{"Key": "New", "Value": "y"}], aws_retry=True
     )
-
-
-def test_request_without_an_arn_reports_changed():
-    client = Mock(request_certificate=Mock(return_value={}))
-    module = FakeModule(
-        {
-            "domain_name": "example.com",
-            "idempotency_token": None,
-            "purge_tags": True,
-            "subject_alternative_names": None,
-            "tags": None,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["changed"] is True
 
 
 def test_wait_for_certificate_listing_returns_once_listed(no_sleep):
