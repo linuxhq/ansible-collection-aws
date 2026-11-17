@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - eks_cluster - with O(state=absent), a creating or updating cluster that another actor starts deleting while the
+    module waits for it to become C(ACTIVE) is now reported unchanged and, with O(wait=true), waited on until deleted,
+    instead of failing.
+...

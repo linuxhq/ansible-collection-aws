@@ -2,7 +2,7 @@ import copy
 from unittest.mock import ANY, Mock, call, patch
 
 import pytest
-from botocore.exceptions import WaiterError
+from botocore.exceptions import ClientError, WaiterError
 from botocore.session import Session
 from botocore.stub import Stubber
 
@@ -1939,25 +1939,68 @@ def test_tagging_uses_the_described_cluster_arn():
     assert raised.value.values["changed"] is True
 
 
-def test_absent_still_fails_when_a_waited_cluster_is_not_failed():
+def test_absent_still_fails_when_a_waited_cluster_is_still_in_transition():
     client = eks_client()
     module = FakeModule({"name": "example", "wait": False, "wait_delay": 15, "wait_timeout": 1200})
     cluster = {"name": "example", "arn": "arn:example"}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=dict(cluster, status="CREATING")),
+        patch.object(client, "get_waiter") as get_waiter,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        get_waiter.return_value.wait.side_effect = WaiterError("ClusterActive", "Max attempts exceeded", {})
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["msg"] == "Unable to wait for AWS EKS cluster example to become active"
+    assert raised.value.values["changed"] is False
+
+
+@pytest.mark.parametrize(
+    ("wait", "expected"),
+    [
+        (True, {}),
+        (False, {"name": "example", "arn": "arn:example", "status": "DELETING"}),
+    ],
+)
+def test_absent_reports_unchanged_when_a_waited_cluster_starts_deleting(wait, expected):
+    client = eks_client()
+    client.delete_cluster = Mock()
+    module = FakeModule({"name": "example", "wait": wait, "wait_delay": 15, "wait_timeout": 1200})
+    cluster = {"name": "example", "arn": "arn:example"}
+    waits = []
+    real_wait_for_cluster = plugin.wait_for_cluster
+
+    def record_wait(client, module, waiter_name, **kwargs):
+        waits.append(waiter_name)
+        if waiter_name == "cluster_active":
+            return real_wait_for_cluster(client, module, waiter_name, **kwargs)
+
     with (
         Stubber(client) as stubber,
         patch.object(
             plugin,
             "describe_cluster",
-            side_effect=[dict(cluster, status="CREATING"), dict(cluster, status="DELETING")],
+            side_effect=[
+                dict(cluster, status="CREATING"),
+                dict(cluster, status="DELETING"),
+                dict(cluster, status="DELETING"),
+            ],
         ),
-        pytest.raises(ModuleFail) as raised,
+        patch.object(plugin, "wait_for_cluster", side_effect=record_wait),
+        patch.object(plugin, "wait_for_cluster_updates") as wait_for_updates,
+        pytest.raises(ModuleExit) as raised,
     ):
+        # Another actor deletes the cluster, so the native waiter for ACTIVE stops on DELETING.
         stubber.add_response("describe_cluster", {"cluster": dict(cluster, status="DELETING")}, {"name": "example"})
         plugin.ensure_absent(client, module)
 
     stubber.assert_no_pending_responses()
-    assert raised.value.values["msg"] == "Unable to wait for AWS EKS cluster example to become active"
+    wait_for_updates.assert_not_called()
+    client.delete_cluster.assert_not_called()
+    assert waits == (["cluster_active", "cluster_deleted"] if wait else ["cluster_active"])
     assert raised.value.values["changed"] is False
+    assert raised.value.values["cluster"] == expected
+    assert raised.value.values["state"] == "absent"
 
 
 def test_check_mode_create_omits_unreturned_bootstrap_setting():
@@ -3766,6 +3809,101 @@ def test_remote_networks_eks_rejects_for_the_cluster_fail_before_any_update(
         plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
 
     assert raised.value.values == {"msg": f"remote_network_config.{message}"}
+    assert client.mock_calls == []
+
+
+VPC_CIDR_BLOCKS = {
+    "Vpcs": [
+        {
+            "VpcId": "vpc-1",
+            "CidrBlockAssociationSet": [
+                {"CidrBlock": "10.250.0.0/16", "CidrBlockState": {"State": "associated"}},
+                {"CidrBlock": "10.251.0.0/16", "CidrBlockState": {"State": "disassociated"}},
+            ],
+        }
+    ]
+}
+
+
+def vpc_cluster(remote_network_config=None):
+    current = dict(STANDARD_CLUSTER, accessConfig={"authenticationMode": "API"})
+    current["resourcesVpcConfig"] = dict(current["resourcesVpcConfig"], vpcId="vpc-1")
+    if remote_network_config:
+        current["remoteNetworkConfig"] = remote_network_config
+
+    return current
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "current_config, remote_network_config, message",
+    [
+        # Live: "Invalid remote node network: CIDR 10.250.1.0/24 overlaps with VPC CIDR 10.250.0.0/16".
+        (
+            None,
+            {"remote_node_networks": [{"cidrs": ["10.250.1.0/24"]}], "remote_pod_networks": None},
+            "remote_node_networks[].cidrs must not overlap the cluster's VPC CIDR block 10.250.0.0/16: 10.250.1.0/24",
+        ),
+        (
+            {"remoteNodeNetworks": NODE_NETWORKS},
+            {"remote_node_networks": None, "remote_pod_networks": [{"cidrs": ["10.250.0.0/20"]}]},
+            "remote_pod_networks[].cidrs must not overlap the cluster's VPC CIDR block 10.250.0.0/16: 10.250.0.0/20",
+        ),
+    ],
+    ids=["nodes", "pods"],
+)
+def test_remote_networks_overlapping_the_vpc_fail_before_any_update(
+    current_config, remote_network_config, message, check_mode
+):
+    # The deletion protection update would otherwise be applied first.
+    params = eks_params(deletion_protection=True, remote_network_config=remote_network_config)
+    client = Mock()
+    ec2 = Mock()
+    ec2.describe_vpcs.return_value = VPC_CIDR_BLOCKS
+    module = FakeModule(params, check_mode=check_mode, client=ec2)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=vpc_cluster(current_config)),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values == {"msg": f"remote_network_config.{message}"}
+    ec2.describe_vpcs.assert_called_once_with(VpcIds=["vpc-1"], aws_retry=True)
+    assert client.mock_calls == []
+
+
+def test_remote_networks_outside_the_associated_vpc_cidr_blocks_are_updated():
+    # 10.251.0.0/16 is no longer associated with the VPC, so EKS accepts networks within it.
+    params = eks_params(
+        remote_network_config={"remote_node_networks": [{"cidrs": ["10.251.0.0/24"]}], "remote_pod_networks": None},
+        wait=False,
+    )
+    ec2 = Mock()
+    ec2.describe_vpcs.return_value = VPC_CIDR_BLOCKS
+    client, result = run_present(FakeModule(params, client=ec2), [vpc_cluster(), vpc_cluster()])
+
+    client.update_cluster_config.assert_called_once()
+    assert client.update_cluster_config.call_args.kwargs["remoteNetworkConfig"] == {
+        "remoteNodeNetworks": [{"cidrs": ["10.251.0.0/24"]}]
+    }
+    assert result["changed"] is True
+
+
+def test_remote_network_vpc_lookup_failure_names_the_vpc():
+    params = eks_params(
+        remote_network_config={"remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}], "remote_pod_networks": None}
+    )
+    client = Mock()
+    ec2 = Mock()
+    ec2.describe_vpcs.side_effect = ClientError({"Error": {"Code": "UnauthorizedOperation"}}, "DescribeVpcs")
+    module = FakeModule(params, client=ec2)
+    with (
+        patch.object(plugin, "describe_cluster", return_value=vpc_cluster()),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["msg"] == "Unable to describe VPC vpc-1 of EKS cluster example"
     assert client.mock_calls == []
 
 

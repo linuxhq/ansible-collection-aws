@@ -230,6 +230,9 @@ options:
               - Each CIDR block must be an IPv4 block within V(10.0.0.0/8), V(172.16.0.0/12), V(192.168.0.0/16), or
                 V(100.64.0.0/10), and must not overlap another remote node or pod network block or the cluster's
                 service CIDR block. The module fails before any change otherwise.
+              - When updating the remote networks of an existing cluster, each CIDR block must not overlap an
+                associated IPv4 CIDR block of the cluster's VPC. The module reads the VPC with C(ec2:DescribeVpcs) and
+                fails before any change otherwise.
               - This must contain at most 15 distinct CIDR blocks.
             elements: str
             required: true
@@ -250,6 +253,9 @@ options:
               - Each CIDR block must be an IPv4 block within V(10.0.0.0/8), V(172.16.0.0/12), V(192.168.0.0/16), or
                 V(100.64.0.0/10), and must not overlap another remote node or pod network block or the cluster's
                 service CIDR block. The module fails before any change otherwise.
+              - When updating the remote networks of an existing cluster, each CIDR block must not overlap an
+                associated IPv4 CIDR block of the cluster's VPC. The module reads the VPC with C(ec2:DescribeVpcs) and
+                fails before any change otherwise.
               - This must contain at most 15 distinct CIDR blocks.
             elements: str
             required: true
@@ -1120,7 +1126,7 @@ def canonicalize_public_access_cidrs(module):
         module.fail_json(msg=f"resources_vpc_config.public_access_cidrs must contain valid CIDR blocks: {e}")
 
 
-def require_valid_remote_networks(module, remote_networks, service_cidr=None):
+def require_valid_remote_networks(module, remote_networks, service_cidr=None, vpc_cidrs=()):
     """Fail on remote node or pod CIDR blocks that EKS rejects; remote_networks maps each option to its blocks."""
     # Live: EKS rejects these, but check mode would predict success, and on an update they reach EKS after other
     # updates.
@@ -1155,7 +1161,32 @@ def require_valid_remote_networks(module, remote_networks, service_cidr=None):
                     )
                 )
 
+            for vpc_cidr in vpc_cidrs:
+                if block.overlaps(vpc_cidr):
+                    module.fail_json(
+                        msg=(
+                            f"remote_network_config.{network}[].cidrs must not overlap the cluster's VPC CIDR block "
+                            f"{vpc_cidr}: {block}"
+                        )
+                    )
+
             checked.append((network, block))
+
+
+def describe_vpc_cidr_blocks(module, vpc_id):
+    """Return the associated IPv4 CIDR blocks of the VPC as networks."""
+    ec2 = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
+    try:
+        response = ec2.describe_vpcs(VpcIds=[vpc_id], aws_retry=True)
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to describe VPC {vpc_id} of EKS cluster {module.params['name']}")
+
+    return [
+        ipaddress.ip_network(association["CidrBlock"])
+        for vpc in response["Vpcs"]
+        for association in vpc.get("CidrBlockAssociationSet", [])
+        if association["CidrBlockState"]["State"] == "associated"
+    ]
 
 
 def ip_network_or_none(cidr):
@@ -1298,7 +1329,7 @@ def wait_for_cluster_error(module, waiter_name):
 
 
 def wait_for_cluster(client, module, waiter_name, changed=False, accept_failed=False, deadline=None):
-    """Wait for the cluster; accept_failed ends the wait without failing when the cluster is FAILED or gone.
+    """Wait for the cluster; accept_failed ends the wait without failing when the cluster is FAILED, DELETING, or gone.
 
     deadline limits the wait to what is left of the run's shared wait_timeout budget.
     """
@@ -1316,7 +1347,7 @@ def wait_for_cluster(client, module, waiter_name, changed=False, accept_failed=F
     except (BotoCoreError, ClientError) as e:
         if accept_failed:
             cluster = describe_cluster(client, module, changed=changed)
-            if cluster is None or cluster["status"] == "FAILED":
+            if cluster is None or cluster["status"] in ("DELETING", "FAILED"):
                 return
 
         module.fail_json_aws(e, changed=changed, msg=error_msg)
@@ -1843,9 +1874,10 @@ def ensure_present(client, module, deadline=None):
         if (current.get("kubernetesNetworkConfig") or {}).get("ipFamily") == "ipv6":
             module.fail_json(msg="remote_network_config requires an IPv4 cluster")
 
-        # EKS checks the networks the cluster would have, including those of an omitted list, against each other and
-        # the cluster's service CIDR block.
+        # EKS checks the networks the cluster would have, including those of an omitted list, against each other, the
+        # cluster's service CIDR block, and its VPC CIDR blocks (live: "overlaps with VPC CIDR").
         current_remote_network_config = current.get("remoteNetworkConfig") or {}
+        vpc_id = (current.get("resourcesVpcConfig") or {}).get("vpcId")
         require_valid_remote_networks(
             module,
             {
@@ -1860,6 +1892,7 @@ def ensure_present(client, module, deadline=None):
                 )
             },
             ip_network_or_none(current_network_config.get("serviceIpv4Cidr")),
+            describe_vpc_cidr_blocks(module, vpc_id) if vpc_id else (),
         )
 
     if auto_mode_changed:
@@ -2072,6 +2105,17 @@ def ensure_present(client, module, deadline=None):
     exit_result(module, resource_changed, current, "present")
 
 
+def exit_already_deleting(client, module, current, deadline=None):
+    """Exit unchanged for a cluster another actor is deleting, waiting for the delete when wait is set."""
+    if not module.params["wait"]:
+        exit_result(module, False, current, "absent")
+
+    if not module.check_mode:
+        wait_for_cluster(client, module, "cluster_deleted", deadline=deadline)
+
+    exit_result(module, False, {}, "absent")
+
+
 def ensure_absent(client, module):
     # Every wait in one run shares wait_timeout.
     deadline = wait_deadline(module)
@@ -2082,13 +2126,7 @@ def ensure_absent(client, module):
         exit_result(module, False, {}, "absent")
 
     if current.get("status") == "DELETING":
-        if not module.params["wait"]:
-            exit_result(module, False, current, "absent")
-
-        if not module.check_mode:
-            wait_for_cluster(client, module, "cluster_deleted", deadline=deadline)
-
-        exit_result(module, False, {}, "absent")
+        exit_already_deleting(client, module, current, deadline=deadline)
 
     if current.get("deletionProtection"):
         module.fail_json(
@@ -2103,10 +2141,13 @@ def ensure_absent(client, module):
     if current.get("status") in CLUSTER_TRANSITION_STATUSES:
         # A cluster that fails to create or update can still be deleted.
         wait_for_cluster(client, module, "cluster_active", accept_failed=True, deadline=deadline)
-        # The cluster can disappear during the wait, and ListUpdates rejects a missing cluster.
+        # The cluster can disappear or start deleting during the wait, and ListUpdates rejects a missing cluster.
         current = describe_cluster(client, module)
         if current is None:
             exit_result(module, False, {}, "absent")
+
+        if current["status"] == "DELETING":
+            exit_already_deleting(client, module, current, deadline=deadline)
 
     if not wait_for_cluster_updates(client, module, deadline=deadline):
         exit_result(module, False, {}, "absent")

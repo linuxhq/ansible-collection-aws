@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - eks_cluster - when updating the remote networks of an existing cluster, a remote node or pod CIDR block that
+    overlaps an associated CIDR block of the cluster's VPC now fails before any change, including in check mode,
+    instead of being rejected by EKS after earlier configuration updates were applied. This reads the VPC with
+    C(ec2:DescribeVpcs).
+...
