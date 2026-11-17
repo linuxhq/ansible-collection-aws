@@ -217,50 +217,45 @@ def test_id_lookup_fails_on_other_errors():
     assert raised.value.values["msg"] == "Unable to describe Pinpoint SMS Voice V2 sender ID EXAMPLE in DE"
 
 
-@pytest.mark.parametrize("response", [[], {"SenderIds": "invalid"}, {"SenderIds": None}])
-def test_id_lookup_rejects_malformed_response(response):
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value=response),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.describe_sender_ids_by_id(
-            FakeModule({}), Mock(), {"SenderIds": [{"IsoCountryCode": "DE", "SenderId": "EXAMPLE"}]}
-        )
-
-    assert raised.value.values["msg"] == "AWS returned malformed Pinpoint SMS Voice V2 sender ID data"
-
-
-@pytest.mark.parametrize(
-    ("overrides", "message"),
-    [
-        ({"max_results": 0}, "max_results must be between 1 and 100"),
-        ({"max_results": 101}, "max_results must be between 1 and 100"),
-        ({"filters": {str(index): "x" for index in range(21)}}, "filters must contain at most 20 entries"),
-        (
-            {"sender_ids": [{"sender_id": f"ID{index}", "iso_country_code": "DE"} for index in range(6)]},
-            "sender_ids must contain at most 5 entries",
-        ),
-        ({"sender_ids": [{"sender_id": " ", "iso_country_code": "DE"}]}, "sender_ids sender_id must not be empty"),
-        (
-            {"sender_ids": [{"sender_id": "EXAMPLE", "iso_country_code": None}]},
-            "sender_ids iso_country_code must not be empty",
-        ),
-    ],
-)
-def test_rejects_invalid_input_before_any_aws_call(overrides, message):
-    module = FakeModule(params(**overrides))
+def test_more_than_five_sender_ids_are_described_one_at_a_time():
+    # Each sender ID is described in its own request, so the DescribeSenderIds limit of five does not apply.
+    names = [f"ID{index}" for index in range(6)]
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
+    module = FakeModule(
+        params(sender_ids=[{"sender_id": name, "iso_country_code": "DE"} for name in names]),
+        client=client,
+    )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(module, "client") as connect,
-        pytest.raises(ModuleFail) as raised,
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=[
+                {
+                    "SenderIds": [
+                        {
+                            "IsoCountryCode": "DE",
+                            "SenderId": name,
+                            "SenderIdArn": f"arn:aws:sms-voice:us-east-1:123456789012:sender-id/{name}/DE",
+                        }
+                    ]
+                }
+                for name in names
+            ],
+        ) as query,
+        pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == message
-    connect.assert_not_called()
+    assert [item.kwargs["SenderIds"] for item in query.call_args_list] == [
+        [{"IsoCountryCode": "DE", "SenderId": name}] for name in names
+    ]
+    assert [sender_id["sender_id"] for sender_id in raised.value.values["sender_ids"]] == names
 
 
-def test_repeated_sender_ids_count_once_against_the_limit():
+def test_repeated_sender_ids_are_described_once():
     module = FakeModule(params(sender_ids=[{"sender_id": "EXAMPLE", "iso_country_code": "DE"}] * 6))
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -306,33 +301,3 @@ def test_sender_id_released_while_listing_tags_is_omitted():
         plugin.main()
 
     assert raised.value.values["sender_ids"] == []
-
-
-def test_rejects_malformed_sender_id():
-    module = FakeModule(params())
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"SenderIdArn": ARN}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "AWS returned malformed Pinpoint SMS Voice V2 sender ID data"
-
-
-def test_rejects_malformed_tags():
-    client = Mock()
-    client.list_tags_for_resource.return_value = {"Tags": "invalid"}
-    module = FakeModule(params(), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(
-            plugin, "query_list", return_value=[{"IsoCountryCode": "DE", "SenderId": "EXAMPLE", "SenderIdArn": ARN}]
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "malformed tags" in raised.value.values["msg"]

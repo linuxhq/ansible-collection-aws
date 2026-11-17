@@ -20,13 +20,11 @@ options:
       - A dict of filters to apply when describing phone numbers.
       - Filter names and values are passed to the Pinpoint SMS Voice V2
         C(DescribePhoneNumbers) API.
-      - This must contain at most 20 filters.
       - Boolean and numeric values, including list entries, are converted to strings.
     type: dict
   max_results:
     description:
       - The maximum number of results returned by each API call.
-      - This must be between 1 and 100.
       - The module follows pagination and returns all matching phone numbers.
     type: int
   owner:
@@ -45,7 +43,6 @@ options:
       - An ARN is required for a phone number shared from another account.
       - A phone number given as both an ID and an ARN is described once, by its ARN.
       - IDs that do not exist are omitted from the results.
-      - This must contain at most 5 entries.
       - Mutually exclusive with O(owner).
     elements: str
     type: list
@@ -240,22 +237,9 @@ def describe_phone_numbers_by_id(module, client, request):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 phone number {phone_number_id}")
 
-        found = response.get("PhoneNumbers", []) if isinstance(response, dict) else None
-        if not isinstance(found, list):
-            module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 phone number data")
-
-        phone_numbers.extend(found)
+        phone_numbers.extend(response.get("PhoneNumbers", []))
 
     return phone_numbers
-
-
-def validate_phone_number(module, phone_number):
-    if (
-        not isinstance(phone_number, dict)
-        or not isinstance(phone_number.get("PhoneNumberId"), str)
-        or ("PhoneNumberArn" in phone_number and not isinstance(phone_number["PhoneNumberArn"], str))
-    ):
-        module.fail_json(msg="AWS returned malformed Pinpoint SMS Voice V2 phone number data")
 
 
 def main():
@@ -275,15 +259,6 @@ def main():
     max_results = module.params["max_results"]
     owner = module.params["owner"] or "SELF"
     phone_number_ids = unique_resource_ids(module.params["phone_number_ids"] or [])
-
-    if max_results is not None and not 1 <= max_results <= 100:
-        module.fail_json(msg="max_results must be between 1 and 100")
-
-    if len(filters or {}) > 20:
-        module.fail_json(msg="filters must contain at most 20 entries")
-
-    if len(phone_number_ids) > 5:
-        module.fail_json(msg="phone_number_ids must contain at most 5 entries")
 
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
 
@@ -320,10 +295,7 @@ def main():
             **request,
         )
 
-    for phone_number in phone_numbers:
-        validate_phone_number(module, phone_number)
-
-    if any(phone_number.get("PhoneNumberArn") for phone_number in phone_numbers):
+    if phone_numbers:
         require_client_methods(
             module,
             client,
@@ -333,13 +305,9 @@ def main():
 
     normalized_phone_numbers = []
     for phone_number in phone_numbers:
-        arn = phone_number.get("PhoneNumberArn")
-        tags = []
-
-        if arn:
-            tags = list_tags(client, module, arn, "phone number", missing_ok=True)
-            if tags is None:
-                continue
+        tags = list_tags(client, module, phone_number["PhoneNumberArn"], "phone number", missing_ok=True)
+        if tags is None:
+            continue
 
         normalized_phone_numbers.append(
             boto3_resource_to_ansible_dict(
