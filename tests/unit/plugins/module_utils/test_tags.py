@@ -14,7 +14,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_ssm_tags,
     require_no_reserved_tag_keys,
     require_resulting_tag_limit,
-    require_valid_tag_list,
     require_valid_tags,
     ssm_tag_methods,
 )
@@ -380,40 +379,6 @@ def test_reconcile_ec2_tags_later_batch_failure_reports_changed(method, tags_to_
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"] == message
-
-
-def test_valid_tag_list_is_returned_unchanged():
-    tags = [{"Key": "Name", "Value": "example"}, {"Key": "Empty", "Value": ""}]
-
-    assert require_valid_tag_list(FakeModule({}), tags, "invalid tags") is tags
-    assert require_valid_tag_list(FakeModule({}), [], "invalid tags") == []
-
-
-@pytest.mark.parametrize(
-    "tags",
-    [
-        None,
-        {"Key": "Name", "Value": "example"},
-        ["Name"],
-        [{"Key": "Name"}],
-        [{"Value": "example"}],
-        [{"Key": 1, "Value": "example"}],
-        [{"Key": "Name", "Value": None}],
-    ],
-)
-def test_invalid_tag_list_fails_with_caller_message(tags):
-    with pytest.raises(ModuleFail) as raised:
-        require_valid_tag_list(FakeModule({}), tags, "invalid tags")
-
-    assert raised.value.values["msg"] == "invalid tags"
-    assert raised.value.values["changed"] is False
-
-
-def test_invalid_tag_list_after_a_change_reports_changed():
-    with pytest.raises(ModuleFail) as raised:
-        require_valid_tag_list(FakeModule({}), None, "invalid tags", changed=True)
-
-    assert raised.value.values["changed"] is True
 
 
 def test_reconcile_ssm_tags_reports_changed_after_removing_tags():
