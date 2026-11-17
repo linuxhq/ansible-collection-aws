@@ -50,7 +50,7 @@ options:
   name:
     description:
       - Systems Manager document name used to limit the result set.
-      - This must not be empty when provided.
+      - An empty value is treated as omitted and lists every document.
       - A document that does not exist, that does not have the requested
         version, or that cannot be returned in O(document_format) results in
         an empty list.
@@ -378,8 +378,6 @@ def main():
     filters = module.params["filters"]
     name = module.params["name"]
     version_name = module.params["version_name"]
-    if name == "":
-        module.fail_json(msg="name must not be empty")
 
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 
@@ -395,7 +393,7 @@ def main():
         "list_tags_for_resource": ("ResourceId", "ResourceType"),
     }
     describe_request = {key: value for key, value in get_request.items() if key != "DocumentFormat"}
-    if name is None:
+    if not name:
         methods["list_documents"] = ("Filters",) if filters else ()
     else:
         methods["describe_document"] = ("Name",) + tuple(describe_request)
@@ -428,13 +426,9 @@ def main():
 
         document_names = []
         for document in document_identifiers:
-            document_name = document.get("Name") if isinstance(document, dict) else None
-            if not isinstance(document_name, str) or not document_name:
-                module.fail_json(msg="Unexpected response while listing AWS Systems Manager documents")
-
             # ListDocuments returns each document's format, so documents that cannot be served are skipped.
             if format_available(document.get("DocumentFormat"), document_format):
-                document_names.append(document_name)
+                document_names.append(document["Name"])
 
     documents = []
     for document_name in document_names:
@@ -452,9 +446,6 @@ def main():
                 e,
                 msg=f"Unable to get AWS Systems Manager document {document_name}",
             )
-
-        if not isinstance(document, dict):
-            module.fail_json(msg=f"Unexpected response while getting AWS Systems Manager document {document_name}")
 
         document.pop("ResponseMetadata", None)
 

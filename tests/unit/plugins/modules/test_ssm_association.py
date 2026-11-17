@@ -345,45 +345,6 @@ def test_describe_missing_association_returns_none():
     assert plugin.describe_association(client, FakeModule({}), "a-1") is None
 
 
-def test_describe_rejects_malformed_response():
-    client = Mock(describe_association=Mock(return_value={"AssociationDescription": None}))
-    with pytest.raises(ModuleFail) as raised:
-        plugin.describe_association(client, FakeModule({}), "a-1")
-
-    assert raised.value.values["msg"] == "Unexpected response while describing AWS Systems Manager association a-1"
-
-
-def test_create_rejects_malformed_response():
-    client = Mock(create_association=Mock(return_value={"AssociationDescription": None}))
-    result = run_present(client, FakeModule(params()), None)
-
-    assert result.values["msg"] == "AWS Systems Manager did not return the created association document"
-
-
-def test_association_tags_rejects_malformed_response():
-    client = Mock(list_tags_for_resource=Mock(return_value={"TagList": [None]}))
-    with pytest.raises(ModuleFail) as raised:
-        plugin.association_with_tags(client, FakeModule({}), {"AssociationId": "a-1"})
-
-    assert (
-        raised.value.values["msg"] == "Unexpected response while listing tags for AWS Systems Manager association a-1"
-    )
-
-
-def test_update_rejects_malformed_response():
-    client = Mock(update_association=Mock(return_value={"AssociationDescription": None}))
-    result = run_present(client, FakeModule(params(schedule_expression="rate(2 hours)")), current_association())
-
-    assert result.values["msg"] == "AWS Systems Manager did not return the updated association document"
-
-
-@pytest.mark.parametrize("association", [None, {"Name": "document"}])
-def test_main_rejects_malformed_association_summaries(association):
-    result, _require = run_main(FakeModule(params(state="absent"), client=Mock()), [association])
-
-    assert result.values["msg"] == "Unexpected response while listing AWS Systems Manager associations for document"
-
-
 def test_association_name_selects_one_of_several_associations():
     associations = [
         {"AssociationId": "a-1", "Name": "document", "AssociationName": "quick-setup"},
@@ -425,42 +386,23 @@ def test_association_name_requires_sdk_support_on_create():
 
 
 @pytest.mark.parametrize(
-    ("overrides", "message"),
+    "overrides",
     [
-        (
-            {"association_name": "ab"},
-            "association_name must be 3 to 128 letters, numbers, underscores, hyphens, or periods",
-        ),
-        (
-            {"association_name": "has space"},
-            "association_name must be 3 to 128 letters, numbers, underscores, hyphens, or periods",
-        ),
-        ({"name": ""}, "name must not be empty"),
-        ({"name": " "}, "name must not be empty"),
-        ({"schedule_expression": ""}, "schedule_expression must be 1 to 256 characters"),
-        ({"schedule_expression": " "}, "schedule_expression must be 1 to 256 characters"),
-        ({"schedule_expression": "x" * 257}, "schedule_expression must be 1 to 256 characters"),
-        (
-            {"targets": [{"key": f"tag:Role{index}", "values": ["web"]} for index in range(6)]},
-            "targets must contain at most 5 targets",
-        ),
-        ({"targets": [{"key": "", "values": ["web"]}]}, "targets[].key must be 1 to 163 characters"),
-        ({"targets": [{"key": " ", "values": ["web"]}]}, "targets[].key must be 1 to 163 characters"),
-        (
-            {"targets": [{"key": "tag:Role", "values": [f"role-{index}" for index in range(51)]}]},
-            "targets[].values must contain at most 50 entries",
-        ),
-        ({"targets": [{"key": "tag:Role", "values": []}]}, "targets[].values must contain at least one entry"),
+        {"association_name": "ab"},
+        {"name": " "},
+        {"schedule_expression": " "},
+        {"schedule_expression": "x" * 257},
+        {"targets": [{"key": f"tag:Role{index}", "values": ["web"]} for index in range(6)]},
+        {"targets": [{"key": " ", "values": ["web"]}]},
+        {"targets": [{"key": "tag:Role", "values": []}]},
     ],
+    ids=["association-name", "name", "schedule", "long-schedule", "target-count", "target-key", "target-values"],
 )
-def test_provider_limits_are_rejected(overrides, message):
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(**overrides))),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
+def test_values_aws_validates_reach_the_association_lookup(overrides):
+    # AWS rejects these on the create or update, the run's first write, so the module does not validate them.
+    result, _require_client_methods = run_main(FakeModule(params(**overrides), client=Mock(), check_mode=True), [])
 
-    assert raised.value.values["msg"] == message
+    assert isinstance(result, ModuleExit)
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -477,30 +419,6 @@ def test_empty_targets_are_rejected_before_aws(check_mode):
         "changed": False,
         "msg": "targets must contain at least one entry; omit targets to keep the current targets",
     }
-    module.client.assert_not_called()
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize(
-    ("overrides", "message"),
-    [
-        ({"name": " "}, "name must not be empty"),
-        ({"schedule_expression": " "}, "schedule_expression must be 1 to 256 characters"),
-        ({"targets": [{"key": " ", "values": ["web"]}]}, "targets[].key must be 1 to 163 characters"),
-    ],
-    ids=["name", "schedule", "target-key"],
-)
-def test_blank_present_inputs_are_rejected_before_aws(overrides, message, check_mode):
-    # A blank name matches no association, and AWS refuses all three on create, so check mode must not predict one.
-    module = FakeModule(params(**overrides), check_mode=check_mode)
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values == {"msg": message}
     module.client.assert_not_called()
 
 
@@ -586,14 +504,6 @@ def test_association_result_preserves_parameter_names(check_mode):
 
     assert result.values["changed"] is False
     assert result.values["association"]["parameters"] == parameters
-
-
-def test_failure_after_create_reports_changed():
-    client = Mock(create_association=Mock(return_value={"AssociationDescription": {}}))
-    result = run_present(client, FakeModule(params()), None)
-
-    assert result.values["changed"] is True
-    assert result.values["msg"] == "AWS Systems Manager did not return the created association document"
 
 
 def test_tag_failure_after_update_reports_changed():

@@ -200,19 +200,11 @@ def main():
 
     normalized_associations = []
     for association in associations:
-        if not isinstance(association, dict):
-            module.fail_json(msg="Unexpected response while listing AWS Systems Manager associations")
-
-        association_id = association.get("AssociationId")
-
-        if not isinstance(association_id, str) or not association_id:
-            module.fail_json(msg="Unexpected response while listing AWS Systems Manager associations")
-
         tags = list_ssm_tags(
             module,
             client,
             SSM_ASSOCIATION_RESOURCE_TYPE,
-            association_id,
+            association["AssociationId"],
             "AWS Systems Manager association",
             missing_ok=True,
         )

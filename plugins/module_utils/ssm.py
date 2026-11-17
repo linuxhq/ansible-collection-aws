@@ -39,26 +39,8 @@ def require_non_null_ssm_filter_values(module, filters):
             module.fail_json(msg=f"filters.{key} must not contain a null value")
 
 
-def require_valid_ssm_targets(module, targets):
-    """Fail unless each target has a 1 to 163 character, non-blank key and 1 to 50 distinct values."""
-    for target in targets:
-        key = target["key"] or ""
-        # AWS refuses a blank target key (InvalidTarget), so it counts as empty.
-        if not key.strip() or len(key) > 163:
-            module.fail_json(msg="targets[].key must be 1 to 163 characters")
-
-        if not target["values"]:
-            module.fail_json(msg="targets[].values must contain at least one entry")
-
-        if len(set(target["values"])) > 50:
-            module.fail_json(msg="targets[].values must contain at most 50 entries")
-
-
 def association_overview(overview, count_key="AssociationStatusAggregatedCount"):
     # The aggregated count is keyed by association status names, which are data rather than field names.
-    if not isinstance(overview, dict):
-        return overview
-
     return camel_dict_to_snake_dict(overview, ignore_list=[count_key])
 
 
@@ -81,11 +63,7 @@ def list_ssm_tags(module, client, resource_type, resource_id, description, chang
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to list tags for {description} {resource_id}")
 
-    tags = response.get("TagList", []) if isinstance(response, dict) else None
-    if not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
-        module.fail_json(changed=changed, msg=f"Unexpected response while listing tags for {description} {resource_id}")
-
-    return tags
+    return response.get("TagList", [])
 
 
 def describe_ssm_document(module, client, name, **request):
@@ -100,9 +78,4 @@ def describe_ssm_document(module, client, name, **request):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to describe AWS Systems Manager document {name}")
 
-    document = response.get("Document") if isinstance(response, dict) else None
-    document_format = document.get("DocumentFormat") if isinstance(document, dict) else None
-    if not isinstance(document_format, str) or not document_format:
-        module.fail_json(msg=f"Unexpected response while describing AWS Systems Manager document {name}")
-
-    return document
+    return response["Document"]

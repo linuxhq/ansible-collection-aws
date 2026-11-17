@@ -102,65 +102,51 @@ def test_command_normalization_preserves_compatible_request_keys():
     }
 
 
-def test_provider_limits_are_rejected():
-    cases = [
-        (
-            {"document_name": "", "timeout_seconds": None, "instance_ids": ["i-1"], "targets": []},
-            "document_name must not be empty",
-        ),
-        ({"timeout_seconds": 29, "instance_ids": [], "targets": []}, "timeout_seconds must be between 30 and 2592000"),
-        (
-            {"timeout_seconds": None, "instance_ids": [f"i-{index}" for index in range(51)], "targets": []},
-            "instance_ids must contain at most 50 entries",
-        ),
-        (
-            {"document_name": " ", "timeout_seconds": None, "instance_ids": ["i-1"], "targets": []},
-            "document_name must not be empty",
-        ),
-        ({"timeout_seconds": None, "instance_ids": [""], "targets": []}, "instance_ids must not contain empty entries"),
-        (
-            {"timeout_seconds": None, "instance_ids": [" "], "targets": []},
-            "instance_ids must not contain empty entries",
-        ),
-        (
-            {"timeout_seconds": None, "instance_ids": ["i-1", "  "], "targets": []},
-            "instance_ids must not contain empty entries",
-        ),
-        (
-            {"timeout_seconds": None, "instance_ids": [], "targets": [{"key": " ", "values": ["i-1"]}]},
-            "targets[].key must be 1 to 163 characters",
-        ),
-        (
-            {
-                "timeout_seconds": None,
-                "instance_ids": [],
-                "targets": [{"key": "InstanceIds", "values": [f"i-{index}" for index in range(51)]}],
-            },
-            "targets[].values must contain at most 50 entries",
-        ),
-        (
-            {
-                "timeout_seconds": None,
-                "instance_ids": [],
-                "targets": [{"key": f"tag:Role{index}", "values": [f"i-{index}"]} for index in range(6)],
-            },
-            "targets must contain at most 5 entries",
-        ),
-        (
-            {"timeout_seconds": None, "instance_ids": [], "targets": []},
-            "instance_ids or targets must contain at least one entry",
-        ),
-        (
-            {"timeout_seconds": None, "instance_ids": [], "targets": [{"key": "", "values": ["i-1"]}]},
-            "targets[].key must be 1 to 163 characters",
-        ),
-        (
-            {"timeout_seconds": None, "instance_ids": [], "targets": [{"key": "InstanceIds", "values": []}]},
-            "targets[].values must contain at least one entry",
-        ),
-    ]
-    for params, message in cases:
-        assert_module_rejects(plugin, send_params(**params), message)
+def test_empty_instance_ids_and_targets_are_rejected():
+    assert_module_rejects(
+        plugin,
+        send_params(instance_ids=[], targets=[]),
+        "instance_ids or targets must contain at least one entry",
+    )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"document_name": " "},
+        {"instance_ids": [" "]},
+        {"instance_ids": [f"i-{index}" for index in range(51)]},
+        {"instance_ids": None, "targets": [{"key": " ", "values": ["i-1"]}]},
+        {"instance_ids": None, "targets": [{"key": f"tag:Role{index}", "values": ["web"]} for index in range(6)]},
+        {"max_concurrency": ""},
+        {"max_errors": " "},
+        {"parameters": {"commands": "uptime"}},
+        {"timeout_seconds": 29},
+    ],
+    ids=[
+        "document-name",
+        "instance-id",
+        "instance-count",
+        "target-key",
+        "target-count",
+        "concurrency",
+        "errors",
+        "parameters",
+        "timeout",
+    ],
+)
+def test_check_mode_leaves_send_command_validation_to_aws(overrides):
+    module = FakeModule(send_params(**overrides), check_mode=True)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"changed": True}
 
 
 def test_wait_returns_terminal_command_and_invocations():
@@ -339,116 +325,6 @@ def test_client_methods_are_checked_before_sending():
     assert calls == ["require_client_methods", "send_command"]
 
 
-def test_rejects_malformed_send_response():
-    for response in (None, {"Command": None}):
-        client = Mock(send_command=Mock(return_value=response))
-        module = FakeModule(send_params(), client=client)
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_positive_wait_bounds"),
-            patch.object(plugin, "require_client_methods"),
-            pytest.raises(ModuleFail) as raised,
-        ):
-            plugin.main()
-
-        assert (
-            raised.value.values["msg"]
-            == "Unexpected response while sending AWS Systems Manager command using AWS-RunShellScript"
-        )
-
-
-def test_rejects_missing_command_id():
-    client = Mock(send_command=Mock(return_value={}))
-    module = FakeModule(send_params(), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "AWS Systems Manager did not return an ID for the command using AWS-RunShellScript"
-    )
-
-
-def test_rejects_non_string_command_id():
-    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": 1}}))
-    module = FakeModule(send_params(), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "AWS Systems Manager did not return an ID for the command using AWS-RunShellScript"
-    )
-
-
-def test_rejects_malformed_initial_command_status():
-    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1", "Status": []}}))
-    module = FakeModule(send_params(), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "AWS Systems Manager command command-1 did not return a valid status"
-    assert raised.value.values["command"] == {"command_id": "command-1", "status": []}
-    assert raised.value.values["command_id"] == "command-1"
-    assert raised.value.values["status"] == []
-    assert raised.value.values["changed"]
-
-
-def test_rejects_malformed_wait_response():
-    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
-    module = FakeModule(send_params(wait=True), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        patch_time(0, 1),
-        patch.object(
-            sdk, "paginated_query_with_retries", side_effect=[{"Commands": [None]}, {"CommandInvocations": []}]
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "Unexpected response while getting AWS Systems Manager command command-1; command 0 was not a dictionary"
-    )
-
-
-def test_rejects_malformed_commands_response():
-    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
-    module = FakeModule(send_params(wait=True), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        patch_time(0, 1),
-        patch.object(sdk, "paginated_query_with_retries", side_effect=[{"Commands": None}, {"CommandInvocations": []}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "Unexpected response while getting AWS Systems Manager command command-1; Commands was not a list"
-    )
-
-
 def test_timeout_before_first_poll_returns_empty_invocations():
     client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
     module = FakeModule(send_params(wait=True), client=client)
@@ -486,32 +362,6 @@ def test_wait_sleep_is_bounded_by_remaining_timeout():
     mocked_time.sleep.assert_called_once_with(0.25)
 
 
-def test_rejects_malformed_command_status():
-    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
-    module = FakeModule(send_params(wait=True), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        patch_time(0, 1),
-        patch.object(
-            sdk,
-            "paginated_query_with_retries",
-            side_effect=[{"Commands": [{"CommandId": "command-1", "Status": []}]}, {"CommandInvocations": []}],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "AWS Systems Manager command command-1 was returned by list_commands with an invalid status"
-    )
-    assert raised.value.values["command_id"] == "command-1"
-    assert raised.value.values["command_invocations"] == []
-    assert raised.value.values["status"] == []
-
-
 def test_wait_retries_when_command_has_no_status():
     client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
     module = FakeModule(send_params(wait=True), client=client)
@@ -535,200 +385,6 @@ def test_wait_retries_when_command_has_no_status():
         plugin.main()
 
     assert raised.value.values["status"] == "Success"
-
-
-def test_rejects_malformed_invocations_response():
-    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
-    module = FakeModule(send_params(wait=True), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        patch_time(0, 1),
-        patch.object(
-            sdk,
-            "paginated_query_with_retries",
-            side_effect=[{"Commands": [{"CommandId": "command-1", "Status": "Success"}]}, {"CommandInvocations": None}],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "Unexpected response while getting AWS Systems Manager command command-1; CommandInvocations was not a list"
-    )
-
-
-def test_rejects_malformed_invocation_elements():
-    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
-    module = FakeModule(send_params(wait=True), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        patch_time(0, 1),
-        patch.object(
-            sdk,
-            "paginated_query_with_retries",
-            side_effect=[
-                {"Commands": [{"CommandId": "command-1", "Status": "Success"}]},
-                {"CommandInvocations": [None]},
-            ],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "Unexpected response while getting AWS Systems Manager command command-1; invocation 0 was not a dictionary"
-    )
-
-
-def test_rejects_malformed_invocation_status():
-    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
-    module = FakeModule(send_params(wait=True), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        patch_time(0, 1),
-        patch.object(
-            sdk,
-            "paginated_query_with_retries",
-            side_effect=[
-                {"Commands": [{"CommandId": "command-1", "Status": "Success"}]},
-                {"CommandInvocations": [{"Status": []}]},
-            ],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "AWS Systems Manager command command-1 returned invocation 0 without a valid status"
-    )
-    assert raised.value.values["command_id"] == "command-1"
-    assert raised.value.values["command_invocations"] == [{"status": []}]
-    assert raised.value.values["status"] == "Success"
-
-
-def test_rejects_empty_invocation_status():
-    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
-    module = FakeModule(send_params(wait=True), client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods"),
-        patch_time(0, 1),
-        patch.object(
-            sdk,
-            "paginated_query_with_retries",
-            side_effect=[
-                {"Commands": [{"CommandId": "command-1", "Status": "Success"}]},
-                {"CommandInvocations": [{"Status": ""}]},
-            ],
-        ),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert (
-        raised.value.values["msg"]
-        == "AWS Systems Manager command command-1 returned invocation 0 without a valid status"
-    )
-
-
-def test_check_mode_rejects_invalid_options():
-    module = FakeModule(send_params(timeout_seconds=29), check_mode=True)
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods") as require,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "timeout_seconds must be between 30 and 2592000"
-    module.client.assert_not_called()
-    require.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    ("overrides", "message"),
-    [
-        ({"document_name": " "}, "document_name must not be empty"),
-        ({"instance_ids": [" "]}, "instance_ids must not contain empty entries"),
-        ({"instance_ids": ["i-1", "  "]}, "instance_ids must not contain empty entries"),
-        (
-            {"instance_ids": None, "targets": [{"key": " ", "values": ["i-1"]}]},
-            "targets[].key must be 1 to 163 characters",
-        ),
-    ],
-    ids=["document-name", "instance-id", "second-instance-id", "target-key"],
-)
-def test_check_mode_rejects_blank_values_before_aws(overrides, message):
-    # SendCommand accepts no blank document name, instance ID or target key, so check mode must not report a send.
-    module = FakeModule(send_params(**overrides), check_mode=True)
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods") as require,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values == {"msg": message}
-    module.client.assert_not_called()
-    require.assert_not_called()
-
-
-@pytest.mark.parametrize("check_mode", [True, False])
-@pytest.mark.parametrize(
-    ("overrides", "message"),
-    [
-        ({"max_concurrency": ""}, "max_concurrency must not be empty"),
-        ({"max_concurrency": " "}, "max_concurrency must not be empty"),
-        ({"max_errors": ""}, "max_errors must not be empty"),
-        ({"max_errors": "\t"}, "max_errors must not be empty"),
-        ({"parameters": {"commands": None}}, "parameters.commands must be a list of strings"),
-        ({"parameters": {"commands": ["echo", None]}}, "parameters.commands must be a list of strings"),
-        ({"parameters": {"commands": "uptime"}}, "parameters.commands must be a list of strings"),
-        (
-            {"parameters": {"commands": ["uptime"], "executionTimeout": [3600]}},
-            "parameters.executionTimeout must be a list of strings",
-        ),
-    ],
-    ids=[
-        "empty-concurrency",
-        "blank-concurrency",
-        "empty-errors",
-        "blank-errors",
-        "null-value",
-        "null-entry",
-        "string-value",
-        "int-entry",
-    ],
-)
-def test_rejects_values_send_command_refuses_before_aws(overrides, message, check_mode):
-    # botocore or AWS refuses these on the only write, so check mode must not report a send for them.
-    module = FakeModule(send_params(**overrides), check_mode=check_mode)
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_positive_wait_bounds"),
-        patch.object(plugin, "require_client_methods") as require,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values == {"msg": message}
-    module.client.assert_not_called()
-    require.assert_not_called()
 
 
 def test_rate_controls_and_empty_parameter_lists_are_sent_unchanged():

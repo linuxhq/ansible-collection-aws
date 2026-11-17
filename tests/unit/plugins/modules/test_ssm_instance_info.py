@@ -47,16 +47,6 @@ def test_module_contract():
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-@pytest.mark.parametrize(
-    ("instance_ids", "message"),
-    [([f"i-{index}" for index in range(101)], "at most 100"), ([""], "empty entries")],
-)
-def test_rejects_invalid_instance_ids(instance_ids, message):
-    result, _require, _query = run(FakeModule(params(instance_ids=instance_ids)))
-
-    assert message in result.values["msg"]
-
-
 def test_instance_and_ping_filters_override_and_stringify_filters():
     module = FakeModule(
         params(filters={"PlatformTypes": ["Linux"], "AgentVersion": 3}, instance_ids=["i-1"], ping_status="Online"),
@@ -71,6 +61,14 @@ def test_instance_and_ping_filters_override_and_stringify_filters():
         {"Key": "InstanceIds", "Values": ["i-1"]},
         {"Key": "PingStatus", "Values": ["Online"]},
     ]
+
+
+def test_instance_ids_are_sent_for_aws_to_validate():
+    instance_ids = ["", *[f"i-{index}" for index in range(101)]]
+    result, _require, query_list = run(FakeModule(params(instance_ids=instance_ids), client=Mock()), [])
+
+    assert isinstance(result, ModuleExit)
+    assert query_list.call_args.kwargs["Filters"] == [{"Key": "InstanceIds", "Values": instance_ids}]
 
 
 def test_null_filter_value_is_rejected_before_describing():
@@ -94,22 +92,6 @@ def test_no_matching_instances_returns_empty_lists():
     assert result.values["instance_ids"] == []
 
 
-@pytest.mark.parametrize(
-    ("instances", "message"),
-    [
-        (
-            [{"InstanceId": "i-1"}, None],
-            "Unexpected response while describing AWS Systems Manager instances; instance 1 was not a dictionary",
-        ),
-        (None, "Unexpected response while describing AWS Systems Manager instances; instance list was not a list"),
-    ],
-)
-def test_rejects_malformed_instances(instances, message):
-    result, _require, _query = run(FakeModule(params(), client=Mock()), instances)
-
-    assert result.values["msg"] == message
-
-
 def test_returns_ids_and_normalized_instances():
     result, _require, _query = run(FakeModule(params(), client=Mock()), [{"InstanceId": "i-1", "PingStatus": "Online"}])
 
@@ -129,19 +111,6 @@ def test_association_status_names_are_preserved():
     }
 
 
-def test_warns_when_instance_id_is_invalid():
-    module = FakeModule(params(), client=Mock())
-    module.warn = Mock()
-    result, _require, _query = run(module, [{"InstanceId": "i-1"}, {}])
-
-    assert result.values["instance_ids"] == ["i-1"]
-    assert result.values["instances"] == [{"instance_id": "i-1"}, {}]
-    module.warn.assert_called_once_with(
-        "Unexpected response while describing AWS Systems Manager instances; "
-        "instance 1 did not contain a valid InstanceId and was omitted from instance_ids"
-    )
-
-
 def test_connection_status_is_not_requested_by_default():
     client = Mock()
     result, require_client_methods, _query = run(FakeModule(params(), client=client), [{"InstanceId": "i-1"}])
@@ -155,7 +124,7 @@ def test_connection_status_is_added_to_each_instance():
     client = Mock()
     client.get_connection_status.side_effect = [{"Status": "connected"}, {"Status": "notconnected"}]
     result, require_client_methods, _query = run(
-        FakeModule(params(connection_status=True), client=client), [{"InstanceId": "i-1"}, {}, {"InstanceId": "i-2"}]
+        FakeModule(params(connection_status=True), client=client), [{"InstanceId": "i-1"}, {"InstanceId": "i-2"}]
     )
 
     assert require_client_methods.call_args.args[3] == {
@@ -168,7 +137,6 @@ def test_connection_status_is_added_to_each_instance():
     ]
     assert result.values["instances"] == [
         {"instance_id": "i-1", "connection_status": "connected"},
-        {},
         {"instance_id": "i-2", "connection_status": "notconnected"},
     ]
 
@@ -181,14 +149,3 @@ def test_connection_status_error_names_instance():
     result, _require, _query = run(FakeModule(params(connection_status=True), client=client), [{"InstanceId": "i-1"}])
 
     assert result.values["msg"] == "Unable to get AWS Systems Manager connection status for i-1"
-
-
-@pytest.mark.parametrize("response", [None, {}, {"Status": None}, {"Status": 1}])
-def test_rejects_malformed_connection_status(response):
-    client = Mock()
-    client.get_connection_status.return_value = response
-    result, _require, _query = run(FakeModule(params(connection_status=True), client=client), [{"InstanceId": "i-1"}])
-
-    assert result.values["msg"] == (
-        "Unexpected response while getting AWS Systems Manager connection status for i-1; status was not a string"
-    )
