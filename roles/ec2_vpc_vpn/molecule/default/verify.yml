@@ -117,8 +117,10 @@
     - name: Ensure role is included
       ansible.builtin.include_role:
         name: ec2_vpc_vpn
+        apply:
+          diff: false
+          no_log: true
       no_log: true
-      diff: false
 
     - name: Ensure vpn connections are deleted
       amazon.aws.ec2_vpc_vpn_info:
