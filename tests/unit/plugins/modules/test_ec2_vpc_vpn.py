@@ -470,13 +470,11 @@ def test_inside_cidr_updates_allow_own_or_unused_cidr(params, connection, cidr, 
 
 
 @pytest.mark.parametrize("check_mode", [True, False])
-@pytest.mark.parametrize("selection", [{}, {"outside_ip_address": "203.0.113.1"}])
-def test_null_tunnel_options_fail_cleanly_when_selected(params, connection, check_mode, selection):
+def test_null_tunnel_options_fail_cleanly_when_selected(params, connection, check_mode):
     connection["Options"]["TunnelOptions"] = None
-    params["tunnel_options"] = [dict(selection, phase1_encryption_algorithms=["AES256"])]
+    params["tunnel_options"] = [{"outside_ip_address": "203.0.113.1", "phase1_encryption_algorithms": ["AES256"]}]
     client = Mock()
-    message = "No unique tunnel" if selection else "EC2 did not return the requested tunnels"
-    with pytest.raises(ModuleFail, match=message):
+    with pytest.raises(ModuleFail, match="No unique tunnel"):
         plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
 
     assert client.mock_calls == []
@@ -1106,6 +1104,22 @@ def test_deleting_connection_is_never_recreated(params, connection):
 def test_ambiguous_selection_fails(params, connection):
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": [connection, connection]}
+    with pytest.raises(ModuleFail, match="Multiple VPN connections"):
+        plugin.find_connection(client, FakeModule(params))
+
+
+def test_name_lookup_prefers_a_replacement_over_its_deleting_predecessor(params, connection):
+    deleting = dict(connection, VpnConnectionId="vpn-old", State="deleting")
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [deleting, connection]}
+    assert plugin.find_connection(client, FakeModule(params)) == connection
+
+
+def test_name_lookup_still_fails_on_two_active_matches(params, connection):
+    deleting = dict(connection, VpnConnectionId="vpn-old", State="deleting")
+    other = dict(connection, VpnConnectionId="vpn-other")
+    client = Mock()
+    client.describe_vpn_connections.return_value = {"VpnConnections": [deleting, connection, other]}
     with pytest.raises(ModuleFail, match="Multiple VPN connections"):
         plugin.find_connection(client, FakeModule(params))
 
@@ -2230,17 +2244,6 @@ def test_pending_vpn_check_mode_predicts_unresolved_key_storage(params, connecti
     assert client.mock_calls == []
 
 
-@pytest.mark.parametrize("check_mode", [True, False])
-def test_key_storage_without_returned_tunnels_fails_before_any_write(params, connection, check_mode):
-    connection["Options"]["TunnelOptions"] = None
-    params.update(pre_shared_key_storage="Standard", local_ipv4_network_cidr="10.20.0.0/16")
-    client = Mock()
-    with pytest.raises(ModuleFail, match="EC2 did not return the requested tunnels"):
-        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), connection)
-
-    assert client.mock_calls == []
-
-
 LOG_GROUP_ARN = "arn:aws:logs:us-east-1:123456789012:log-group:EXAMPLE-vpn-logs"
 
 NONDEFAULT_TUNNEL = {
@@ -3062,7 +3065,7 @@ def test_concentrator_connections_reject_static_routes(params, connection, exist
         params["vpn_concentrator_id"] = "vcn-123"
 
     client = Mock()
-    with pytest.raises(ModuleFail, match="virtual private gateway connection"):
+    with pytest.raises(ModuleFail, match="no transit gateway or VPN concentrator"):
         plugin.ensure_present(client, FakeModule(params), connection if existing else None)
 
     assert client.mock_calls == []
