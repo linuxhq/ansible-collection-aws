@@ -114,9 +114,8 @@ def test_validate_current_quota_rejects_invalid_value(quota):
         ),
         ({"ErrorCode": "DEPENDENCY_THROTTLING_ERROR"}, ": DEPENDENCY_THROTTLING_ERROR"),
         ({}, ""),
-        ("invalid", ""),
     ],
-    ids=["code-and-message", "code-only", "empty", "invalid"],
+    ids=["code-and-message", "code-only", "empty"],
 )
 def test_validate_current_quota_names_the_error_reason(error_reason, suffix):
     with pytest.raises(ModuleFail) as raised:

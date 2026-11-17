@@ -43,7 +43,6 @@ options:
         default: TERM_MATCH
         description:
           - The pricing filter type.
-          - The Pricing API validates the filter type.
         type: str
       value:
         description:
