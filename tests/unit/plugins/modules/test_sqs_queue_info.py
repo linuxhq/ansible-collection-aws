@@ -91,12 +91,6 @@ def test_untagged_queue_returns_empty_tags():
     assert queue["tags"] == {}
 
 
-def test_empty_name_is_rejected():
-    result, _require = run(FakeModule(params(name="")))
-
-    assert result.values["msg"] == "name must not be empty"
-
-
 @pytest.mark.parametrize("code", NOT_FOUND_CODES)
 def test_get_queue_skips_a_missing_queue(code):
     client = queue_client()
@@ -111,29 +105,6 @@ def test_get_queue_skips_a_queue_deleted_before_its_tags_are_read(code):
     client.list_queue_tags.side_effect = missing(code, "ListQueueTags")
 
     assert plugin.get_queue(client, FakeModule({}), "https://sqs/queue") is None
-
-
-@pytest.mark.parametrize(
-    ("client", "message"),
-    [
-        (
-            Mock(get_queue_attributes=Mock(return_value={"Attributes": []})),
-            "Unexpected response while getting AWS SQS queue https://sqs/queue",
-        ),
-        (
-            Mock(
-                get_queue_attributes=Mock(return_value={"Attributes": {}}),
-                list_queue_tags=Mock(return_value={"Tags": []}),
-            ),
-            "Unexpected response while listing AWS SQS queue tags for https://sqs/queue",
-        ),
-    ],
-)
-def test_get_queue_rejects_malformed_responses(client, message):
-    with pytest.raises(ModuleFail) as raised:
-        plugin.get_queue(client, FakeModule({}), "https://sqs/queue")
-
-    assert raised.value.values["msg"] == message
 
 
 def test_get_queue_url_accepts_modeled_not_found_error():
@@ -153,13 +124,6 @@ def test_get_queue_url_accepts_modeled_not_found_error():
             "get_queue_url": ("QueueName",),
         },
     )
-
-
-def test_get_queue_url_rejects_malformed_response():
-    client = Mock(get_queue_url=Mock(return_value={"QueueUrl": None}))
-    result, _require = run(FakeModule(params(name="main"), client=client))
-
-    assert result.values["msg"] == "Unexpected response while getting AWS SQS queue URL for main"
 
 
 def service_module(owner, sqs, sts):
@@ -269,3 +233,15 @@ def test_return_documents_every_queue_attribute():
 
     assert expected <= set(contains), sorted(expected - set(contains))
     assert all(contains[name]["type"] == "str" for name in expected)
+
+
+def test_empty_name_lists_every_queue():
+    client = Mock()
+    module = FakeModule(params(name=""), client=client)
+    with patch.object(plugin, "query_list", return_value=[]) as query_list:
+        result, _require = run(module)
+
+    assert result.values["queues"] == []
+    assert query_list.call_args.args[2] == "list_queues"
+    assert query_list.call_args.kwargs == {"MaxResults": 1000}
+    client.get_queue_url.assert_not_called()

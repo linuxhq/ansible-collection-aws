@@ -1,0 +1,15 @@
+---
+minor_changes:
+  - ecs_ecr_info - more than 100 unique O(repository_names) are now rejected by ECR instead of by the module.
+  - eks_cluster - a missing O(role_arn) or O(resources_vpc_config.subnet_ids), or fewer than two distinct subnets,
+    when creating a cluster are now rejected by botocore or EKS instead of by the module, so check mode no longer
+    reports them as errors.
+  - eks_cluster - an empty O(role_arn) is no longer rejected by the module; EKS rejects it when creating a cluster,
+    and on an existing cluster the module reports that O(role_arn) cannot be modified.
+  - sqs_queue_info - an empty O(name) is now treated as omitted and lists every queue instead of failing, as other
+    info modules do; O(queue_owner_aws_account_id) is then ignored.
+trivial:
+  - ecs_ecr_info, eks_cluster, eks_cluster_info, glue_connection_info, rds_subnet_group_info, and sqs_queue_info -
+    rely on the EKS, ECR, Glue, RDS, SQS, and STS response shapes instead of checking the types and presence of
+    fields they always return, and drop the now unused ``module_utils/eks.py``.
+...

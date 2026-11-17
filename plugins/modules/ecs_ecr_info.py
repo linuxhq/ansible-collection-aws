@@ -20,7 +20,7 @@ options:
     description:
       - ECR repository names used to limit the result set.
       - A repository that does not exist results in no entry; no error is raised.
-      - This must contain at most 100 unique entries.
+      - ECR accepts at most 100 unique entries.
     elements: str
     type: list
 extends_documentation_fragment:
@@ -139,24 +139,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def validate_repositories(module, response):
-    repositories = response.get("repositories") if isinstance(response, dict) else None
-    if not isinstance(repositories, list):
-        module.fail_json(msg="ECR returned invalid repositories")
-
-    for repository in repositories:
-        if (
-            not isinstance(repository, dict)
-            or not isinstance(repository.get("repositoryArn"), str)
-            or not repository["repositoryArn"]
-            or not isinstance(repository.get("repositoryName"), str)
-            or not repository["repositoryName"]
-        ):
-            module.fail_json(msg="ECR returned invalid repositories")
-
-    return repositories
-
-
 def describe_repositories(client, module, request, description):
     try:
         response = paginated_query_with_retries(
@@ -169,7 +151,7 @@ def describe_repositories(client, module, request, description):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to describe AWS ECR {description}")
 
-    return validate_repositories(module, response)
+    return response.get("repositories", [])
 
 
 def main():
@@ -181,9 +163,6 @@ def main():
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
     registry_id = module.params["registry_id"]
     repository_names = list(dict.fromkeys(module.params["repository_names"] or []))
-
-    if len(repository_names) > 100:
-        module.fail_json(msg="repository_names must contain at most 100 unique entries")
 
     client = module.client("ecr", retry_decorator=AWSRetry.jittered_backoff())
 

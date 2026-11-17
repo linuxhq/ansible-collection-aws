@@ -243,43 +243,6 @@ def test_module_contract():
     assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
 
-def test_describe_rejects_malformed_response():
-    client = Mock(describe_cluster=Mock(return_value={"cluster": None}))
-    module = FakeModule({"name": "example"})
-    with pytest.raises(ModuleFail) as raised:
-        plugin.describe_cluster(client, module)
-
-    assert raised.value.values["msg"] == "EKS returned an invalid cluster"
-
-
-def test_describe_rejects_malformed_cluster_configuration():
-    client = Mock(
-        describe_cluster=Mock(
-            return_value={
-                "cluster": {
-                    "arn": "arn:cluster",
-                    "name": "example",
-                    "resourcesVpcConfig": "invalid",
-                    "status": "ACTIVE",
-                }
-            }
-        )
-    )
-    module = FakeModule({"name": "example"})
-    with pytest.raises(ModuleFail) as raised:
-        plugin.describe_cluster(client, module)
-
-    assert raised.value.values["msg"] == "EKS returned an invalid cluster"
-
-
-def test_update_validation_rejects_malformed_response():
-    module = FakeModule({"name": "example"})
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_update(module, {"id": "update-1"})
-
-    assert raised.value.values["msg"] == "EKS returned an invalid cluster update"
-
-
 def test_waited_update_rejects_disappearing_cluster():
     client = Mock(update_cluster_version=Mock(return_value={"update": {"id": "update-1", "status": "InProgress"}}))
     params = dict.fromkeys(plugin.CREATE_FIELDS)
@@ -713,33 +676,6 @@ def test_absent_fails_without_waiting_when_deletion_protection_is_enabled(check_
     wait_for_updates.assert_not_called()
     client.delete_cluster.assert_not_called()
     client.update_cluster_config.assert_not_called()
-
-
-def test_new_cluster_requires_role_and_subnets():
-    base = dict.fromkeys(plugin.CREATE_FIELDS)
-    base.update({"name": "example", "tags": None, "wait": False})
-    cases = [
-        (
-            dict(
-                base,
-                resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
-                role_arn=None,
-            ),
-            "role_arn is required",
-        ),
-        (
-            dict(base, resources_vpc_config=None, role_arn="arn:role"),
-            "resources_vpc_config.subnet_ids is required",
-        ),
-    ]
-    for params, message in cases:
-        with (
-            patch.object(plugin, "describe_cluster", return_value=None),
-            pytest.raises(ModuleFail) as raised,
-        ):
-            plugin.ensure_present(Mock(), FakeModule(params))
-
-        assert message in raised.value.values["msg"]
 
 
 def test_failed_update_stops_waiting_with_update_details():
@@ -1988,7 +1924,7 @@ def test_absent_reports_absent_when_a_waited_cluster_disappears(status):
     assert raised.value.values["state"] == "absent"
 
 
-def test_tagging_uses_the_validated_cluster_arn():
+def test_tagging_uses_the_described_cluster_arn():
     current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "tags": {}}
     client = Mock()
     module = FakeModule(eks_params(tags={"Name": "example"}))
@@ -3427,7 +3363,6 @@ def test_disabling_one_api_server_endpoint_while_enabling_the_other_reaches_aws(
 @pytest.mark.parametrize(
     "overrides, message",
     [
-        ({"role_arn": ""}, "role_arn must not be empty"),
         (
             {"resources_vpc_config": {"subnet_ids": ["subnet-1", ""]}},
             "resources_vpc_config.subnet_ids must not contain empty entries",
@@ -3444,7 +3379,7 @@ def test_disabling_one_api_server_endpoint_while_enabling_the_other_reaches_aws(
         ),
     ],
 )
-def test_empty_role_arn_version_and_network_ids_fail_before_any_aws_call(overrides, message, check_mode):
+def test_empty_version_and_network_ids_fail_before_any_aws_call(overrides, message, check_mode):
     # EKS rejects them (live), but only after check mode predicted success or other updates were applied. A cluster
     # always has a version, so an empty one would also never converge.
     params = eks_params(state="present", **overrides)
@@ -3831,22 +3766,6 @@ def test_remote_networks_eks_rejects_for_the_cluster_fail_before_any_update(
         plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
 
     assert raised.value.values == {"msg": f"remote_network_config.{message}"}
-    assert client.mock_calls == []
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("subnet_ids", [["subnet-1"], ["subnet-1", "subnet-1"]])
-def test_create_with_fewer_than_two_distinct_subnets_fails_before_any_aws_call(subnet_ids, check_mode):
-    # CreateCluster rejects it with "Subnets specified must be in at least two different AZs" (live).
-    params = eks_params(resources_vpc_config={"subnet_ids": subnet_ids}, role_arn="arn:role", wait=True)
-    client = Mock()
-    with (
-        patch.object(plugin, "describe_cluster", return_value=None),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
-
-    assert raised.value.values == {"msg": "resources_vpc_config.subnet_ids must contain at least two distinct subnets"}
     assert client.mock_calls == []
 
 

@@ -149,12 +149,6 @@ def test_tags_keep_their_case():
     assert result.values["placement_groups"][0]["tags"] == {"Team": "A"}
 
 
-def test_rejects_invalid_placement_group_response():
-    result, _require, _query = run(FakeModule(params(), client=Mock()), [None])
-
-    assert "invalid placement group information" in result.values["msg"]
-
-
 def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings():
     _result, _require, query = run(
         FakeModule(params(filters={"partition-count": [2], "strategy": "cluster", "x-flag": [True]}), client=Mock()),

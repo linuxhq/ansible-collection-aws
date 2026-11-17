@@ -7,7 +7,6 @@ from ansible_collections.linuxhq.aws.plugins.modules import ec2_serial_console_i
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
-    ModuleFail,
     assert_module_contract,
 )
 
@@ -39,16 +38,3 @@ def test_response_metadata_is_removed():
         "managed_by": "declarative-policy",
         "serial_console_access_enabled": True,
     }
-
-
-def test_rejects_invalid_serial_console_status():
-    client = Mock(get_serial_console_access_status=Mock(return_value={}))
-    module = FakeModule({}, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(helper, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "invalid serial console access status" in raised.value.values["msg"]

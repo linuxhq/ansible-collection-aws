@@ -514,24 +514,20 @@ def desired_tags(module):
 def replacement_settings(settings, replaced):
     """Return the create settings for a replacement, keeping the replaced flow log's settings the task omits."""
     kept = {}
-    if isinstance(replaced.get("LogFormat"), str) and replaced["LogFormat"]:
+    if replaced.get("LogFormat"):
         kept["log_format"] = replaced["LogFormat"]
         # EC2 rejects a format with EC2 tag fields without the tag field specifications that go with it.
         tag_field_specifications = replaced.get("TagFieldSpecifications")
-        if "log_format" not in settings and isinstance(tag_field_specifications, list):
-            tag_field_specifications = [
-                camel_dict_to_snake_dict(specification)
-                for specification in tag_field_specifications
-                if isinstance(specification, dict)
+        if "log_format" not in settings and tag_field_specifications:
+            kept["tag_field_specifications"] = [
+                camel_dict_to_snake_dict(specification) for specification in tag_field_specifications
             ]
-            if tag_field_specifications:
-                kept["tag_field_specifications"] = tag_field_specifications
 
         # botocore before 1.43.26 does not return the specifications, so EC2's default format is used instead.
         if "tag_field_specifications" not in kept and TAG_FIELD_PATTERN.search(kept["log_format"]):
             del kept["log_format"]
 
-    if replaced.get("MaxAggregationInterval") in (60, 600):
+    if replaced.get("MaxAggregationInterval") is not None:
         kept["max_aggregation_interval"] = replaced["MaxAggregationInterval"]
 
     # The delivery roles authorize delivery to CloudWatch Logs or Kinesis Data Firehose, so they are kept only when
@@ -544,20 +540,13 @@ def replacement_settings(settings, replaced):
             ("deliver_cross_account_role", "DeliverCrossAccountRole"),
             ("deliver_logs_permission_arn", "DeliverLogsPermissionArn"),
         ):
-            if isinstance(replaced.get(field), str) and replaced[field]:
+            if replaced.get(field):
                 kept[key] = replaced[field]
 
     effective = dict(kept, **settings)
     # Destination options apply only to S3, so they are kept only when both flow logs deliver to S3.
     if settings["log_destination_type"] == "s3" and replaced.get("LogDestinationType") == "s3":
-        replaced_options = replaced.get("DestinationOptions")
-        replaced_options = camel_dict_to_snake_dict(replaced_options if isinstance(replaced_options, dict) else {})
-        destination_options = {
-            key: value
-            for key, value in replaced_options.items()
-            if (key == "file_format" and value in ("plain-text", "parquet"))
-            or (key in ("hive_compatible_partitions", "per_hour_partition") and isinstance(value, bool))
-        }
+        destination_options = camel_dict_to_snake_dict(replaced.get("DestinationOptions") or {})
         # Each supplied suboption replaces only its own kept value.
         destination_options.update(settings.get("destination_options", {}))
         if destination_options:
@@ -570,9 +559,6 @@ def matching_flow_logs(module, flow_logs, desired):
     resource_ids = set(normalized_resource_ids(module))
     matching = []
     for flow_log in flow_logs:
-        if not isinstance(flow_log, dict):
-            module.fail_json(msg="AWS returned an invalid EC2 flow log")
-
         if flow_log.get("ResourceId") not in resource_ids:
             continue
 
@@ -587,10 +573,6 @@ def matching_flow_logs(module, flow_logs, desired):
 
         if comparable != desired:
             continue
-
-        flow_log_id = flow_log.get("FlowLogId")
-        if not isinstance(flow_log_id, str) or not flow_log_id:
-            module.fail_json(msg="AWS returned an invalid matching EC2 flow log without a flow log ID")
 
         matching.append(flow_log)
 
@@ -651,7 +633,7 @@ def delete_flow_logs(client, module, flow_log_ids, changed=False):
                 changed=changed or bool(removed),
                 FlowLogIds=batch,
             )
-            remaining_ids = {flow_log.get("FlowLogId") for flow_log in remaining if isinstance(flow_log, dict)}
+            remaining_ids = {flow_log.get("FlowLogId") for flow_log in remaining}
             batch = [flow_log_id for flow_log_id in batch if flow_log_id in remaining_ids]
             if not batch:
                 continue
@@ -834,14 +816,11 @@ def ensure_present(client, module):
 
         if resource_type in TRAFFIC_TYPE_RESOURCE_TYPES and "traffic_type" not in created_settings[resource_id]:
             # EC2 requires a traffic type: an omitted one keeps the replaced flow log's, and is ALL for a new one.
-            traffic_type = replaced.get("TrafficType")
-            created_settings[resource_id]["traffic_type"] = (
-                traffic_type if traffic_type in ("ACCEPT", "REJECT", "ALL") else "ALL"
-            )
+            created_settings[resource_id]["traffic_type"] = replaced.get("TrafficType") or "ALL"
 
         replaced_format = replaced.get("LogFormat")
         if (
-            isinstance(replaced_format, str)
+            replaced_format
             and TAG_FIELD_PATTERN.search(replaced_format)
             and "log_format" not in created_settings[resource_id]
         ):
@@ -965,17 +944,6 @@ def ensure_present(client, module):
 
                 # The create request succeeded, so AWS may have created flow logs.
                 modified = True
-
-                if (
-                    not isinstance(batch_flow_log_ids, list)
-                    or not batch_flow_log_ids
-                    or any(not isinstance(flow_log_id, str) or not flow_log_id for flow_log_id in batch_flow_log_ids)
-                ):
-                    module.fail_json(
-                        changed=modified,
-                        msg=f"AWS did not return valid created EC2 flow log IDs for resources {', '.join(batch)}",
-                    )
-
                 created_flow_log_ids.extend(batch_flow_log_ids)
 
             created_flow_logs = []
@@ -991,9 +959,6 @@ def ensure_present(client, module):
                         FlowLogIds=batch,
                     )
                 )
-
-            if any(not isinstance(flow_log, dict) for flow_log in created_flow_logs):
-                module.fail_json(changed=modified, msg="AWS returned an invalid created EC2 flow log")
 
             described_ids = {flow_log.get("FlowLogId") for flow_log in created_flow_logs}
             created_flow_logs.extend(

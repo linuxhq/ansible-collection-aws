@@ -35,8 +35,8 @@ options:
         C(instance-type) key in O(filters), so wildcards such as C(t3.*) are supported.
       - An instance type that is not offered in the region results in no entry unless
         O(include_unsupported_in_region=true); no error is raised.
-      - EC2 accepts at most 200 filter values in each call, so the unique entries in this list
-        and the values in O(filters) must total at most 200.
+      - EC2 accepts at most 200 filter values in each call, counting the unique entries in this list
+        and the values in O(filters).
     elements: str
     type: list
 extends_documentation_fragment:
@@ -743,10 +743,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
-    MAX_FILTER_VALUES_PER_REQUEST,
-    ansible_dict_to_string_filter_list,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.filters import ansible_dict_to_string_filter_list
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -772,12 +769,6 @@ def main():
     if instance_types:
         filters["instance-type"] = instance_types
 
-    # EC2 rejects a call with more than 200 values across all of its filters.
-    if sum(len(value) if isinstance(value, list) else 1 for value in filters.values()) > MAX_FILTER_VALUES_PER_REQUEST:
-        module.fail_json(
-            msg=f"filters and instance_types must contain at most {MAX_FILTER_VALUES_PER_REQUEST} values in total"
-        )
-
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     request = {}
@@ -802,9 +793,6 @@ def main():
         "Unable to describe EC2 instance types",
         **request,
     )
-
-    if any(not isinstance(instance_type, dict) for instance_type in instance_types):
-        module.fail_json(msg="EC2 returned invalid instance type information")
 
     module.exit_json(
         changed=False,

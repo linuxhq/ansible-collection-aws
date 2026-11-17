@@ -345,37 +345,7 @@ DESCRIBE_ATTACHMENTS_PARAMETERS = ("Filters", "MaxResults", "NextToken")
 
 
 def route_table_id(route_table):
-    return route_table.get("TransitGatewayRouteTableId") if isinstance(route_table, dict) else None
-
-
-def validated_route_table(module, route_table, changed=False):
-    if (
-        not isinstance(route_table, dict)
-        or not isinstance(route_table_id(route_table), str)
-        or not route_table_id(route_table)
-        or not isinstance(route_table.get("State"), str)
-    ):
-        module.fail_json(changed=changed, msg="EC2 returned an invalid transit gateway route table")
-
-    return route_table
-
-
-def validated_routes(module, routes, changed=False):
-    if not isinstance(routes, list):
-        module.fail_json(changed=changed, msg="EC2 returned invalid transit gateway routes")
-
-    for route in routes:
-        attachments = route.get("TransitGatewayAttachments") if isinstance(route, dict) else None
-        if (
-            not isinstance(route, dict)
-            or not isinstance(route.get("State"), str)
-            or not isinstance(route.get("Type"), str)
-            or (attachments is not None and not isinstance(attachments, list))
-            or (isinstance(attachments, list) and any(not isinstance(attachment, dict) for attachment in attachments))
-        ):
-            module.fail_json(changed=changed, msg="EC2 returned invalid transit gateway routes")
-
-    return routes
+    return route_table.get("TransitGatewayRouteTableId") if route_table else None
 
 
 def normalize_route_table(route_table):
@@ -424,14 +394,8 @@ def get_route_table_by_id(client, module, transit_gateway_route_table_id, change
             msg=f"Unable to describe EC2 transit gateway route table {transit_gateway_route_table_id}",
         )
 
-    route_tables = response.get("TransitGatewayRouteTables") if isinstance(response, dict) else None
-    if not isinstance(route_tables, list) or len(route_tables) > 1:
-        module.fail_json(changed=changed, msg="EC2 returned invalid transit gateway route tables")
-
-    if route_tables:
-        return validated_route_table(module, route_tables[0], changed=changed)
-
-    return None
+    route_tables = response.get("TransitGatewayRouteTables", [])
+    return route_tables[0] if route_tables else None
 
 
 def find_route_table(client, module):
@@ -467,9 +431,6 @@ def find_route_table(client, module):
         "Unable to describe EC2 transit gateway route tables",
         Filters=ansible_dict_to_boto3_filter_list(filters),
     )
-
-    for route_table in route_tables:
-        validated_route_table(module, route_table)
 
     if name:
         # The filter value is escaped; still keep only the exact name.
@@ -562,7 +523,7 @@ def search_routes(client, module, transit_gateway_route_table_id, filters, chang
         Filters=ansible_dict_to_boto3_filter_list(filters),
         MaxResults=1000,
     )
-    return validated_routes(module, routes, changed=changed)
+    return routes
 
 
 def managed_static_route(route):
@@ -770,11 +731,7 @@ def ensure_route_absent(
         return True, None
 
     # Return the route as EC2 left it; get_route() selects no route once it is deleted.
-    route = validated_routes(
-        module,
-        [response.get("Route") if isinstance(response, dict) else None],
-        changed=True,
-    )[0]
+    route = response["Route"]
     return True, None if route.get("State") == "deleted" else route
 
 
@@ -808,11 +765,7 @@ def require_route_attachments(client, module, transit_gateway_id, attachment_ids
             )
         )
 
-    found = {
-        attachment.get("TransitGatewayAttachmentId"): attachment
-        for attachment in attachments
-        if isinstance(attachment, dict)
-    }
+    found = {attachment.get("TransitGatewayAttachmentId"): attachment for attachment in attachments}
     missing = [attachment_id for attachment_id in attachment_ids if attachment_id not in found]
     if missing:
         module.fail_json(
@@ -908,11 +861,7 @@ def ensure_present(client, module):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg="Unable to create EC2 transit gateway route table")
 
-            route_table = validated_route_table(
-                module,
-                response.get("TransitGatewayRouteTable") if isinstance(response, dict) else None,
-                changed=True,
-            )
+            route_table = response["TransitGatewayRouteTable"]
 
             if wait or manage_routes:
                 route_table = wait_for_route_table(
@@ -1085,11 +1034,7 @@ def ensure_present(client, module):
                                 msg=f"Unable to {action} EC2 transit gateway route {destination_cidr_block}",
                             )
 
-                        current_route = validated_routes(
-                            module,
-                            [response.get("Route") if isinstance(response, dict) else None],
-                            changed=True,
-                        )[0]
+                        current_route = response["Route"]
 
                         if wait:
                             current_route = wait_for_route(
@@ -1204,11 +1149,7 @@ def ensure_absent(client, module):
             msg=f"Unable to delete EC2 transit gateway route table {transit_gateway_route_table_id}",
         )
 
-    route_table = validated_route_table(
-        module,
-        response.get("TransitGatewayRouteTable") if isinstance(response, dict) else None,
-        changed=True,
-    )
+    route_table = response["TransitGatewayRouteTable"]
 
     if wait:
         route_table = wait_for_route_table(

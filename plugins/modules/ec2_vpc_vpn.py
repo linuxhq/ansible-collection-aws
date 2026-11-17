@@ -970,25 +970,9 @@ def normalize_connection(connection):
 
 
 def validate_connection(module, connection, changed=False):
-    if (
-        not isinstance(connection, dict)
-        or not connection.get("VpnConnectionId")
-        or not connection.get("State")
-        or not isinstance(connection.get("Options"), dict)
-    ):
+    # The module reads Options throughout; deleted connections, which omit them, are skipped before this check.
+    if not isinstance(connection.get("Options"), dict):
         module.fail_json(changed=changed, msg="EC2 returned an invalid VPN connection")
-
-    routes = connection.get("Routes", [])
-    if not isinstance(routes, list) or any(
-        not isinstance(route, dict) or not route.get("DestinationCidrBlock") for route in routes
-    ):
-        module.fail_json(changed=changed, msg="EC2 returned invalid VPN connection routes")
-
-    tunnels = connection["Options"].get("TunnelOptions")
-    if tunnels is not None and (
-        not isinstance(tunnels, list) or any(not isinstance(tunnel, dict) for tunnel in tunnels)
-    ):
-        module.fail_json(changed=changed, msg="EC2 returned invalid VPN connection tunnel options")
 
     return connection
 
@@ -1020,13 +1004,9 @@ def find_connection(client, module, connection_id=None, changed=False):
             msg=f"Unable to describe VPN connection {connection_id or module.params['name'] or filters}",
         )
 
-    connections = response.get("VpnConnections")
-    if not isinstance(connections, list):
-        module.fail_json(changed=changed, msg="EC2 returned an invalid VPN connection list")
-
     matches = []
-    for item in connections:
-        if isinstance(item, dict) and item.get("State") == "deleted":
+    for item in response.get("VpnConnections", []):
+        if item.get("State") == "deleted":
             continue
 
         matches.append(validate_connection(module, item, changed=changed))
@@ -1234,15 +1214,8 @@ def tunnel_deltas(module, connection):
                 # Live: the update that moves a key out of Secrets Manager also sets the supplied key.
                 equal = usable and secrets.compare_digest(value.encode("utf-8"), actual.encode("utf-8"))
             elif field == "LogOptions":
-                cloud_watch = actual.get("CloudWatchLogOptions") if isinstance(actual, dict) else actual
-                if cloud_watch is not None and not isinstance(cloud_watch, dict):
-                    module.fail_json(
-                        msg=f"EC2 returned invalid LogOptions for VPN connection {connection['VpnConnectionId']} "
-                        f"tunnel {outside_ip}"
-                    )
-
                 # Live: EC2 keeps the log fields an update omits, so only the supplied ones are compared and sent.
-                cloud_watch = cloud_watch or {}
+                cloud_watch = (actual or {}).get("CloudWatchLogOptions") or {}
                 # Live: while that logging stays disabled, EC2 accepts a log group ARN but keeps the stored one, and
                 # only "" clears it, so a non-empty ARN is then neither compared nor sent.
                 supplied = dict(value["CloudWatchLogOptions"])
@@ -1265,21 +1238,6 @@ def tunnel_deltas(module, connection):
                             f"{enabled} requires {group}, which is neither supplied nor set on the tunnel"
                         )
             elif isinstance(value, list):
-                value_type = int if field.endswith("DHGroupNumbers") else str
-                if actual is not None and (
-                    not isinstance(actual, list)
-                    or any(
-                        not isinstance(item, dict)
-                        or not isinstance(item.get("Value"), value_type)
-                        or isinstance(item.get("Value"), bool)
-                        for item in actual
-                    )
-                ):
-                    module.fail_json(
-                        msg=f"EC2 returned invalid {field} for VPN connection {connection['VpnConnectionId']} "
-                        f"tunnel {outside_ip}"
-                    )
-
                 current_values = TUNNEL_DEFAULTS[field] if actual is None else {item["Value"] for item in actual}
                 equal = {item["Value"] for item in value} == current_values
             else:
@@ -1322,12 +1280,6 @@ def require_valid_timers(module, connection, tunnel, delta):
         if value is None:
             value = TUNNEL_DEFAULTS[field]
 
-        if not isinstance(value, int) or isinstance(value, bool):
-            module.fail_json(
-                msg=f"EC2 returned invalid {field} for VPN connection {connection['VpnConnectionId']} "
-                f"tunnel {tunnel['OutsideIpAddress']}"
-            )
-
         timers.append(value)
 
     # Live: EC2 accepts equal lifetimes and a rekey margin of exactly half the phase 2 lifetime.
@@ -1360,12 +1312,6 @@ def require_ikev2_for_start(module, connection, tunnel, delta):
     # EC2 omits IkeVersions until it is set; the AWS default permits both versions.
     if versions is None:
         return
-
-    if not isinstance(versions, list) or any(not isinstance(item, dict) for item in versions):
-        module.fail_json(
-            msg=f"EC2 returned invalid IKEVersions for VPN connection {connection['VpnConnectionId']} "
-            f"tunnel {tunnel['OutsideIpAddress']}"
-        )
 
     if "ikev2" not in {item.get("Value") for item in versions}:
         module.fail_json(
@@ -1562,11 +1508,6 @@ def validate_configuration(module, connection=None, changed=False):
         if tunnel.get("tunnel_inside_ipv6_cidr") is not None and family != "ipv6":
             module.fail_json(changed=changed, msg="tunnel_inside_ipv6_cidr requires tunnel_inside_ip_version=ipv6")
 
-    # EC2 rejects IPv6 network CIDRs on an IPv4 connection, and omits them from it.
-    for name in ("local_ipv6_network_cidr", "remote_ipv6_network_cidr"):
-        if module.params[name] is not None and family != "ipv6":
-            module.fail_json(changed=changed, msg=f"{name} requires tunnel_inside_ip_version=ipv6")
-
     if connection is not None:
         # No EC2 modify operation takes the last four. A missing acceleration or address type is the AWS default.
         immutable = {
@@ -1598,14 +1539,9 @@ def create_connection(client, module):
 
     # EC2 treats a whitespace-only gateway ID as omitted, so it counts as missing here too.
     gateways = ("vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id")
-    if (
-        not module.params["name"]
-        or not (module.params["customer_gateway_id"] or "").strip()
-        or not any((module.params[name] or "").strip() for name in gateways)
-    ):
+    if not module.params["name"] or not any((module.params[name] or "").strip() for name in gateways):
         module.fail_json(
-            msg="Creation requires name, customer_gateway_id, and one of vpn_gateway_id, transit_gateway_id, "
-            "or vpn_concentrator_id"
+            msg="Creation requires name and one of vpn_gateway_id, transit_gateway_id, or vpn_concentrator_id"
         )
 
     # Live: next to a concentrator, EC2 ignores a whitespace-only gateway ID, so no later run could match it.
@@ -1663,7 +1599,7 @@ def create_connection(client, module):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to create VPN connection {module.params['name']}")
 
-    connection = validate_connection(module, response.get("VpnConnection"), changed=True)
+    connection = validate_connection(module, response["VpnConnection"], changed=True)
     wait_for_connection(client, module, connection["VpnConnectionId"], changed=True)
 
     return read_connection(client, module, connection["VpnConnectionId"], changed=True)
@@ -1733,10 +1669,6 @@ def ensure_present(client, module, connection):
         if module.params["purge_routes"]:
             remove_routes = current_routes - set(routes)
             pending_removals = deleting_routes - set(routes)
-
-    # Requested routes were normalized by validate_inputs; validate the routes EC2 returned.
-    for route in remove_routes | pending_removals:
-        validate_network(module, route, "Route destination", 4)
 
     updated = bool(tunnels or options or tags_to_set or tags_to_remove or add_routes or remove_routes)
     changed |= updated
@@ -1841,7 +1773,7 @@ def wait_for_route_available(client, module, connection_id, route, changed=False
 
 def wait_for_route_state(client, module, connection_id, route, state, changed=False):
     """Wait for a route state; changed reports whether the connection was already modified, for failure results."""
-    route = str(validate_network(module, route, "EC2 route destination", 4))
+    # The route is a requested CIDR normalized by validate_inputs or a CIDR EC2 returned, so it is safe to quote.
     if state == "deleted":
         argument = f"length(VpnConnections[].Routes[?DestinationCidrBlock == '{route}' && State != 'deleted'][])"
         expected = 0

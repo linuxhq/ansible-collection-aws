@@ -6,9 +6,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ec2_instance_type_in
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
-    ModuleFail,
     assert_module_contract,
-    assert_module_rejects,
 )
 
 
@@ -56,24 +54,7 @@ def test_instance_types_take_precedence_over_the_instance_type_filter():
     ]
 
 
-@pytest.mark.parametrize(
-    "filters, instance_types",
-    [
-        (None, [f"type-{index}" for index in range(201)]),
-        ({"vcpu-info.default-vcpus": [2, 4], "current-generation": True}, [f"type-{index}" for index in range(198)]),
-        ({"instance-type": [f"type-{index}" for index in range(201)]}, None),
-    ],
-)
-def test_filter_value_limit_is_rejected_before_any_aws_call(filters, instance_types):
-    # EC2 rejects more than 200 values across all filters in one call with FilterLimitExceeded.
-    assert_module_rejects(
-        plugin,
-        {"filters": filters, "instance_types": instance_types},
-        "filters and instance_types must contain at most 200 values in total",
-    )
-
-
-def test_filter_value_limit_counts_unique_instance_types_after_precedence():
+def test_instance_types_are_deduplicated_and_replace_the_instance_type_filter():
     _methods, request = run_info(
         {
             "filters": {"current-generation": True, "instance-type": [f"ignored-{index}" for index in range(10)]},
@@ -82,19 +63,6 @@ def test_filter_value_limit_counts_unique_instance_types_after_precedence():
     )
 
     assert sum(len(item["Values"]) for item in request["Filters"]) == 200
-
-
-def test_rejects_invalid_instance_type_response():
-    module = FakeModule({"filters": None, "instance_types": None}, client=Mock())
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[None]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "invalid instance type information" in raised.value.values["msg"]
 
 
 def run_info(params):

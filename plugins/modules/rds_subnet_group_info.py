@@ -135,7 +135,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
 
 
 def subnet_group_tags(client, module, subnet_group):
@@ -149,12 +148,7 @@ def subnet_group_tags(client, module, subnet_group):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to list tags for AWS RDS DB subnet group {arn}")
 
-    tags = require_valid_tag_list(
-        module,
-        response.get("TagList") if isinstance(response, dict) else None,
-        f"Unable to list tags for AWS RDS DB subnet group {arn}: AWS returned an invalid response",
-    )
-    return boto3_tag_list_to_ansible_dict(tags)
+    return boto3_tag_list_to_ansible_dict(response.get("TagList", []))
 
 
 def main():
@@ -187,11 +181,7 @@ def main():
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to describe AWS RDS DB subnet groups")
 
-    subnet_groups = response.get("DBSubnetGroups") if isinstance(response, dict) else None
-    if not isinstance(subnet_groups, list) or any(
-        not isinstance(group, dict) or not isinstance(group.get("DBSubnetGroupArn"), str) for group in subnet_groups
-    ):
-        module.fail_json(msg="Unable to describe AWS RDS DB subnet groups: AWS returned an invalid response")
+    subnet_groups = response.get("DBSubnetGroups", [])
 
     if subnet_groups:
         require_client_methods(module, client, "RDS", {"list_tags_for_resource": ("ResourceName",)})

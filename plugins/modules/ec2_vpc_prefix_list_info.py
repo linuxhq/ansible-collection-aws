@@ -181,38 +181,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
-
-
-def validate_prefix_lists(module, prefix_lists):
-    for prefix_list in prefix_lists:
-        if (
-            not isinstance(prefix_list, dict)
-            or not isinstance(prefix_list.get("PrefixListId"), str)
-            or not prefix_list["PrefixListId"]
-        ):
-            module.fail_json(msg="EC2 returned invalid managed prefix lists")
-
-        if prefix_list.get("Tags") is not None:
-            require_valid_tag_list(module, prefix_list["Tags"], "EC2 returned invalid managed prefix lists")
-
-    return prefix_lists
-
-
-def validate_entries(module, entries):
-    if not isinstance(entries, list):
-        module.fail_json(msg="EC2 returned invalid managed prefix list entries")
-
-    for entry in entries:
-        if (
-            not isinstance(entry, dict)
-            or not isinstance(entry.get("Cidr"), str)
-            or not entry["Cidr"]
-            or (entry.get("Description") is not None and not isinstance(entry.get("Description"), str))
-        ):
-            module.fail_json(msg="EC2 returned invalid managed prefix list entries")
-
-    return entries
 
 
 def main():
@@ -252,16 +220,13 @@ def main():
         if batch_filters:
             request["Filters"] = ansible_dict_to_string_filter_list(batch_filters)
 
-        for prefix_list in validate_prefix_lists(
+        for prefix_list in query_list(
             module,
-            query_list(
-                module,
-                client,
-                "describe_managed_prefix_lists",
-                "PrefixLists",
-                "Unable to describe EC2 VPC managed prefix lists",
-                **request,
-            ),
+            client,
+            "describe_managed_prefix_lists",
+            "PrefixLists",
+            "Unable to describe EC2 VPC managed prefix lists",
+            **request,
         ):
             # A prefix-list-id wildcard can match the same list in more than one batch.
             if prefix_list["PrefixListId"] in seen_prefix_list_ids:
@@ -307,10 +272,7 @@ def main():
                 msg=f"Unable to get EC2 VPC managed prefix list entries for {prefix_list['PrefixListId']}",
             )
 
-        entries = validate_entries(
-            module,
-            response.get("Entries") if isinstance(response, dict) else None,
-        )
+        entries = response.get("Entries", [])
 
         result_prefix_lists.append(
             dict(

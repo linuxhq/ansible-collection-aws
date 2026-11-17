@@ -29,8 +29,7 @@ options:
   http_put_response_hop_limit:
     description:
       - The default desired HTTP PUT response hop limit.
-      - This must be between C(1) and C(64), or C(-1) to clear the
-        account-level default.
+      - EC2 accepts C(1) to C(64), or C(-1) to clear the account-level default.
       - Requires botocore 1.34.70 or later.
       - At least one of O(http_endpoint), O(http_put_response_hop_limit),
         O(http_tokens), O(http_tokens_enforced), or O(instance_metadata_tags) is required.
@@ -194,13 +193,6 @@ def main():
         supports_check_mode=True,
     )
 
-    hop_limit = module.params["http_put_response_hop_limit"]
-
-    if hop_limit is not None and hop_limit != -1 and not 1 <= hop_limit <= 64:
-        module.fail_json(
-            msg="http_put_response_hop_limit must be between 1 and 64, or -1 to clear the account-level default"
-        )
-
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     desired = {
@@ -246,17 +238,11 @@ def main():
                 {"modify_instance_metadata_defaults": tuple(desired_update)},
             )
             try:
-                response = client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
+                client.modify_instance_metadata_defaults(**desired_update, aws_retry=True)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     msg=f"Unable to modify EC2 instance metadata defaults in region {module.region}",
-                )
-
-            if not isinstance(response, dict) or response.get("Return") is not True:
-                module.fail_json(
-                    changed=True,
-                    msg=f"EC2 did not confirm the instance metadata defaults change in region {module.region}",
                 )
 
         for option_name, option_value in comparable_desired.items():

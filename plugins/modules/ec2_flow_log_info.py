@@ -248,9 +248,6 @@ def main():
                 )
             )
 
-    if any(not isinstance(flow_log, dict) for flow_log in flow_logs):
-        module.fail_json(msg="AWS returned an invalid EC2 flow log")
-
     module.exit_json(
         changed=False,
         flow_logs=boto3_resource_list_to_ansible_dict(flow_logs, transform_tags=True, force_tags=False),

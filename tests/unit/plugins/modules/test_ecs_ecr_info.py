@@ -6,9 +6,7 @@ from ansible_collections.linuxhq.aws.plugins.modules import ecs_ecr_info as plug
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
-    ModuleFail,
     assert_module_contract,
-    assert_module_rejects,
 )
 
 
@@ -42,31 +40,6 @@ def test_repository_filters_are_sent_to_ecr():
         )
     }
     assert query.call_args.kwargs["repositoryNames"] == ["app"]
-
-
-def test_repository_name_limit_is_rejected():
-    assert_module_rejects(
-        plugin,
-        {
-            "registry_id": None,
-            "repository_names": [f"repository-{index}" for index in range(101)],
-        },
-        "repository_names must contain at most 100 unique entries",
-    )
-
-
-def test_rejects_malformed_repository_response():
-    module = FakeModule(
-        {"registry_id": None, "repository_names": None},
-        client=Mock(),
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"repositories": [None]}),
-        pytest.raises(ModuleFail),
-    ):
-        plugin.main()
 
 
 def not_found():

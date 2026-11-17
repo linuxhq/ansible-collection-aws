@@ -251,13 +251,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def validate_connections(module, connections):
-    if not isinstance(connections, list) or any(not isinstance(connection, dict) for connection in connections):
-        module.fail_json(msg="Unable to get AWS Glue connections: AWS returned an invalid response")
-
-    return connections
-
-
 def main():
     argument_spec = {
         "apply_override_for_compute_environment": {"choices": ["SPARK", "ATHENA", "PYTHON"], "type": "str"},
@@ -314,9 +307,6 @@ def main():
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to get AWS Glue connection {name}")
         else:
-            if not isinstance(response, dict) or not isinstance(response.get("Connection"), dict):
-                module.fail_json(msg=f"Unable to get AWS Glue connection {name}: AWS returned an invalid response")
-
             connection = response["Connection"]
 
         connections = [connection] if connection else []
@@ -329,7 +319,6 @@ def main():
             "Unable to list AWS Glue connections",
             **request,
         )
-        connections = validate_connections(module, connections)
 
     results = boto3_resource_list_to_ansible_dict(
         connections,

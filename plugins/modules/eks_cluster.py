@@ -300,8 +300,8 @@ options:
           - Subnet IDs for the cluster.
           - Required when creating a cluster.
           - Entries must not be empty.
-          - When creating a cluster or changing its subnets, this must contain at least two distinct subnets, and
-            AWS requires them to be in different Availability Zones.
+          - AWS requires subnets in at least two different Availability Zones.
+          - When changing the subnets of an existing cluster, this must contain at least two distinct subnets.
         elements: str
         type: list
     type: dict
@@ -309,7 +309,6 @@ options:
     description:
       - ARN of the IAM role used by the EKS cluster.
       - Required when creating a cluster.
-      - This must not be empty when specified.
       - This can only be set when creating a cluster.
       - The module fails if this differs from the existing cluster.
     type: str
@@ -982,7 +981,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.eks import has_valid_cluster_tags
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_no_reserved_tag_keys,
@@ -1072,48 +1070,6 @@ AUTHENTICATION_MODE_CHANGES = {
     "API_AND_CONFIG_MAP": ("API",),
     "CONFIG_MAP": ("API", "API_AND_CONFIG_MAP"),
 }
-
-CLUSTER_MAPPING_FIELDS = (
-    "accessConfig",
-    "computeConfig",
-    "kubernetesNetworkConfig",
-    "logging",
-    "remoteNetworkConfig",
-    "resourcesVpcConfig",
-    "storageConfig",
-    "upgradePolicy",
-    "zonalShiftConfig",
-)
-
-
-def validate_cluster(module, cluster, changed=False):
-    if (
-        not isinstance(cluster, dict)
-        or not isinstance(cluster.get("arn"), str)
-        or not cluster["arn"]
-        or cluster.get("name") != module.params["name"]
-        or not isinstance(cluster.get("status"), str)
-        or any(field in cluster and not isinstance(cluster[field], dict) for field in CLUSTER_MAPPING_FIELDS)
-        or ("encryptionConfig" in cluster and not isinstance(cluster["encryptionConfig"], list))
-        or ("version" in cluster and not isinstance(cluster["version"], str))
-        or not has_valid_cluster_tags(cluster)
-    ):
-        module.fail_json(changed=changed, msg="EKS returned an invalid cluster")
-
-    return cluster
-
-
-def validate_update(module, update, expected_id=None, changed=False):
-    if (
-        not isinstance(update, dict)
-        or not isinstance(update.get("id"), str)
-        or not update["id"]
-        or (expected_id is not None and update["id"] != expected_id)
-        or not isinstance(update.get("status"), str)
-    ):
-        module.fail_json(changed=changed, msg="EKS returned an invalid cluster update")
-
-    return update
 
 
 def normalized(value):
@@ -1332,11 +1288,7 @@ def describe_cluster(client, module, changed=False):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to describe AWS EKS cluster {name}")
 
-    return validate_cluster(
-        module,
-        response.get("cluster") if isinstance(response, dict) else None,
-        changed=changed,
-    )
+    return response["cluster"]
 
 
 def wait_for_cluster_error(module, waiter_name):
@@ -1386,12 +1338,7 @@ def describe_update(client, module, update_id, changed=False):
             msg=f"Unable to describe AWS EKS cluster update {update_id} for {name}",
         )
 
-    return validate_update(
-        module,
-        response.get("update") if isinstance(response, dict) else None,
-        expected_id=update_id,
-        changed=changed,
-    )
+    return response["update"]
 
 
 def wait_for_update(client, module, update_id, changed=False, deadline=None):
@@ -1446,9 +1393,6 @@ def wait_for_cluster_updates(client, module, deadline=None):
         return False
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to list AWS EKS cluster updates for {name}")
-
-    if not isinstance(update_ids, list) or any(not isinstance(update_id, str) for update_id in update_ids):
-        module.fail_json(msg=f"EKS returned invalid cluster updates for {name}")
 
     # EKS can start its own update after one completes; DeleteCluster rejects an in-progress update.
     # ListUpdates returns only IDs, so each update is described once and only in-progress ones are polled.
@@ -1643,20 +1587,10 @@ def ensure_present(client, module, deadline=None):
         if tags:
             create_request["tags"] = tags
 
-        if create_request.get("roleArn") is None:
-            module.fail_json(msg="role_arn is required to create an EKS cluster")
-
         require_node_settings_with_compute(
             module, (module.params["compute_config"] or {}).get("enabled") is True, f"new EKS cluster {name}"
         )
         require_node_role_with_node_pools(module, create_request.get("computeConfig"), f"new EKS cluster {name}")
-
-        if not (create_request.get("resourcesVpcConfig") or {}).get("subnetIds"):
-            module.fail_json(msg="resources_vpc_config.subnet_ids is required to create an EKS cluster")
-
-        # EKS requires subnets in at least two Availability Zones.
-        if len(set(create_request["resourcesVpcConfig"]["subnetIds"])) < 2:
-            module.fail_json(msg="resources_vpc_config.subnet_ids must contain at least two distinct subnets")
 
         # Check mode fails where the real run would, before the create.
         require_client_methods(
@@ -1684,11 +1618,7 @@ def ensure_present(client, module, deadline=None):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to create EKS cluster {name}")
 
-        cluster = validate_cluster(
-            module,
-            response.get("cluster") if isinstance(response, dict) else None,
-            changed=True,
-        )
+        cluster = response["cluster"]
 
         if wait:
             wait_for_cluster(client, module, "cluster_active", changed=True, deadline=deadline)
@@ -2076,12 +2006,7 @@ def ensure_present(client, module, deadline=None):
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name}")
 
         mutated = True
-        update = validate_update(
-            module,
-            response.get("update") if isinstance(response, dict) else None,
-            changed=True,
-        )
-        update_id = update["id"]
+        update_id = response["update"]["id"]
         wait_for_next_update = index < len(update_requests) - 1
 
         if wait or version_changed or wait_for_next_update:
@@ -2095,12 +2020,7 @@ def ensure_present(client, module, deadline=None):
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name} version")
 
         mutated = True
-        update = validate_update(
-            module,
-            response.get("update") if isinstance(response, dict) else None,
-            changed=True,
-        )
-        update_id = update["id"]
+        update_id = response["update"]["id"]
 
         if wait or policy_requests:
             wait_for_update(client, module, update_id, changed=True, deadline=deadline)
@@ -2112,14 +2032,8 @@ def ensure_present(client, module, deadline=None):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name} upgrade policy")
 
-        update = validate_update(
-            module,
-            response.get("update") if isinstance(response, dict) else None,
-            changed=True,
-        )
-
         if wait:
-            wait_for_update(client, module, update["id"], changed=True, deadline=deadline)
+            wait_for_update(client, module, response["update"]["id"], changed=True, deadline=deadline)
             wait_for_cluster(client, module, "cluster_active", changed=True, deadline=deadline)
 
     if tag_keys_to_unset:
@@ -2413,11 +2327,9 @@ def main():
             ip_network_or_none((module.params["kubernetes_network_config"] or {}).get("service_ipv4_cidr")),
         )
 
-        # EKS rejects these, but check mode would predict success, and a blank network entry or version reaches EKS
-        # after other updates.
-        for field in ("role_arn", "version"):
-            if module.params[field] == "":
-                module.fail_json(msg=f"{field} must not be empty")
+        # A blank network entry or version reaches EKS after other updates.
+        if module.params["version"] == "":
+            module.fail_json(msg="version must not be empty")
 
         for field in ("security_group_ids", "subnet_ids"):
             if "" in ((module.params["resources_vpc_config"] or {}).get(field) or []):
