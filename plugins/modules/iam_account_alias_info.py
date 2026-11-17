@@ -47,13 +47,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 
 
-def validate_account_aliases(module, aliases):
-    if not isinstance(aliases, list) or any(not isinstance(alias, str) for alias in aliases):
-        module.fail_json(msg="Unable to list AWS IAM account aliases: AWS returned an invalid response")
-
-    return aliases
-
-
 def main():
     module = AnsibleAWSModule(
         argument_spec={},
@@ -68,15 +61,12 @@ def main():
         {"list_account_aliases": ("Marker", "MaxItems")},
     )
 
-    account_aliases = validate_account_aliases(
+    account_aliases = query_list(
         module,
-        query_list(
-            module,
-            client,
-            "list_account_aliases",
-            "AccountAliases",
-            "Unable to list AWS IAM account aliases",
-        ),
+        client,
+        "list_account_aliases",
+        "AccountAliases",
+        "Unable to list AWS IAM account aliases",
     )
 
     module.exit_json(

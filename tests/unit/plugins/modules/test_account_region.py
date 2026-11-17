@@ -219,28 +219,6 @@ def test_account_id_is_sent_to_the_waiter():
     assert "af-south-1 in account 123456789012" in run_waiter.call_args.args[2]
 
 
-@pytest.mark.parametrize("account_id", ["", "123", "a" * 12])
-def test_invalid_account_id_is_rejected_before_api_calls(account_id):
-    module = FakeModule(
-        {
-            "account_id": account_id,
-            "name": "af-south-1",
-            "state": "present",
-            "wait": True,
-            "wait_delay": 30,
-            "wait_timeout": 1800,
-        },
-        client=Mock(),
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail, match="12 digits"),
-    ):
-        plugin.main()
-
-    module._client.get_region_opt_status.assert_not_called()
-
-
 @pytest.mark.parametrize(
     ("state", "previous", "mutation"),
     [("present", "DISABLED", "enable_region"), ("absent", "ENABLED", "disable_region")],

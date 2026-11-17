@@ -1,0 +1,16 @@
+---
+minor_changes:
+  - account_name - an O(name) that is not 1 to 50 printable ASCII characters except angle brackets is now rejected by
+    AWS Account Management instead of by the module, so check mode no longer reports it as an error.
+  - account_name, account_region, and aws_account_info - an O(account_id) that is not 12 digits is now rejected by AWS
+    Account Management instead of by the module.
+  - iam_account_alias - an O(name) that IAM does not accept as an account alias, including a 12-digit number, is now
+    rejected by IAM instead of by the module, so check mode no longer reports it as an error.
+  - iam_oidc_provider - an O(url) longer than 255 characters is now rejected by IAM instead of by the module, so check
+    mode no longer reports it as an error.
+  - iam_policy_info - an O(path_prefix) that IAM does not accept is now rejected by IAM instead of by the module.
+trivial:
+  - account_name, aws_account_info, iam_account_alias, iam_account_alias_info, iam_oidc_provider,
+    iam_oidc_provider_info, and iam_policy_info - rely on the IAM and AWS Account Management response shapes instead of
+    checking the types and presence of fields they always return.
+...

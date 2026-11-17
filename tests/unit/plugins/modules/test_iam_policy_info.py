@@ -7,7 +7,6 @@ from ansible_collections.linuxhq.aws.plugins.modules import iam_policy_info as p
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
-    ModuleFail,
     assert_module_contract,
 )
 
@@ -112,73 +111,11 @@ def test_policy_name_filters_documents_after_preserving_all_names():
     client.get_user_policy.assert_called_once_with(UserName="alice", PolicyName="selected", aws_retry=True)
 
 
-def test_entity_names_rejects_invalid_response():
-    module = FakeModule({"group_name": None, "path_prefix": None, "role_name": None, "user_name": None})
-    with (
-        patch.object(plugin, "query_list", return_value=[{}]),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.entity_names(Mock(), module, "User")
-
-    assert raised.value.values["msg"] == "Unable to list AWS IAM users: AWS returned an invalid response"
-
-
-def test_policy_names_reject_invalid_response():
-    module = FakeModule({"policy_name": None})
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={}),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.build_entity_policies(Mock(), module, "User", ["alice"])
-
-    assert (
-        raised.value.values["msg"] == "Unable to list AWS IAM user policies for alice: AWS returned an invalid response"
-    )
-
-
-def test_policy_document_rejects_invalid_response():
-    client = Mock(get_user_policy=Mock(return_value={}))
-    module = FakeModule({"policy_name": None})
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"PolicyNames": ["main"]}),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.build_entity_policies(client, module, "User", ["alice"])
-
-    assert (
-        raised.value.values["msg"]
-        == "Unable to get AWS IAM user policy main for alice: AWS returned an invalid response"
-    )
-
-
-@pytest.mark.parametrize("path_prefix", ["service", "/service prefix/", "/" + "a" * 512])
-def test_invalid_path_prefix_is_rejected_before_api_calls(path_prefix):
-    module = FakeModule(
-        {
-            "group_name": None,
-            "path_prefix": path_prefix,
-            "policy_name": None,
-            "role_name": None,
-            "user_name": None,
-        }
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == (
-        "path_prefix must begin with /, contain only ASCII characters from ! through DEL (no spaces), "
-        "and contain at most 512 characters"
-    )
-
-
-@pytest.mark.parametrize("path_prefix", ["/", "/aws-serv", "/service/", "/" + "a" * 511])
-def test_api_valid_path_prefix_is_accepted(path_prefix):
+# IAM, not the module, rejects a path prefix it does not accept.
+@pytest.mark.parametrize(
+    "path_prefix", ["/", "/aws-serv", "/service/", "/" + "a" * 511, "service", "/service prefix/", "/" + "a" * 512]
+)
+def test_path_prefix_reaches_iam(path_prefix):
     module = FakeModule(
         {
             "group_name": None,

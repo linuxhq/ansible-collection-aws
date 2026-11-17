@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 from botocore.exceptions import ClientError, EndpointConnectionError
 
-from ansible_collections.linuxhq.aws.plugins.modules import account_name, aws_account_info
+from ansible_collections.linuxhq.aws.plugins.modules import account_name
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleExit, ModuleFail
 
 
@@ -31,25 +31,6 @@ def test_manager(check_mode, account_id, current):
         assert gate.call_count == 1
 
     assert client.get_account_information.call_count == 1
-
-
-@pytest.mark.parametrize("name", ["", "x" * 51, "<name>", "café", "line\n", "tab\t"])
-def test_invalid_name(name):
-    module = FakeModule({"name": name, "account_id": None}, client=Mock())
-    with patch.object(account_name, "AnsibleAWSModule", return_value=module), pytest.raises(ModuleFail):
-        account_name.main()
-
-    module._client.get_account_information.assert_not_called()
-
-
-@pytest.mark.parametrize("plugin", [account_name, aws_account_info])
-@pytest.mark.parametrize("account_id", ["", "123", "a" * 12, "１２３４５６７８９０１２"])
-def test_invalid_account_id(plugin, account_id):
-    module = FakeModule({"name": "Production", "account_id": account_id}, client=Mock())
-    with patch.object(plugin, "AnsibleAWSModule", return_value=module), pytest.raises(ModuleFail):
-        plugin.main()
-
-    module._client.get_account_information.assert_not_called()
 
 
 @pytest.mark.parametrize("operation", ["read", "write"])
