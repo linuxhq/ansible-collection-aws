@@ -17,15 +17,5 @@
 
       always:
         - name: Ensure original aws account name is restored
-          ansible.builtin.include_role:
-            name: account_name
-          vars:
-            account_name_name: >-
-              {{ lookup('ansible.builtin.file',
-                 lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') ~ '/original-account-name.json') | from_json }}
-
-        - name: Ensure saved aws account name file is absent
-          ansible.builtin.file:
-            path: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-account-name.json"
-            state: absent
+          ansible.builtin.include_tasks: restore.yml
 ...

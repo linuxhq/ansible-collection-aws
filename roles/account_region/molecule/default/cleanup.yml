@@ -1,0 +1,15 @@
+---
+# Molecule runs cleanup after a failed step, before it prunes the ephemeral directory; verify has not restored
+# the saved original then. The first cleanup of the next run restores it if this one could not.
+- name: Cleanup
+  hosts: all
+  tasks:
+    - name: Ensure saved aws account region opt-in statuses file is checked
+      ansible.builtin.stat:
+        path: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-region-opt-statuses.json"
+      register: __account_region_saved
+
+    - name: Ensure original aws account region opt-in statuses are restored
+      ansible.builtin.include_tasks: restore.yml
+      when: __account_region_saved.stat.exists
+...

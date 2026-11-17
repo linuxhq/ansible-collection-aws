@@ -1,6 +1,34 @@
 ---
 - name: Converge
   hosts: all
+  pre_tasks:
+    - name: Ensure original aws ec2 serial console access is gathered
+      linuxhq.aws.ec2_serial_console_info:
+        region: "{{ _region }}"
+        validate_certs: true
+      register: __ec2_serial_console_original
+      loop: "{{ ec2_serial_console_regions }}"
+      loop_control:
+        label: "{{ _region }}"
+        loop_var: _region
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
+    # The second converge keeps the access saved before the first one changed it.
+    - name: Ensure original aws ec2 serial console access is saved
+      ansible.builtin.copy:
+        content: >-
+          {{ dict(__ec2_serial_console_original.results | map(attribute='region') |
+                  zip(__ec2_serial_console_original.results |
+                      map(attribute='serial_console_access.serial_console_access_enabled'))) | to_json }}
+        dest: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-serial-console-access.json"
+        force: false
+        mode: '0600'
+      tags:
+        - molecule-idempotence-notest
+      check_mode: false
+
   roles:
     - role: ec2_serial_console
       tags:

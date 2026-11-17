@@ -1,0 +1,8 @@
+---
+trivial:
+  - Molecule - scenarios that change account settings keep the saved originals when a run fails and restore them in
+    cleanup; ec2_serial_console and ec2_serial_console_info now save and restore serial console access.
+  - Molecule - VPN scenarios hide pre-shared keys with task-level no_log, and info scenarios assert empty results for
+    unknown identifiers and that fixtures are gone after teardown.
+  - eks_cluster_info - unit-test that O(include) is deduplicated, forwarded to ListClusters, and checked before it.
+...

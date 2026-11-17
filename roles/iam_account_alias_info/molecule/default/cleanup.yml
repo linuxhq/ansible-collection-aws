@@ -1,0 +1,15 @@
+---
+# Molecule runs cleanup after a failed step, before it prunes the ephemeral directory; verify has not restored
+# the saved original then. The first cleanup of the next run restores it if this one could not.
+- name: Cleanup
+  hosts: all
+  tasks:
+    - name: Ensure saved aws iam account aliases file is checked
+      ansible.builtin.stat:
+        path: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-account-aliases.json"
+      register: __iam_account_alias_info_saved
+
+    - name: Ensure original aws iam account aliases are restored
+      ansible.builtin.include_tasks: restore.yml
+      when: __iam_account_alias_info_saved.stat.exists
+...
