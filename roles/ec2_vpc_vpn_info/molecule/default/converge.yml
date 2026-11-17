@@ -13,9 +13,13 @@
       check_mode: false
 
     - role: ec2_vpc_vpn
+      no_log: true
+      diff: false
       tags:
         - molecule-idempotence-notest
       check_mode: false
 
-    - ec2_vpc_vpn_info
+    - role: ec2_vpc_vpn_info
+      no_log: true
+      diff: false
 ...

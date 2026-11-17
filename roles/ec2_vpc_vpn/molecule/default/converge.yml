@@ -20,17 +20,23 @@
     - role: cloudwatchlogs_log_group_info
 
     - role: ec2_vpc_vpn
+      no_log: true
+      diff: false
       ec2_vpc_vpn_list: []
       tags:
         - molecule-idempotence-notest
 
     - role: ec2_vpc_vpn
+      no_log: true
+      diff: false
       ec2_vpc_vpn_list:
         "{{ ec2_vpc_vpn_list_create }}"
       tags:
         - molecule-idempotence-notest
 
     - role: ec2_vpc_vpn
+      no_log: true
+      diff: false
       ec2_vpc_vpn_list:
         "{{ ec2_vpc_vpn_list_update }}"
 ...
