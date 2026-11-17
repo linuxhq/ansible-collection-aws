@@ -35,7 +35,7 @@ options:
     description:
       - The percentage of successful SMS deliveries for which SNS writes logs
         to CloudWatch Logs.
-      - The value must be an integer from C(0) to C(100).
+      - AWS accepts an integer from C(0) to C(100).
     type: int
   monthly_spend_limit:
     description:
@@ -150,11 +150,6 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-
-    sampling_rate = module.params["delivery_status_success_sampling_rate"]
-
-    if sampling_rate is not None and not 0 <= sampling_rate <= 100:
-        module.fail_json(msg="delivery_status_success_sampling_rate must be between 0 and 100")
 
     client = module.client(
         "sns",

@@ -14,11 +14,4 @@ def get_sms_attributes(client, module, changed=False, **request):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg="Unable to get AWS Simple Notification Service SMS attributes")
 
-    attributes = response.get("attributes", {}) if isinstance(response, dict) else None
-    if not isinstance(attributes, dict):
-        module.fail_json(
-            changed=changed,
-            msg="Unexpected response while getting AWS Simple Notification Service SMS attributes",
-        )
-
-    return attributes
+    return response.get("attributes", {})

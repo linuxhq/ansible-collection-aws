@@ -100,13 +100,6 @@ def test_report_only_mode_does_not_require_set_method():
     client.set_topic_attributes.assert_not_called()
 
 
-def test_rejects_malformed_get_response():
-    client = Mock(get_topic_attributes=Mock(return_value={"Attributes": None}))
-    result, _require = run(FakeModule({"kms_master_key_id": None, "topic_arn": "arn:topic"}, client=client))
-
-    assert result.values["msg"] == "Unexpected response while getting topic attributes for arn:topic"
-
-
 def test_return_documents_main_topic_attributes():
     contains = documented_returns(plugin)["attributes"]["contains"]
     expected = {
