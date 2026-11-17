@@ -358,6 +358,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     is_last_phone_number_conflict,
     is_replayed_deleted_resource,
     last_phone_number_message,
+    list_tags,
     pool_is_deleting,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -369,7 +370,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     reconcile_arn_tags,
     require_no_reserved_tag_keys,
     require_resulting_tag_limit,
-    require_valid_tag_list,
     require_valid_tags,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
@@ -408,51 +408,11 @@ def phone_number_tags(client, module, phone_number, changed=False, missing_ok=Fa
         {"list_tags_for_resource": ("ResourceArn",)},
         changed=changed,
     )
-    msg = f"Unable to list tags for Pinpoint SMS Voice V2 phone number {arn}"
-    try:
-        response = client.list_tags_for_resource(
-            ResourceArn=arn,
-            aws_retry=True,
-        )
-    except is_boto3_error_code("ResourceNotFoundException") as e:
-        if missing_ok:
-            return None
-
-        module.fail_json_aws(e, changed=changed, msg=msg)
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, changed=changed, msg=msg)
-
-    tags = require_valid_tag_list(
-        module,
-        response.get("Tags") if isinstance(response, dict) else None,
-        f"AWS returned malformed tags for Pinpoint SMS Voice V2 phone number {arn}",
-        changed=changed,
-    )
+    tags = list_tags(client, module, arn, "phone number", changed=changed, missing_ok=missing_ok)
+    if tags is None:
+        return None
 
     return boto3_tag_list_to_ansible_dict(tags)
-
-
-def validate_phone_number(module, phone_number, context, required_fields=(), changed=False):
-    """Validate a phone number; changed reports whether it was already modified, for failure results."""
-    msg = f"AWS returned a malformed Pinpoint SMS Voice V2 phone number while {context}"
-    if (
-        not isinstance(phone_number, dict)
-        or not isinstance(phone_number.get("PhoneNumberId"), str)
-        or not isinstance(phone_number.get("Status"), str)
-        or any(not isinstance(phone_number.get(field), str) for field in required_fields)
-    ):
-        module.fail_json(changed=changed, msg=msg)
-
-    if "DeletionProtectionEnabled" in phone_number and not isinstance(phone_number["DeletionProtectionEnabled"], bool):
-        module.fail_json(changed=changed, msg=msg)
-
-    if "NumberCapabilities" in phone_number and (
-        not isinstance(phone_number["NumberCapabilities"], list)
-        or any(not isinstance(capability, str) for capability in phone_number["NumberCapabilities"])
-    ):
-        module.fail_json(changed=changed, msg=msg)
-
-    return phone_number
 
 
 def exit_result(module, changed, response):
@@ -490,14 +450,11 @@ def get_phone_number(client, module, phone_number_id, changed=False):
             msg=f"Unable to describe Pinpoint SMS Voice V2 phone number {phone_number_id}",
         )
 
-    phone_numbers = response.get("PhoneNumbers") if isinstance(response, dict) else None
-    if not isinstance(phone_numbers, list):
-        module.fail_json(changed=changed, msg="AWS returned malformed Pinpoint SMS Voice V2 phone number data")
-
+    phone_numbers = response.get("PhoneNumbers", [])
     if not phone_numbers:
         return None
 
-    phone_number = validate_phone_number(module, phone_numbers[0], f"describing {phone_number_id}", changed=changed)
+    phone_number = phone_numbers[0]
     # DescribePhoneNumbers accepts an ID or an ARN but always returns the ID.
     if phone_number["PhoneNumberId"] != phone_number_id.rsplit("/", 1)[-1]:
         module.fail_json(
@@ -622,7 +579,6 @@ def update_phone_number(client, module, current, updates):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to update Pinpoint SMS Voice V2 phone number {phone_number_id}")
 
-    response = validate_phone_number(module, response, "updating a phone number", changed=True)
     response.pop("ResponseMetadata", None)
     return dict(current, **response)
 
@@ -651,9 +607,7 @@ def require_not_last_pool_phone_number(client, module, current):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}")
 
-    originations = response.get("OriginationIdentities") if isinstance(response, dict) else None
-    if not isinstance(originations, list) or any(not isinstance(origination, dict) for origination in originations):
-        module.fail_json(msg=f"AWS returned malformed origination identities for Pinpoint SMS Voice V2 pool {pool_id}")
+    originations = response.get("OriginationIdentities", [])
 
     identities = tuple(filter(None, (phone_number_id, current.get("PhoneNumberArn"))))
     # Deleting a pool disassociates its numbers, so the number can be released once its pool is going away.
@@ -754,7 +708,6 @@ def ensure_absent(client, module):
                 )
 
             mutated = True
-            validate_phone_number(module, current, "disabling deletion protection", changed=True)
             wait_for_phone_number_active(client, module, phone_number_id, changed=True)
 
         try:
@@ -774,7 +727,6 @@ def ensure_absent(client, module):
             )
 
         if response is not None:
-            validate_phone_number(module, response, "releasing a phone number", changed=True)
             response.pop("ResponseMetadata", None)
 
     exit_result(module, changed, response)
@@ -830,21 +782,6 @@ def ensure_present(client, module):
     name = None if module.params["phone_number_id"] else (tags or {}).get("Name")
     matches = []
     for phone_number in phone_numbers:
-        validate_phone_number(
-            module,
-            phone_number,
-            "matching existing phone numbers",
-            required_fields=(
-                "IsoCountryCode",
-                "MessageType",
-                "NumberType",
-            ),
-        )
-        if "DeletionProtectionEnabled" not in phone_number or "NumberCapabilities" not in phone_number:
-            module.fail_json(
-                msg="AWS returned a malformed Pinpoint SMS Voice V2 phone number while matching existing phone numbers"
-            )
-
         if phone_number.get("Status") == "DELETED":
             continue
 
@@ -919,14 +856,6 @@ def ensure_present(client, module):
             )
 
         tags_changed = bool(tags_to_set or tag_keys_to_unset)
-        if tags_changed and not module.check_mode and not current.get("PhoneNumberArn"):
-            module.fail_json(
-                msg=(
-                    "AWS did not return the phone number ARN required for tagging Pinpoint SMS Voice V2 phone number "
-                    f"{current['PhoneNumberId']}"
-                )
-            )
-
         # Check mode checks the SDK as the real run does, so it fails where the real run fails before any write.
         methods = {}
         if updates:
@@ -1022,11 +951,7 @@ def ensure_present(client, module):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to request Pinpoint SMS Voice V2 phone number")
 
-    if not isinstance(response, dict):
-        module.fail_json(changed=True, msg="AWS did not return the requested Pinpoint SMS Voice V2 phone number")
-
     response.pop("ResponseMetadata", None)
-    validate_phone_number(module, response, "requesting a phone number", changed=True)
 
     if module.params["client_token"] is not None and is_replayed_deleted_resource(
         lambda: get_phone_number(client, module, response["PhoneNumberId"], changed=True), "DELETED"

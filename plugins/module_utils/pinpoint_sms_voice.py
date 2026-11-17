@@ -15,8 +15,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 )
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import scrub_none_parameters
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import require_valid_tag_list
-
 # Bounded checks that a resource a creation with a caller client token returned exists.
 REPLAY_CHECKS = 3
 REPLAY_CHECK_DELAY = 5
@@ -150,11 +148,8 @@ def pool_is_deleting(client, module, pool_id):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 pool {pool_id}")
 
-    pools = response.get("Pools") if isinstance(response, dict) else None
-    if not isinstance(pools, list) or any(not isinstance(pool, dict) for pool in pools):
-        module.fail_json(msg=f"AWS returned malformed data while describing Pinpoint SMS Voice V2 pool {pool_id}")
-
-    return not pools or pools[0].get("Status") == "DELETING"
+    pools = response.get("Pools", [])
+    return not pools or pools[0]["Status"] == "DELETING"
 
 
 def list_tags(client, module, arn, resource, changed=False, missing_ok=False):
@@ -177,9 +172,4 @@ def list_tags(client, module, arn, resource, changed=False, missing_ok=False):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=msg)
 
-    return require_valid_tag_list(
-        module,
-        response.get("Tags", []) if isinstance(response, dict) else None,
-        f"AWS returned malformed tags for Pinpoint SMS Voice V2 {resource} {arn}",
-        changed=changed,
-    )
+    return response.get("Tags", [])

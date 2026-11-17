@@ -1,0 +1,20 @@
+---
+bugfixes:
+  - pinpoint_sms_voice_phone_number_info, pinpoint_sms_voice_phone_pool_info, and pinpoint_sms_voice_sender_id_info -
+    accept more than five entries in O(phone_number_ids), O(pool_ids), and O(sender_ids); each entry is described in
+    its own request, so six or more valid entries were refused for no reason.
+minor_changes:
+  - pinpoint_sms_voice_phone_number_info, pinpoint_sms_voice_phone_pool_info, and pinpoint_sms_voice_sender_id_info -
+    an O(max_results) outside C(1) to C(100) and more than 20 O(filters) are now rejected by AWS instead of by the
+    module.
+  - pinpoint_sms_voice_sender_id_info - an empty or null O(sender_ids[].sender_id) or O(sender_ids[].iso_country_code)
+    is now rejected by AWS instead of by the module.
+  - pinpoint_sms_voice_phone_pool - an O(iso_country_code) other than two uppercase letters is now rejected by AWS
+    when creating a pool instead of by the module, so check mode no longer reports it as an error.
+trivial:
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_number_info, pinpoint_sms_voice_phone_pool,
+    pinpoint_sms_voice_phone_pool_associate, pinpoint_sms_voice_phone_pool_info, pinpoint_sms_voice_sender_id, and
+    pinpoint_sms_voice_sender_id_info - rely on the Pinpoint SMS Voice V2 response shape instead of checking the types
+    and presence of fields it always returns.
+  - pinpoint_sms_voice_phone_number - list phone number tags with the shared Pinpoint SMS Voice V2 tag helper.
+...

@@ -221,25 +221,7 @@ def describe_name(module):
 
 
 def validate_sender_id(module, sender_id, context, changed=False):
-    """Validate a sender ID; changed reports whether it was already modified, for failure results."""
-    msg = f"AWS returned a malformed {SERVICE} sender ID while {context}"
-    if (
-        not isinstance(sender_id, dict)
-        or not isinstance(sender_id.get("SenderId"), str)
-        or not isinstance(sender_id.get("IsoCountryCode"), str)
-        or not isinstance(sender_id.get("SenderIdArn"), str)
-    ):
-        module.fail_json(changed=changed, msg=msg)
-
-    if "DeletionProtectionEnabled" in sender_id and not isinstance(sender_id["DeletionProtectionEnabled"], bool):
-        module.fail_json(changed=changed, msg=msg)
-
-    if "MessageTypes" in sender_id and (
-        not isinstance(sender_id["MessageTypes"], list)
-        or any(not isinstance(message_type, str) for message_type in sender_id["MessageTypes"])
-    ):
-        module.fail_json(changed=changed, msg=msg)
-
+    """Check that AWS returned the requested sender ID; changed reports whether it was already modified."""
     # Compared without case, so a sender ID AWS stores with different letter case is still recognized.
     if (sender_id["SenderId"].upper(), sender_id["IsoCountryCode"]) != (
         module.params["sender_id"].upper(),
@@ -278,10 +260,7 @@ def get_sender_id(client, module):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to describe {describe_name(module)}")
 
-    sender_ids = response.get("SenderIds") if isinstance(response, dict) else None
-    if not isinstance(sender_ids, list):
-        module.fail_json(msg=f"AWS returned malformed {SERVICE} sender ID data")
-
+    sender_ids = response.get("SenderIds", [])
     if not sender_ids:
         return None
 

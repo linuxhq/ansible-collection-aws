@@ -104,17 +104,6 @@ def test_omitted_deletion_protection_leaves_an_existing_pool_unchanged():
     client.update_pool.assert_not_called()
 
 
-def test_rejects_lowercase_country_code():
-    module = FakeModule({"iso_country_code": "us", "state": "present"})
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "uppercase" in raised.value.values["msg"]
-
-
 def test_name_tag_counts_toward_provider_limit():
     module = FakeModule(
         {
@@ -914,16 +903,6 @@ def test_absent_disables_deletion_protection_before_deleting():
     assert raised.value.values["changed"]
 
 
-def test_describe_pools_rejects_malformed_response():
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value=[]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.describe_pools(Mock(), FakeModule({}))
-
-    assert "malformed" in raised.value.values["msg"]
-
-
 def test_select_pool_by_id_rejects_wrong_pool():
     with pytest.raises(ModuleFail) as raised:
         plugin.select_pool_by_id(
@@ -1131,28 +1110,6 @@ def present_params(**overrides):
 
 
 @pytest.mark.parametrize(("deletion_protection_enabled", "changed"), [(True, True), (None, False)])
-def test_tagging_without_a_returned_arn_names_the_pool(deletion_protection_enabled, changed):
-    # UpdatePoolResult does not require PoolArn.
-    pool = active_pool()
-    pool.pop("PoolArn")
-    client = Mock()
-    client.update_pool.return_value = dict(pool, DeletionProtectionEnabled=True)
-    module = FakeModule(present_params(deletion_protection_enabled=deletion_protection_enabled))
-    with (
-        patch.object(plugin, "find_pool", return_value=pool),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert raised.value.values == {
-        "changed": changed,
-        "msg": "Unable to tag Pinpoint SMS Voice V2 pool pool-1: AWS did not return its ARN",
-    }
-    assert client.update_pool.called is changed
-    client.tag_resource.assert_not_called()
-
-
-@pytest.mark.parametrize(("deletion_protection_enabled", "changed"), [(True, True), (None, False)])
 def test_tag_failure_reports_whether_the_pool_was_updated(deletion_protection_enabled, changed):
     client = Mock()
     client.update_pool.return_value = active_pool(DeletionProtectionEnabled=True)
@@ -1234,17 +1191,6 @@ def test_delete_failure_without_earlier_changes_reports_unchanged():
 
     assert raised.value.values["changed"] is False
     client.update_pool.assert_not_called()
-
-
-@pytest.mark.parametrize("changed", [False, True])
-def test_pool_tags_report_malformed_tags_with_changed(changed):
-    client = Mock()
-    client.list_tags_for_resource.return_value = {"Tags": [{"Key": "Name"}]}
-    with pytest.raises(ModuleFail) as raised:
-        plugin.pool_with_tags(client, FakeModule({}), {"PoolArn": "arn:pool-1"}, changed=changed)
-
-    assert raised.value.values["msg"] == "AWS returned malformed tags for Pinpoint SMS Voice V2 pool arn:pool-1"
-    assert raised.value.values["changed"] is changed
 
 
 def test_pool_id_search_paths_gate_describe_by_pool_ids():
@@ -1633,6 +1579,7 @@ def test_new_pool_without_a_country_requires_botocore_1_42_80_before_any_write(
     # botocore before 1.42.80 requires IsoCountryCode in CreatePool and refuses the request without it.
     old_botocore = ModuleFail({"msg": "botocore 1.42.80 required"})
     client = Mock()
+    client.create_pool.return_value = active_pool()
     module = FakeModule(
         main_params(iso_country_code=iso_country_code, origination_identity="MYSENDER"), check_mode=check_mode
     )

@@ -270,19 +270,6 @@ def test_create_passes_aws_errors_through():
     assert result.values["msg"] == "Unable to request Pinpoint SMS Voice V2 sender ID EXAMPLE in US"
 
 
-def test_create_rejects_malformed_response():
-    client = model_client()
-    client.request_sender_id.return_value = {"SenderId": "EXAMPLE"}
-    module = FakeModule(params(), client=client)
-    result, _require, _paginate = run(module, describe=None)
-
-    assert isinstance(result, ModuleFail)
-    assert result.values == {
-        "changed": True,
-        "msg": "AWS returned a malformed Pinpoint SMS Voice V2 sender ID while requesting it",
-    }
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("message_types", [["TRANSACTIONAL"], None])
 def test_existing_sender_id_is_unchanged(check_mode, message_types):
@@ -607,26 +594,6 @@ def test_describe_error_is_reported(state):
 
     assert isinstance(result, ModuleFail)
     assert result.values == {"msg": "Unable to describe Pinpoint SMS Voice V2 sender ID EXAMPLE in DE"}
-
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        {"SenderIds": "invalid"},
-        {"SenderIds": [{"SenderId": "EXAMPLE"}]},
-        {"SenderIds": [described(DeletionProtectionEnabled="yes")]},
-        {"SenderIds": [described(MessageTypes="TRANSACTIONAL")]},
-    ],
-)
-def test_describe_rejects_malformed_response(response):
-    module = FakeModule(params(), client=model_client())
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value=response),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_sender_id(module._client, module)
-
-    assert "malformed" in raised.value.values["msg"]
 
 
 def test_describe_rejects_another_sender_id():

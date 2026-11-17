@@ -321,34 +321,6 @@ def test_existing_number_matches_capabilities_without_order():
     client.request_phone_number.assert_not_called()
 
 
-def test_existing_number_rejects_malformed_response():
-    module = FakeModule(
-        {
-            "deletion_protection_enabled": False,
-            "international_sending_enabled": None,
-            "iso_country_code": "US",
-            "message_type": "TRANSACTIONAL",
-            "number_capabilities": ["SMS"],
-            "number_type": "LONG_CODE",
-            "opt_out_list_name": None,
-            "pool_id": None,
-            "registration_id": None,
-            "phone_number_id": None,
-            "purge_tags": True,
-            "state": "present",
-            "tags": None,
-            "wait": False,
-        }
-    )
-    with (
-        patch.object(plugin, "query_list", return_value=[{"Status": "ACTIVE"}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(Mock(), module)
-
-    assert "malformed" in raised.value.values["msg"]
-
-
 def test_existing_number_matches_pool_and_opt_out_list_arns():
     client = Mock()
     module = FakeModule(
@@ -586,18 +558,38 @@ def test_absent_activation_wait_accepts_disappearing_number():
     assert result == {}
 
 
-def test_phone_number_tags_rejects_malformed_response():
+@pytest.mark.parametrize("changed", [False, True])
+def test_phone_number_tags_use_the_shared_tag_listing(changed):
     client = Mock()
-    client.list_tags_for_resource.return_value = {"Tags": "invalid"}
+    client.list_tags_for_resource.return_value = {"Tags": [{"Key": "Name", "Value": "primary"}]}
     module = FakeModule({})
-
     with (
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "list_tags", wraps=plugin.list_tags) as list_tags,
     ):
-        plugin.phone_number_tags(client, module, {"PhoneNumberArn": "arn:phone-1"})
+        tags = plugin.phone_number_tags(client, module, {"PhoneNumberArn": "arn:phone-1"}, changed=changed)
 
-    assert "malformed tags" in raised.value.values["msg"]
+    assert tags == {"Name": "primary"}
+    require.assert_called_once_with(
+        module, client, "Pinpoint SMS Voice V2", {"list_tags_for_resource": ("ResourceArn",)}, changed=changed
+    )
+    list_tags.assert_called_once_with(client, module, "arn:phone-1", "phone number", changed=changed, missing_ok=False)
+
+
+def test_phone_number_tags_default_missing_tags_to_empty():
+    client = Mock()
+    client.list_tags_for_resource.return_value = {}
+    with patch.object(plugin, "require_client_methods"):
+        assert plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberArn": "arn:phone-1"}) == {}
+
+
+def test_phone_number_tags_without_an_arn_list_nothing():
+    client = Mock()
+    with patch.object(plugin, "require_client_methods") as require:
+        assert plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberId": "phone-1"}) == {}
+
+    require.assert_not_called()
+    client.list_tags_for_resource.assert_not_called()
 
 
 @pytest.mark.parametrize("missing_ok", [False, True])
@@ -649,16 +641,6 @@ def test_name_matching_skips_a_candidate_released_before_its_tags_are_listed():
     assert raised.value.values["changed"] is False
     assert raised.value.values["phone_number_id"] == "phone-1"
     client.request_phone_number.assert_not_called()
-
-
-def test_get_phone_number_rejects_malformed_response():
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value=[]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_phone_number(Mock(), FakeModule({}), "phone-1")
-
-    assert "malformed" in raised.value.values["msg"]
 
 
 def test_get_phone_number_rejects_wrong_phone_number():
@@ -1286,23 +1268,6 @@ def test_tag_failure_reports_whether_the_number_was_updated(deletion_protection_
     assert client.update_phone_number.called is changed
 
 
-def test_tagging_without_a_returned_arn_names_the_number():
-    client = Mock()
-    module = FakeModule(phone_number_params(phone_number_id="phone-1", tags={"Env": "test"}))
-    with (
-        patch.object(plugin, "get_phone_number", return_value=existing_number()),
-        patch.object(plugin, "phone_number_tags", return_value={}),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert raised.value.values == {
-        "msg": "AWS did not return the phone number ARN required for tagging Pinpoint SMS Voice V2 phone number phone-1"
-    }
-    client.tag_resource.assert_not_called()
-
-
 def test_unsupported_tagging_fails_before_updating_settings():
     client = Mock()
 
@@ -1618,22 +1583,6 @@ def test_present_validates_wait_bounds_without_wait():
         plugin.main()
 
     assert raised.value.values["msg"] == "wait_delay must be 1 or greater"
-
-
-@pytest.mark.parametrize("changed", [False, True])
-def test_phone_number_tags_reports_malformed_tags_with_changed(changed):
-    client = Mock()
-    client.list_tags_for_resource.return_value = {"Tags": [{"Key": "Name"}]}
-    with (
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberArn": "arn:phone-1"}, changed=changed)
-
-    assert (
-        raised.value.values["msg"] == "AWS returned malformed tags for Pinpoint SMS Voice V2 phone number arn:phone-1"
-    )
-    assert raised.value.values["changed"] is changed
 
 
 def pool_listing(*originations):
