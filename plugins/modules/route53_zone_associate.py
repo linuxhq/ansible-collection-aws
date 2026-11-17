@@ -40,8 +40,7 @@ options:
     type: str
   vpc_region:
     description:
-      - The AWS region of the VPC.
-      - This must match the AWS region name format, for example V(us-west-2).
+      - The AWS region of the VPC, for example V(us-west-2).
     required: true
     type: str
   wait:
@@ -143,8 +142,6 @@ vpcs:
       returned: always
       type: str
 """
-
-import re
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -276,26 +273,8 @@ def get_hosted_zone(client, module, hosted_zone_id):
             msg=f"Unable to get AWS Route53 hosted zone {hosted_zone_id}",
         )
 
-    if (
-        not isinstance(response, dict)
-        or not isinstance(response.get("HostedZone", {}), dict)
-        or not isinstance(response.get("VPCs", []), list)
-    ):
-        module.fail_json(msg=f"AWS Route53 returned an invalid hosted zone response for {hosted_zone_id}")
-
-    vpcs = response.get("VPCs", [])
-    for vpc in vpcs:
-        if (
-            not isinstance(vpc, dict)
-            or not isinstance(vpc.get("VPCId"), str)
-            or not vpc["VPCId"]
-            or not isinstance(vpc.get("VPCRegion"), str)
-            or not vpc["VPCRegion"]
-        ):
-            module.fail_json(msg=f"AWS Route53 returned an invalid VPC association for hosted zone {hosted_zone_id}")
-
-    private = response.get("HostedZone", {}).get("Config", {}).get("PrivateZone") is True
-    return {"found": True, "private": private, "shared": False, "vpcs": vpcs}
+    private = response["HostedZone"].get("Config", {}).get("PrivateZone") is True
+    return {"found": True, "private": private, "shared": False, "vpcs": response.get("VPCs", [])}
 
 
 def get_shared_vpc_association(client, module, hosted_zone_id):
@@ -315,10 +294,7 @@ def get_shared_vpc_association(client, module, hosted_zone_id):
         VPCId=requested_vpc["VPCId"],
         VPCRegion=requested_vpc["VPCRegion"],
     )
-    associated = any(
-        isinstance(summary, dict) and str(summary.get("HostedZoneId", "")).rsplit("/", 1)[-1] == hosted_zone_id
-        for summary in summaries
-    )
+    associated = any(summary["HostedZoneId"].rsplit("/", 1)[-1] == hosted_zone_id for summary in summaries)
     return [requested_vpc] if associated else []
 
 
@@ -331,13 +307,10 @@ def last_vpc_association_message(module, hosted_zone_id):
 
 def wait_for_change(client, module, response, hosted_zone_id):
     # This runs only after an association change, so failures report changed=True.
-    if not module.params["wait"] or not isinstance(response, dict):
+    if not module.params["wait"] or response is None:
         return
 
-    change_id = (response.get("ChangeInfo") or {}).get("Id")
-    if not isinstance(change_id, str) or not change_id:
-        module.fail_json(changed=True, msg=f"AWS Route53 did not return a change ID for hosted zone {hosted_zone_id}")
-
+    change_id = response["ChangeInfo"]["Id"]
     run_waiter(
         module,
         client.get_waiter("resource_record_sets_changed"),
@@ -383,10 +356,6 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-    vpc_region = module.params["vpc_region"]
-
-    if not 2 <= len(vpc_region) <= 25 or not re.fullmatch(r"[a-z]{2,4}(?:-[a-z]{1,15})+-[0-9]", vpc_region):
-        module.fail_json(msg="vpc_region must be a valid AWS region name")
 
     # ansible-core turns an explicit null for a required string into "", and like a whitespace-only value it
     # identifies no zone or VPC.

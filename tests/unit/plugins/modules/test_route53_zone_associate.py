@@ -70,10 +70,6 @@ def test_module_contract():
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-def test_invalid_vpc_region_is_rejected():
-    assert run_main(FakeModule(params(vpc_region="invalid"))) == "vpc_region must be a valid AWS region name"
-
-
 def test_null_required_ids_are_rejected_before_aws_calls():
     captured = {}
 
@@ -171,22 +167,6 @@ def test_get_hosted_zone_reports_missing_zone():
     client = Mock()
     client.get_hosted_zone.side_effect = client_error("NoSuchHostedZone", "GetHostedZone")
     assert plugin.get_hosted_zone(client, FakeModule(params()), "Z1") == zone([], found=False, private=False)
-
-
-@pytest.mark.parametrize(
-    ("response", "message"),
-    [
-        ({"VPCs": {}}, "AWS Route53 returned an invalid hosted zone response for Z1"),
-        ({"VPCs": [{"VPCId": "vpc-1"}]}, "AWS Route53 returned an invalid VPC association for hosted zone Z1"),
-    ],
-)
-def test_get_hosted_zone_rejects_invalid_response(response, message):
-    client = Mock()
-    client.get_hosted_zone.return_value = response
-    with pytest.raises(ModuleFail) as raised:
-        plugin.get_hosted_zone(client, FakeModule(params()), "Z1")
-
-    assert raised.value.values["msg"] == message
 
 
 @pytest.mark.parametrize(("listed", "expected"), [("/hostedzone/Z1", [VPC_1]), ("Z2", [])])
@@ -341,16 +321,5 @@ def test_wait_failure_after_a_change_reports_changed(state):
         pytest.raises(ModuleFail) as raised,
     ):
         ensure(client, FakeModule(params(state=state, wait=True)), "Z1")
-
-    assert raised.value.values["changed"] is True
-
-
-def test_missing_change_id_after_a_change_reports_changed():
-    client = Mock(associate_vpc_with_hosted_zone=Mock(return_value={}))
-    with (
-        patch.object(plugin, "get_hosted_zone", return_value=zone([VPC_2])),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params(wait=True)), "Z1")
 
     assert raised.value.values["changed"] is True

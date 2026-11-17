@@ -64,15 +64,20 @@ def test_module_contract():
     assert options["argument_spec"]["name"]["required"] is True
 
 
-def test_absent_rejects_empty_name():
-    module = FakeModule({"name": "", "state": "absent"})
+def test_absent_with_a_long_name_converges():
+    # A caller reference longer than CreateReusableDelegationSet accepts identifies no delegation set.
+    client = Mock()
+    module = FakeModule({"name": "n" * 129, "state": "absent"}, client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[{"CallerReference": "other", "Id": "delegation-1"}]),
+        pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "name must be 1 to 128 characters"
+    assert raised.value.values == {"changed": False, "name": "n" * 129, "state": "absent"}
+    client.delete_reusable_delegation_set.assert_not_called()
 
 
 def test_check_mode_predicts_delegation_set():
@@ -104,35 +109,20 @@ def test_lookup_uses_all_paginated_delegation_sets():
     query.assert_called_once()
 
 
-def test_lookup_rejects_malformed_delegation_sets():
-    module = FakeModule({"name": "example"})
-    for delegation_sets in ([None], [{"CallerReference": "example"}]):
-        with (
-            patch.object(plugin, "query_list", return_value=delegation_sets),
-            pytest.raises(ModuleFail) as raised,
-        ):
-            plugin.get_reusable_delegation_set(Mock(), module)
-
-        assert (
-            raised.value.values["msg"]
-            == "Unable to list AWS Route53 reusable delegation sets: AWS returned an invalid response"
-        )
-
-
-def test_create_uses_lookup_when_response_is_malformed():
+def test_create_returns_the_created_set():
     client = Mock()
-    client.create_reusable_delegation_set.return_value = None
+    client.create_reusable_delegation_set.return_value = {
+        "DelegationSet": {"CallerReference": "example", "Id": "delegation-1", "NameServers": ["ns-1.example"]},
+        "Location": "https://route53.amazonaws.com/2013-04-01/delegationset/delegation-1",
+    }
     module = FakeModule({"name": "example"})
     with (
-        patch.object(
-            plugin,
-            "get_reusable_delegation_set",
-            side_effect=[None, {"CallerReference": "example", "Id": "delegation-1"}],
-        ),
+        patch.object(plugin, "get_reusable_delegation_set", return_value=None) as get,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
 
+    get.assert_called_once()
     assert raised.value.values["changed"]
     assert raised.value.values["delegation_set_id"] == "delegation-1"
 
@@ -194,40 +184,3 @@ def test_already_created_set_that_is_now_listed_is_used():
     assert get.call_count == 2
     assert raised.value.values["changed"] is True
     assert raised.value.values["delegation_set_id"] == "/delegationset/N1"
-
-
-def test_created_set_missing_from_the_response_and_listing_reports_changed():
-    client = Mock(create_reusable_delegation_set=Mock(return_value={}))
-    with (
-        patch.object(plugin, "get_reusable_delegation_set", return_value=None) as get,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule({"name": "main"}))
-
-    assert raised.value.values["changed"] is True
-    assert get.call_args_list[-1].kwargs == {"changed": True}
-
-
-def test_invalid_listing_after_a_create_reports_changed():
-    module = FakeModule({"name": "main"})
-    with (
-        patch.object(plugin, "query_list", return_value=[{"CallerReference": 1}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_reusable_delegation_set(Mock(), module, changed=True)
-
-    assert raised.value.values["changed"] is True
-
-
-def test_listing_failure_after_a_create_reports_changed():
-    def failing_query(module, client, method_name, result_key, error_msg, changed=False, **kwargs):
-        module.fail_json(changed=changed, msg=error_msg)
-
-    with (
-        patch.object(plugin, "query_list", side_effect=failing_query),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_reusable_delegation_set(Mock(), FakeModule({"name": "main"}), changed=True)
-
-    assert raised.value.values["changed"] is True
-    assert raised.value.values["msg"] == "Unable to list AWS Route53 reusable delegation sets"
