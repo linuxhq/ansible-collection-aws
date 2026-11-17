@@ -44,6 +44,32 @@
           - _iam_oidc_provider_info_list | length == 1
           - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].client_id_list.0 == 'sts.amazonaws.com'
 
+    - name: Ensure role is included with an unknown arn
+      ansible.builtin.include_role:
+        name: iam_oidc_provider_info
+      vars:
+        iam_oidc_provider_info_arn:
+          "{{ iam_oidc_provider_info_arn_filter | replace('oidc.molecule.example.com', 'oidc.missing.example.com') }}"
+
+    - name: Ensure info with an unknown arn is verified
+      ansible.builtin.assert:
+        that:
+          - _iam_oidc_provider_info_list == []
+          - _iam_oidc_provider_info_dict == {}
+
+    # A trailing slash makes a different provider URL.
+    - name: Ensure role is included with a non-matching url
+      ansible.builtin.include_role:
+        name: iam_oidc_provider_info
+      vars:
+        iam_oidc_provider_info_url: "{{ iam_oidc_provider_list.0.url }}/"
+
+    - name: Ensure info with a non-matching url is verified
+      ansible.builtin.assert:
+        that:
+          - _iam_oidc_provider_info_list == []
+          - _iam_oidc_provider_info_dict == {}
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         iam_oidc_provider_list:
@@ -58,4 +84,15 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
+
+    # IAM is eventually consistent, so a deleted provider can still be listed briefly.
+    - name: Ensure oidc provider is absent
+      linuxhq.aws.iam_oidc_provider_info:
+        url: "{{ iam_oidc_provider_list.0.url }}"
+        validate_certs: true
+      register: __iam_oidc_provider_info_deleted
+      retries: 12
+      delay: 5
+      until:
+        - __iam_oidc_provider_info_deleted.open_id_connect_providers == []
 ...
