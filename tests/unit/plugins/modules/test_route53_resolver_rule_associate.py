@@ -114,14 +114,6 @@ def test_wait_returns_failed_association_when_allowed():
     assert association["Status"] == "FAILED"
 
 
-def test_wait_rejects_malformed_get_response():
-    client = Mock(get_resolver_rule_association=Mock(return_value=[]))
-    with patch.object(plugin, "custom_waiter"), patch.object(plugin, "run_waiter"), pytest.raises(ModuleFail) as raised:
-        plugin.wait_for_resolver_rule_association_status(client, FakeModule(params()), "rslvr-rrassoc-1", "complete")
-
-    assert "invalid resolver rule association" in raised.value.values["msg"]
-
-
 @pytest.mark.parametrize("name", [None, "main"])
 def test_failed_association_is_replaced(name):
     client = Mock()
@@ -190,22 +182,9 @@ def test_creating_association_wait_allows_failed_so_it_can_be_replaced():
     client.disassociate_resolver_rule.assert_called_once()
 
 
-def test_create_rereads_association_when_response_is_lean():
-    client = Mock(associate_resolver_rule=Mock(return_value={}))
-    association = {"Id": "rslvr-rrassoc-1", "Name": "main", "ResolverRuleId": "rslvr-rr-1", "VPCId": "vpc-1"}
-    with (
-        patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", side_effect=[None, association]),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params()))
-
-    assert raised.value.values["resolver_rule_association_id"] == "rslvr-rrassoc-1"
-
-
 @pytest.mark.parametrize(
     ("associations", "message"),
     [
-        ([{"Name": "main", "ResolverRuleId": "rslvr-rr-1", "VPCId": "vpc-1"}], "without a valid ID"),
         (
             [dict(ASSOCIATION, Id="rslvr-rrassoc-1"), dict(ASSOCIATION, Id="rslvr-rrassoc-2")],
             "Multiple AWS Route53 Resolver rule associations",
@@ -219,19 +198,6 @@ def test_list_rejects_malformed_and_ambiguous_associations(associations, message
 
     assert message in raised.value.values["msg"]
     assert raised.value.values["changed"] is False
-
-
-def test_ambiguous_lookup_after_create_reports_changed():
-    client = Mock(associate_resolver_rule=Mock(return_value={}))
-    duplicates = [dict(ASSOCIATION, Id="rslvr-rrassoc-1"), dict(ASSOCIATION, Id="rslvr-rrassoc-2")]
-    with (
-        patch.object(plugin, "query_list", side_effect=[[], duplicates]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params()))
-
-    assert "Multiple AWS Route53 Resolver rule associations" in raised.value.values["msg"]
-    assert raised.value.values["changed"] is True
 
 
 def test_check_mode_replacement_does_not_return_stale_id():
@@ -379,39 +345,6 @@ def test_present_rejects_invalid_name_before_api_calls():
         plugin.main()
 
     assert "valid resolver rule association name" in raised.value.values["msg"]
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("blank", ["", " "])
-@pytest.mark.parametrize("option", ["resolver_rule_id", "vpc_id"])
-def test_present_rejects_blank_ids_before_any_aws_call(check_mode, blank, option):
-    # Live: the lookup matches nothing for a whitespace-only ID and AssociateResolverRule refuses it, so check mode
-    # predicted a new association.
-    module = FakeModule(params(**{option: blank}), check_mode=check_mode)
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "ensure_present") as ensure_present,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values == {"msg": f"{option} must not be empty"}
-    module.client.assert_not_called()
-    ensure_present.assert_not_called()
-
-
-@pytest.mark.parametrize("option", ["resolver_rule_id", "vpc_id"])
-def test_absent_does_not_check_blank_ids(option):
-    module = FakeModule(params(**{option: " ", "state": "absent"}))
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "ensure_absent") as ensure_absent,
-    ):
-        plugin.main()
-
-    ensure_absent.assert_called_once()
 
 
 def test_association_that_fails_after_creation_reports_changed():

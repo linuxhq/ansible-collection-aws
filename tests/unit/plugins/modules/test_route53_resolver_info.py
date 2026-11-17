@@ -7,66 +7,10 @@ from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_inf
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
-    ModuleFail,
     assert_documents_shape,
     assert_module_contract,
     documented_returns,
 )
-
-
-def test_malformed_endpoint_is_rejected():
-    module = FakeModule({"filters": None}, client=Mock())
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"Arn": "arn:endpoint"}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert "without a valid ID" in raised.value.values["msg"]
-
-
-def test_malformed_detail_response_is_rejected():
-    module = FakeModule({"filters": None}, client=Mock())
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"Id": "rslvr-1"}]),
-        patch.object(plugin, "paginated_query_with_retries", return_value=[]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "list_resolver_endpoint_ip_addresses: AWS returned an invalid response"
-
-
-def test_malformed_ip_address_and_tag_are_rejected():
-    module = FakeModule({"filters": None}, client=Mock())
-    endpoint = {"Arn": "arn:endpoint", "Id": "rslvr-1"}
-    cases = [
-        ([{"Ip": "192.0.2.1"}], "without a subnet ID"),
-        ([{"Key": "Name"}], "invalid tag"),
-    ]
-    for index, (items, message) in enumerate(cases):
-        responses = (
-            [{"IpAddresses": items}]
-            if index == 0
-            else [
-                {"IpAddresses": [{"SubnetId": "subnet-1"}]},
-                {"Tags": items},
-            ]
-        )
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "query_list", return_value=[endpoint]),
-            patch.object(plugin, "paginated_query_with_retries", side_effect=responses),
-            pytest.raises(ModuleFail) as raised,
-        ):
-            plugin.main()
-
-        assert message in raised.value.values["msg"]
 
 
 def test_module_contract():
@@ -150,16 +94,3 @@ def test_unnamed_endpoint_result_omits_name_as_documented():
     endpoint = raised.value.values["resolver_endpoints"][0]
     assert endpoint["id"] == "rslvr-in-1"
     assert "name" not in endpoint
-
-
-def test_endpoint_with_a_malformed_name_is_rejected():
-    module = FakeModule({"filters": None}, client=Mock())
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"Id": "rslvr-1", "Name": 1}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "list_resolver_endpoints: AWS returned an invalid resolver endpoint Name"

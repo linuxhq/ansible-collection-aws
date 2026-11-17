@@ -58,64 +58,6 @@ def test_equivalent_ipv6_target_is_idempotent(check_mode):
     assert not client.mock_calls
 
 
-def test_get_rejects_malformed_response():
-    client = Mock(get_resolver_rule=Mock(return_value=[]))
-    with pytest.raises(ModuleFail) as raised:
-        plugin.get_resolver_rule(client, FakeModule({"name": "rule"}), "rslvr-rr-1")
-
-    assert raised.value.values["msg"] == "get_resolver_rule: AWS returned an invalid resolver rule"
-
-
-def test_create_rereads_rule_when_response_is_lean():
-    client = Mock(create_resolver_rule=Mock(return_value={}))
-    module = FakeModule({"state": "present", "tags": None, "wait": False})
-    request = {
-        "DomainName": "example.com",
-        "Name": "main",
-        "ResolverEndpointId": "rslvr-out-1",
-        "RuleType": "FORWARD",
-        "TargetIps": [{"Ip": "192.0.2.1"}],
-    }
-    rule = {"Id": "rslvr-rr-1"}
-    with patch.object(plugin, "get_resolver_rule_by_name", return_value=rule) as get:
-        result = plugin.create_resolver_rule(client, module, request)
-
-    get.assert_called_once_with(client, module, changed=True)
-    assert result["DomainName"] == "example.com"
-    assert result["Id"] == "rslvr-rr-1"
-
-
-def test_list_by_name_rejects_malformed_rule():
-    module = FakeModule({"name": "main", "state": "absent"})
-    with (
-        patch.object(plugin, "query_list", return_value=[{"Name": "main"}]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_resolver_rule_by_name(Mock(), module)
-
-    assert "without a valid ID" in raised.value.values["msg"]
-
-
-def test_rule_and_tag_validation_rejects_malformed_entries():
-    module = FakeModule({"name": "main"})
-    rule = {
-        "DomainName": "example.com",
-        "Id": "rslvr-rr-1",
-        "ResolverEndpointId": "rslvr-out-1",
-        "RuleType": "FORWARD",
-        "TargetIps": [{"Port": 53}],
-    }
-    with pytest.raises(ModuleFail) as target_raised:
-        plugin.validate_resolver_rule(module, rule, "get_resolver_rule", require_details=True)
-
-    assert "without an IP address" in target_raised.value.values["msg"]
-
-    with pytest.raises(ModuleFail) as tag_raised:
-        route53_resolver_utils.validate_tags(module, [{"Key": "Name"}])
-
-    assert "invalid tag" in tag_raised.value.values["msg"]
-
-
 def test_absent_waits_for_deleting_rule_without_deleting_again():
     client = Mock()
     module = FakeModule({"name": "rule", "wait": True, "wait_timeout": 300})
@@ -275,14 +217,6 @@ def test_empty_target_ips_are_rejected():
     )
 
 
-def test_invalid_name_is_rejected_when_absent():
-    assert_module_rejects(
-        plugin,
-        {"name": "123", "state": "absent", "tags": None},
-        "name must be a valid resolver rule name of at most 64 characters",
-    )
-
-
 def test_no_wait_present_still_validates_internal_wait_bounds():
     module = FakeModule(
         {
@@ -315,54 +249,19 @@ def test_replacement_sensitive_limits_are_rejected():
         "tags": None,
         "target_ips": [{"ip": "192.0.2.1", "port": 53}],
     }
-    cases = (
-        (
-            dict(base, name="123"),
-            "name must be a valid resolver rule name of at most 64 characters",
-        ),
-        (
-            dict(base, domain_name=""),
-            "domain_name must contain 1 to 256 characters",
-        ),
-        (
-            dict(base, resolver_endpoint_id=""),
-            "resolver_endpoint_id must contain 1 to 64 characters",
-        ),
-        (
-            dict(base, tags={str(index): "" for index in range(201)}),
-            "tags must contain at most 200 entries",
-        ),
-        (
-            dict(
-                base,
-                target_ips=[
-                    {
-                        "ip": "192.0.2.1",
-                        "port": 53,
-                        "server_name_indication": "s" * 256,
-                    }
-                ],
-            ),
-            "target_ips[].server_name_indication must contain at most 255 characters",
-        ),
+    assert_module_rejects(
+        plugin,
+        dict(base, tags={str(index): "" for index in range(201)}),
+        "tags must contain at most 200 entries",
     )
-    for params, message in cases:
-        assert_module_rejects(plugin, params, message)
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("blank", ["", " "])
-@pytest.mark.parametrize(
-    "option,message",
-    [
-        ("domain_name", "domain_name must contain 1 to 256 characters"),
-        ("resolver_endpoint_id", "resolver_endpoint_id must contain 1 to 64 characters"),
-    ],
-)
-def test_blank_values_are_rejected_before_any_aws_call(check_mode, blank, option, message):
-    # Live: CreateResolverRule refuses a whitespace-only domain name or endpoint ID, and UpdateResolverRule keeps the
-    # current endpoint for a whitespace-only one, so that run and every rerun failed after the update.
-    module = FakeModule(rule_params(**{option: blank}), check_mode=check_mode)
+def test_blank_resolver_endpoint_id_is_rejected_before_any_aws_call(check_mode, blank):
+    # Live: UpdateResolverRule keeps the current endpoint for a whitespace-only one, so that run and every rerun
+    # failed after the update.
+    module = FakeModule(rule_params(resolver_endpoint_id=blank), check_mode=check_mode)
     module.client = Mock()
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -371,49 +270,9 @@ def test_blank_values_are_rejected_before_any_aws_call(check_mode, blank, option
     ):
         plugin.main()
 
-    assert raised.value.values == {"msg": message}
+    assert raised.value.values == {"msg": "resolver_endpoint_id must not be empty"}
     module.client.assert_not_called()
     ensure_present.assert_not_called()
-
-
-def test_target_port_bounds_are_rejected():
-    assert_module_rejects(
-        plugin,
-        {
-            "domain_name": "example.com",
-            "name": "rule",
-            "resolver_endpoint_id": "rslvr-out-1",
-            "state": "present",
-            "tags": None,
-            "target_ips": [{"ip": "192.0.2.1", "port": 65536}],
-        },
-        "target_ips[].port must be between 0 and 65535",
-    )
-
-
-def test_target_ip_versions_are_rejected():
-    for target, message in (
-        (
-            {"ip": "2001:db8::1", "port": 53},
-            "target_ips[].ip must be a valid IPv4 address",
-        ),
-        (
-            {"ipv6": "192.0.2.1", "port": 53},
-            "target_ips[].ipv6 must be a valid IPv6 address",
-        ),
-    ):
-        assert_module_rejects(
-            plugin,
-            {
-                "domain_name": "example.com",
-                "name": "rule",
-                "resolver_endpoint_id": "rslvr-out-1",
-                "state": "present",
-                "tags": None,
-                "target_ips": [target],
-            },
-            message,
-        )
 
 
 def test_target_without_an_address_is_rejected():
@@ -461,6 +320,21 @@ def test_null_present_inputs_are_rejected_before_any_aws_call(check_mode, option
 
 def test_absent_ignores_null_present_inputs():
     module = FakeModule(rule_params(domain_name=None, resolver_endpoint_id=None, state="absent"))
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+    ):
+        plugin.main()
+
+    ensure_absent.assert_called_once_with(module.client.return_value, module)
+
+
+@pytest.mark.parametrize("name", ["123", "r" * 65])
+def test_absent_with_a_name_aws_refuses_reaches_the_lookup(name):
+    # No rule can have such a name, so the lookup finds nothing and the run converges.
+    module = FakeModule(rule_params(name=name, state="absent"))
     module.client = Mock()
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -582,69 +456,6 @@ def test_deleting_rule_waits_before_recreation_with_final_wait_disabled():
 
     wait_for_status.assert_called_once_with(client, module, "rslvr-rr-old", "deleted", deadline=ANY)
     create.assert_called_once()
-
-
-def test_update_rereads_rule_when_response_is_lean():
-    client = Mock(update_resolver_rule=Mock(return_value={}))
-    module = FakeModule(
-        {
-            "domain_name": "example.com",
-            "name": "main",
-            "purge_tags": True,
-            "resolver_endpoint_id": "rslvr-out-2",
-            "rule_type": "FORWARD",
-            "tags": None,
-            "target_ips": [{"ip": "192.0.2.1"}],
-            "wait": False,
-            "wait_timeout": 300,
-        }
-    )
-    current = {
-        "DomainName": "example.com",
-        "Id": "rslvr-rr-1",
-        "ResolverEndpointId": "rslvr-out-1",
-        "RuleType": "FORWARD",
-        "TargetIps": [{"Ip": "192.0.2.1"}],
-    }
-    updated = dict(current, ResolverEndpointId="rslvr-out-2")
-    with (
-        patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
-        patch.object(plugin, "get_resolver_rule", return_value=updated) as get,
-        pytest.raises(ModuleExit),
-    ):
-        plugin.ensure_present(client, module)
-
-    get.assert_called_once_with(client, module, "rslvr-rr-1", changed=True)
-
-
-def test_tag_change_rejects_rule_without_arn():
-    module = FakeModule(
-        {
-            "domain_name": "example.com",
-            "name": "main",
-            "purge_tags": True,
-            "resolver_endpoint_id": "rslvr-out-1",
-            "rule_type": "FORWARD",
-            "tags": {"Name": "main"},
-            "target_ips": [{"ip": "192.0.2.1"}],
-            "wait": False,
-            "wait_timeout": 300,
-        }
-    )
-    current = {
-        "DomainName": "example.com",
-        "Id": "rslvr-rr-1",
-        "ResolverEndpointId": "rslvr-out-1",
-        "RuleType": "FORWARD",
-        "TargetIps": [{"Ip": "192.0.2.1"}],
-    }
-    with (
-        patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(Mock(), module)
-
-    assert "invalid rule ARN" in raised.value.values["msg"]
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

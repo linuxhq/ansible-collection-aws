@@ -25,7 +25,6 @@ options:
   resolver_rule_id:
     description:
       - The resolver rule ID to associate.
-      - This must not be empty when O(state=present).
     required: true
     type: str
   state:
@@ -39,7 +38,6 @@ options:
   vpc_id:
     description:
       - The VPC ID to associate with the resolver rule.
-      - This must not be empty when O(state=present).
     required: true
     type: str
   wait:
@@ -162,7 +160,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
@@ -378,24 +375,13 @@ def ensure_present(client, module, deadline=None):
                 msg=f"Unable to create AWS Route53 Resolver rule association {identifier}",
             )
 
-        association = response.get("ResolverRuleAssociation") if isinstance(response, dict) else None
-        if not isinstance(association, dict) or not association.get("Id"):
-            association = get_resolver_rule_association_by_rule_and_vpc(client, module, changed=True)
-
-        if association is None:
-            module.fail_json(
-                changed=True,
-                msg=f"AWS Route53 Resolver did not return the created rule association {identifier}",
-            )
-
-        association = validate_resolver_rule_association(module, association, "associate_resolver_rule", changed=True)
+        association = response["ResolverRuleAssociation"]
 
         if module.params["wait"]:
-            resolver_rule_association_id = association.get("Id")
             association = wait_for_resolver_rule_association_status(
                 client,
                 module,
-                resolver_rule_association_id,
+                association["Id"],
                 "complete",
                 changed=True,
                 deadline=deadline,
@@ -473,10 +459,9 @@ def wait_for_resolver_rule_association_status(
             msg=f"Unable to get AWS Route53 Resolver rule association {resolver_rule_association_id}",
         )
 
-    association = response.get("ResolverRuleAssociation") if isinstance(response, dict) else None
     association = validate_resolver_rule_association(
         module,
-        association,
+        response["ResolverRuleAssociation"],
         "get_resolver_rule_association",
         expected_id=resolver_rule_association_id,
         changed=changed,
@@ -550,19 +535,11 @@ def validate_resolver_rule_association(
     expected_vpc_id=None,
     changed=False,
 ):
-    if not isinstance(association, dict):
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an invalid resolver rule association")
-
-    association_id = association.get("Id")
-    if not isinstance(association_id, str) or not association_id:
-        module.fail_json(
-            changed=changed, msg=f"{operation}: AWS returned a resolver rule association without a valid ID"
-        )
-
-    if expected_id is not None and association_id != expected_id:
+    """Fail when AWS returns a different resolver rule association than the one requested."""
+    if expected_id is not None and association["Id"] != expected_id:
         module.fail_json(
             changed=changed,
-            msg=f"{operation}: AWS returned an unexpected resolver rule association ID {association_id}",
+            msg=f"{operation}: AWS returned an unexpected resolver rule association ID {association['Id']}",
         )
 
     expected_fields = {
@@ -573,12 +550,6 @@ def validate_resolver_rule_association(
         if expected_value is not None and association.get(field) != expected_value:
             module.fail_json(
                 changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule association {field}"
-            )
-
-    for field in ("Name", "ResolverRuleId", "Status", "VPCId"):
-        if field in association and not isinstance(association[field], str):
-            module.fail_json(
-                changed=changed, msg=f"{operation}: AWS returned an invalid resolver rule association {field}"
             )
 
     return association
@@ -606,12 +577,6 @@ def main():
     name = module.params["name"]
     if state == "present" and name is not None and not valid_resolver_name(name):
         module.fail_json(msg="name must be a valid resolver rule association name of at most 64 characters")
-
-    if state == "present":
-        # The association lookup matches nothing for a whitespace-only ID and AWS refuses to associate it, while
-        # check mode would predict a new association.
-        for option in ("resolver_rule_id", "vpc_id"):
-            require_non_blank(module, module.params[option], option)
 
     require_positive_wait_bounds(module, always=state == "present")
 

@@ -14,84 +14,14 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver impor
     reconcile_resolver_arn_tags,
     require_ip_versions,
     resolver_resource_with_tags,
-    response_items,
     valid_resolver_name,
-    validate_ip_addresses,
     validate_resolver_endpoint,
     validate_resolver_rule,
-    validate_tags,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleFail,
 )
-
-
-def test_response_items_returns_listed_items_or_empty():
-    assert response_items(FakeModule({}), {"Tags": [{"Key": "a", "Value": "b"}]}, "Tags", "list_tags") == [
-        {"Key": "a", "Value": "b"}
-    ]
-    assert response_items(FakeModule({}), {}, "Tags", "list_tags") == []
-
-
-@pytest.mark.parametrize(
-    "response, message",
-    [
-        ([], "list_tags: AWS returned an invalid response"),
-        ({"Tags": {}}, "list_tags: AWS returned an invalid Tags value"),
-    ],
-)
-def test_response_items_rejects_malformed_responses(response, message):
-    with pytest.raises(ModuleFail) as raised:
-        response_items(FakeModule({}), response, "Tags", "list_tags")
-
-    assert raised.value.values["msg"] == message
-
-
-def test_validate_ip_addresses_returns_valid_addresses():
-    ip_addresses = [{"Ip": "192.0.2.1", "IpId": "rni-1", "Ipv6": "2001:db8::1", "SubnetId": "subnet-1"}]
-
-    assert validate_ip_addresses(FakeModule({}), ip_addresses) is ip_addresses
-
-
-@pytest.mark.parametrize(
-    "ip_address, message",
-    [
-        ("192.0.2.1", "list_resolver_endpoint_ip_addresses: AWS returned an invalid IP address"),
-        ({"Ip": "192.0.2.1"}, "list_resolver_endpoint_ip_addresses: AWS returned an IP address without a subnet ID"),
-        ({"SubnetId": ""}, "list_resolver_endpoint_ip_addresses: AWS returned an IP address without a subnet ID"),
-        ({"SubnetId": "subnet-1", "IpId": 1}, "list_resolver_endpoint_ip_addresses: AWS returned an invalid IpId"),
-    ],
-)
-def test_validate_ip_addresses_rejects_malformed_addresses(ip_address, message):
-    with pytest.raises(ModuleFail) as raised:
-        validate_ip_addresses(FakeModule({}), [ip_address])
-
-    assert raised.value.values["msg"] == message
-
-
-def test_validate_tags_uses_the_list_tags_message():
-    tags = [{"Key": "Name", "Value": "example"}]
-    assert validate_tags(FakeModule({}), tags) is tags
-
-    with pytest.raises(ModuleFail) as raised:
-        validate_tags(FakeModule({}), [{"Key": "Name"}])
-
-    assert raised.value.values["msg"] == "list_tags_for_resource: AWS returned an invalid tag"
-    assert raised.value.values["changed"] is False
-
-
-@pytest.mark.parametrize("changed", [False, True])
-def test_listing_validation_reports_earlier_changes(changed):
-    with pytest.raises(ModuleFail) as raised:
-        validate_tags(FakeModule({}), [{"Key": "Name"}], changed=changed)
-
-    assert raised.value.values["changed"] is changed
-
-    with pytest.raises(ModuleFail) as raised:
-        validate_ip_addresses(FakeModule({}), ["192.0.2.1"], changed=changed)
-
-    assert raised.value.values["changed"] is changed
 
 
 @pytest.mark.parametrize(
@@ -252,21 +182,6 @@ def test_validate_resolver_rule_accepts_the_aws_owned_rule():
     assert validate_resolver_rule(FakeModule({}), rule, "list_resolver_rules") is rule
 
 
-@pytest.mark.parametrize(
-    "endpoint, message",
-    [
-        ("endpoint", "list_resolver_endpoints: AWS returned an invalid resolver endpoint"),
-        ({"Id": ""}, "list_resolver_endpoints: AWS returned a resolver endpoint without a valid ID"),
-        ({"Arn": 1, "Id": "rslvr-1"}, "list_resolver_endpoints: AWS returned an invalid resolver endpoint Arn"),
-    ],
-)
-def test_validate_resolver_endpoint_rejects_malformed_endpoints(endpoint, message):
-    with pytest.raises(ModuleFail) as raised:
-        validate_resolver_endpoint(FakeModule({}), endpoint, "list_resolver_endpoints", changed=True)
-
-    assert raised.value.values == {"changed": True, "msg": message}
-
-
 def test_comparable_ips_matches_reports_each_desired_entry_match():
     current = [{"ip": "192.0.2.1", "port": 53}, {"ip": "192.0.2.2", "port": 53}]
     desired = [{"ip": "192.0.2.2"}, {"ip": "192.0.2.9"}, {"ip": "192.0.2.1", "port": 53}]
@@ -292,7 +207,7 @@ def test_comparable_ip_entry_matches_treats_an_empty_desired_value_as_absent():
 
 def test_reconcile_resolver_arn_tags_skips_empty_deltas():
     with patch.object(route53_resolver_utils, "reconcile_arn_tags") as reconcile:
-        reconcile_resolver_arn_tags(FakeModule({}), Mock(), {}, "rule", "main", {}, [])
+        reconcile_resolver_arn_tags(FakeModule({}), Mock(), {}, "rule", {}, [])
 
     reconcile.assert_not_called()
 
@@ -302,7 +217,7 @@ def test_reconcile_resolver_arn_tags_reconciles_by_arn():
     client = Mock()
     with patch.object(route53_resolver_utils, "reconcile_arn_tags") as reconcile:
         reconcile_resolver_arn_tags(
-            module, client, {"Arn": "arn:rule"}, "rule", "main", {"new": "value"}, ["old"], changed=True
+            module, client, {"Arn": "arn:rule"}, "rule", {"new": "value"}, ["old"], changed=True
         )
 
     reconcile.assert_called_once_with(
@@ -310,16 +225,38 @@ def test_reconcile_resolver_arn_tags_reconciles_by_arn():
     )
 
 
-@pytest.mark.parametrize("resource", [{}, {"Arn": ""}, {"Arn": 1}])
-def test_reconcile_resolver_arn_tags_rejects_an_invalid_arn(resource):
-    with (
-        patch.object(route53_resolver_utils, "reconcile_arn_tags") as reconcile,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        reconcile_resolver_arn_tags(FakeModule({}), Mock(), resource, "endpoint", "main", {}, ["old"], changed=True)
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        (
+            {"expected_id": "rslvr-in-2"},
+            "get_resolver_endpoint: AWS returned an unexpected resolver endpoint ID rslvr-in-1",
+        ),
+        ({"expected_name": "other"}, "get_resolver_endpoint: AWS returned an unexpected resolver endpoint name"),
+    ],
+)
+def test_validate_resolver_endpoint_rejects_another_endpoint(kwargs, message):
+    endpoint = {"Id": "rslvr-in-1", "Name": "main"}
+    assert (
+        validate_resolver_endpoint(FakeModule({}), endpoint, "get_resolver_endpoint", expected_id="rslvr-in-1")
+        is endpoint
+    )
 
-    assert raised.value.values == {
-        "changed": True,
-        "msg": "Unable to reconcile tags for AWS Route53 Resolver endpoint main: AWS returned an invalid endpoint ARN",
-    }
-    reconcile.assert_not_called()
+    with pytest.raises(ModuleFail) as raised:
+        validate_resolver_endpoint(FakeModule({}), endpoint, "get_resolver_endpoint", changed=True, **kwargs)
+
+    assert raised.value.values == {"changed": True, "msg": message}
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"expected_id": "rslvr-rr-2"}, "get_resolver_rule: AWS returned an unexpected resolver rule ID rslvr-rr-1"),
+        ({"expected_name": "other"}, "get_resolver_rule: AWS returned an unexpected resolver rule name"),
+    ],
+)
+def test_validate_resolver_rule_rejects_another_rule(kwargs, message):
+    with pytest.raises(ModuleFail) as raised:
+        validate_resolver_rule(FakeModule({}), {"Id": "rslvr-rr-1", "Name": "main"}, "get_resolver_rule", **kwargs)
+
+    assert raised.value.values == {"changed": False, "msg": message}

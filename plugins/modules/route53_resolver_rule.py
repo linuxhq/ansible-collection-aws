@@ -19,12 +19,12 @@ options:
     description:
       - The domain name for the resolver rule.
       - This is required when O(state=present).
-      - This must contain 1 to 256 characters and must not be blank.
+      - AWS accepts 1 to 256 characters.
     type: str
   name:
     description:
       - The resolver rule name.
-      - This must be a nonnumeric name of at most 64 letters, numbers, spaces,
+      - AWS accepts a nonnumeric name of at most 64 letters, numbers, spaces,
         apostrophes, hyphens, or underscores.
     required: true
     type: str
@@ -32,7 +32,8 @@ options:
     description:
       - The resolver endpoint ID for the rule.
       - This is required when O(state=present).
-      - This must contain 1 to 64 characters and must not be blank.
+      - This must not be blank when O(state=present).
+      - AWS accepts 1 to 64 characters.
     type: str
   rule_type:
     description:
@@ -79,7 +80,7 @@ options:
       port:
         description:
           - The port for the target.
-          - This must be between C(0) and C(65535).
+          - AWS accepts C(0) to C(65535).
           - When omitted, an update keeps the matching current target's value.
         type: int
       protocol:
@@ -94,7 +95,7 @@ options:
       server_name_indication:
         description:
           - The server name indication for the target.
-          - This must contain at most 255 characters.
+          - AWS accepts at most 255 characters.
           - This requires botocore C(1.35.38) or later.
           - When omitted, an update keeps the matching current target's value.
             botocore older than 1.35.38 cannot read that value, so updating an
@@ -303,10 +304,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver impor
     comparable_ips_match,
     comparable_ips_matches,
     reconcile_resolver_arn_tags,
-    require_ip_versions,
     resolver_resource_with_tags,
-    resolver_rule_has_details,
-    valid_resolver_name,
     validate_resolver_rule,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
@@ -319,6 +317,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
@@ -420,14 +419,7 @@ def create_resolver_rule(client, module, request, deadline=None):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to create AWS Route53 Resolver rule {request['Name']}")
 
-    rule = response.get("ResolverRule") if isinstance(response, dict) else None
-    if not isinstance(rule, dict) or not rule.get("Id"):
-        rule = get_resolver_rule_by_name(client, module, changed=True)
-
-    if rule is None:
-        module.fail_json(changed=True, msg=f"AWS Route53 Resolver did not return the created rule {request['Name']}")
-
-    rule = validate_resolver_rule(module, rule, "create_resolver_rule", changed=True)
+    rule = response["ResolverRule"]
 
     if module.params["wait"]:
         rule = wait_for_resolver_rule_status(client, module, rule["Id"], "complete", changed=True, deadline=deadline)
@@ -619,20 +611,9 @@ def ensure_present(client, module, deadline=None):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to update AWS Route53 Resolver rule {request['Name']}")
 
-            rule = response.get("ResolverRule") if isinstance(response, dict) else None
-            if isinstance(rule, dict) and rule.get("Id"):
-                rule = validate_resolver_rule(
-                    module, rule, "update_resolver_rule", expected_id=resolver_rule_id, changed=True
-                )
-
-            if not resolver_rule_has_details(rule):
-                rule = get_resolver_rule(client, module, resolver_rule_id, changed=True)
-
-            if rule is None:
-                module.fail_json(
-                    changed=True,
-                    msg=f"AWS Route53 Resolver did not return the updated rule {request['Name']}",
-                )
+            rule = validate_resolver_rule(
+                module, response["ResolverRule"], "update_resolver_rule", expected_id=resolver_rule_id, changed=True
+            )
 
             if module.params["wait"]:
                 rule = wait_for_resolver_rule_status(
@@ -658,7 +639,6 @@ def ensure_present(client, module, deadline=None):
                 client,
                 rule,
                 "rule",
-                request["Name"],
                 tags_to_set,
                 tag_keys_to_unset,
                 changed=resource_changed,
@@ -770,7 +750,7 @@ def comparable_rule(rule):
     domain_name = rule.get("DomainName")
     return {
         # Domain names are case-insensitive and AWS returns them with a trailing dot.
-        "domain_name": domain_name.rstrip(".").lower() if isinstance(domain_name, str) else domain_name,
+        "domain_name": domain_name.rstrip(".").lower() if domain_name is not None else None,
         "resolver_endpoint_id": rule.get("ResolverEndpointId"),
         "rule_type": rule.get("RuleType"),
         "target_ips": sorted(
@@ -804,13 +784,11 @@ def get_resolver_rule(client, module, resolver_rule_id, changed=False):
             msg=f"Unable to get AWS Route53 Resolver rule {resolver_rule_id}",
         )
 
-    rule = response.get("ResolverRule") if isinstance(response, dict) else None
     return validate_resolver_rule(
         module,
-        rule,
+        response["ResolverRule"],
         "get_resolver_rule",
         expected_id=resolver_rule_id,
-        require_details=True,
         changed=changed,
     )
 
@@ -853,15 +831,7 @@ def get_resolver_rule_by_name(client, module, changed=False):
         return rules[0]
 
     # ListResolverRules returns the full rule, so only the tags need another call.
-    # Only FORWARD rules have an endpoint and targets; other types reach the immutable rule_type check.
-    rule = validate_resolver_rule(
-        module,
-        rules[0],
-        "list_resolver_rules",
-        require_details=rules[0].get("RuleType") == "FORWARD",
-        changed=changed,
-    )
-    return resolver_resource_with_tags(client, module, rule, "rule", changed=changed)
+    return resolver_resource_with_tags(client, module, rules[0], "rule", changed=changed)
 
 
 def main():
@@ -909,10 +879,6 @@ def main():
     )
     state = module.params["state"]
     tags = module.params["tags"]
-    name = module.params["name"]
-
-    if not valid_resolver_name(name):
-        module.fail_json(msg="name must be a valid resolver rule name of at most 64 characters")
 
     if state == "present":
         # required_if counts only supplied keys, so an explicit null passes it.
@@ -920,12 +886,9 @@ def main():
         if missing:
             module.fail_json(msg=f"state is present but all of the following are missing: {', '.join(missing)}")
 
-        # AWS refuses whitespace-only values, while check mode would predict success.
-        if not module.params["domain_name"].strip() or len(module.params["domain_name"]) > 256:
-            module.fail_json(msg="domain_name must contain 1 to 256 characters")
-
-        if not module.params["resolver_endpoint_id"].strip() or len(module.params["resolver_endpoint_id"]) > 64:
-            module.fail_json(msg="resolver_endpoint_id must contain 1 to 64 characters")
+        # Live: UpdateResolverRule keeps the current endpoint for a whitespace-only ID, so every run would fail after
+        # updating the rule.
+        require_non_blank(module, module.params["resolver_endpoint_id"], "resolver_endpoint_id")
 
         if not module.params["target_ips"]:
             module.fail_json(msg="target_ips must contain at least one entry")
@@ -942,14 +905,6 @@ def main():
         # ansible-core counts an explicit null as set for required_one_of.
         if target_ip.get("ip") is None and target_ip.get("ipv6") is None:
             module.fail_json(msg="target_ips entries must set ip or ipv6")
-
-        if target_ip["port"] is not None and not 0 <= target_ip["port"] <= 65535:
-            module.fail_json(msg="target_ips[].port must be between 0 and 65535")
-
-        require_ip_versions(module, target_ip, "target_ips")
-
-        if len(target_ip.get("server_name_indication") or "") > 255:
-            module.fail_json(msg="target_ips[].server_name_indication must contain at most 255 characters")
 
     require_positive_wait_bounds(module, always=state == "present")
 

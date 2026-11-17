@@ -198,12 +198,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
-    response_items,
-    validate_ip_addresses,
-    validate_resolver_endpoint,
-    validate_tags,
-)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -253,7 +247,6 @@ def main():
 
     normalized_endpoints = []
     for endpoint in resolver_endpoints:
-        endpoint = validate_resolver_endpoint(module, endpoint, "list_resolver_endpoints")
         endpoint_id = endpoint["Id"]
         try:
             response = paginated_query_with_retries(
@@ -269,10 +262,7 @@ def main():
                 msg=f"Unable to list AWS Route53 Resolver endpoint IP addresses for {endpoint_id}",
             )
 
-        ip_addresses = validate_ip_addresses(
-            module,
-            response_items(module, response, "IpAddresses", "list_resolver_endpoint_ip_addresses"),
-        )
+        ip_addresses = response.get("IpAddresses", [])
 
         tags = []
         endpoint_arn = endpoint.get("Arn")
@@ -291,7 +281,7 @@ def main():
                     msg=f"Unable to list tags for AWS Route53 Resolver endpoint {endpoint_arn}",
                 )
 
-            tags = validate_tags(module, response_items(module, response, "Tags", "list_tags_for_resource"))
+            tags = response.get("Tags", [])
 
         normalized_endpoints.append(
             boto3_resource_to_ansible_dict(

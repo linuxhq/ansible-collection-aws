@@ -1,0 +1,21 @@
+---
+minor_changes:
+  - route53_resolver - an invalid O(name), O(protocols) with more than 2 entries, and blank or overlong
+    O(security_group_ids) entries are now rejected by Route 53 Resolver instead of by the module, so check mode no
+    longer reports them as errors, and O(state=absent) with such a name reports no change instead of failing.
+  - route53_resolver_rule - an invalid O(name), a blank or overlong O(domain_name), an overlong
+    O(resolver_endpoint_id), and an O(target_ips[].port), O(target_ips[].server_name_indication),
+    O(target_ips[].ip), or O(target_ips[].ipv6) that Route 53 Resolver does not accept are now rejected by Route 53
+    Resolver instead of by the module, so check mode no longer reports them as errors, and O(state=absent) with such
+    a name reports no change instead of failing.
+  - route53_resolver_rule_associate - a blank O(resolver_rule_id) or O(vpc_id) with O(state=present) is now
+    rejected by Route 53 Resolver instead of by the module, so check mode no longer reports it as an error.
+bugfixes:
+  - route53_resolver_rule_info - no longer fails when Route 53 Resolver returns a rule target without an IPv4 or
+    IPv6 address, which its API model allows.
+trivial:
+  - route53_resolver, route53_resolver_info, route53_resolver_rule, route53_resolver_rule_associate, and
+    route53_resolver_rule_info - rely on the Route 53 Resolver response shape instead of checking the types and
+    presence of fields it always returns, and no longer list a created or updated resource again when the write
+    response omits it.
+...
