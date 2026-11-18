@@ -17,4 +17,9 @@
     - name: Ensure profile account is displayed
       ansible.builtin.debug:
         msg: "{{ __profile_account.stdout }}"
+
+    - name: Ensure profile account is verified
+      ansible.builtin.assert:
+        that:
+          - __profile_account.stdout is match('^[0-9]{12}$')
 ...
