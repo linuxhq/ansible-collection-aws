@@ -3,18 +3,10 @@
   hosts: all
   roles:
     - aws_region_info
-
-  tasks:
-    - name: Ensure ec2 instance metadata region defaults are reset
-      linuxhq.aws.ec2_instance_metadata:
-        http_endpoint: no-preference
-        http_put_response_hop_limit: -1
-        http_tokens: no-preference
-        instance_metadata_tags: no-preference
-        region: "{{ _region }}"
-        validate_certs: true
-      loop: "{{ ec2_instance_metadata_info_regions }}"
-      loop_control:
-        label: "{{ _region }}"
-        loop_var: _region
+    - role: ec2_instance_metadata
+      vars:
+        ec2_instance_metadata_http_endpoint: no-preference
+        ec2_instance_metadata_http_put_response_hop_limit: -1
+        ec2_instance_metadata_http_tokens: no-preference
+        ec2_instance_metadata_instance_metadata_tags: no-preference
 ...

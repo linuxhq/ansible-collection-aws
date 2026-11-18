@@ -1,14 +1,8 @@
 ---
 - name: Cleanup
   hosts: all
-  tasks:
-    - name: Ensure ec2 serial console access is reset
-      linuxhq.aws.ec2_serial_console:
-        region: "{{ _region }}"
-        state: absent
-        validate_certs: true
-      loop: "{{ ec2_serial_console_regions }}"
-      loop_control:
-        label: "{{ _region }}"
-        loop_var: _region
+  roles:
+    - role: ec2_serial_console
+      vars:
+        ec2_serial_console_state: absent
 ...
