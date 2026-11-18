@@ -31,7 +31,7 @@ provisioner:
     group_vars:
       all:
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             security_groups:
               - name: molecule-efs1
                 rules:
@@ -56,7 +56,7 @@ provisioner:
             cidr_block: 10.0.0.0/16
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule-a
                 az: us-east-1a
@@ -72,28 +72,28 @@ provisioner:
           - name: molecule-efs1
             encrypt: true
             targets:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
                 security_groups:
-                  - "{{ _ec2_security_group_info_dict['molecule-efs1'].group_id }}"
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                  - "{{ _ec2_security_group_info_dict['molecule-efs1'].group_id | d(omit) }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
                 security_groups:
-                  - "{{ _ec2_security_group_info_dict['molecule-efs1'].group_id }}"
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
+                  - "{{ _ec2_security_group_info_dict['molecule-efs1'].group_id | d(omit) }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id | d(omit) }}"
                 security_groups:
-                  - "{{ _ec2_security_group_info_dict['molecule-efs1'].group_id }}"
+                  - "{{ _ec2_security_group_info_dict['molecule-efs1'].group_id | d(omit) }}"
 
           - name: molecule-efs2
             encrypt: true
             targets:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
                 security_groups:
-                  - "{{ _ec2_security_group_info_dict['molecule-efs2'].group_id }}"
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                  - "{{ _ec2_security_group_info_dict['molecule-efs2'].group_id | d(omit) }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
                 security_groups:
-                  - "{{ _ec2_security_group_info_dict['molecule-efs2'].group_id }}"
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
+                  - "{{ _ec2_security_group_info_dict['molecule-efs2'].group_id | d(omit) }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id | d(omit) }}"
                 security_groups:
-                  - "{{ _ec2_security_group_info_dict['molecule-efs2'].group_id }}"
+                  - "{{ _ec2_security_group_info_dict['molecule-efs2'].group_id | d(omit) }}"
 
 scenario:
   test_sequence:

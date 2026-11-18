@@ -4,7 +4,6 @@
   roles:
     - ec2_customer_gateway_info
     - ec2_transit_gateway_info
-    - ec2_vpc_vpn_info
 
   tasks:
     - name: Ensure inventory lists are formatted
@@ -17,7 +16,6 @@
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_vpn_list:
           "{{ ec2_vpc_vpn_list |
-              selectattr('name', 'in', _ec2_vpc_vpn_info_dict) |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included

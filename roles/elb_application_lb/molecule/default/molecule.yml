@@ -31,7 +31,7 @@ provisioner:
     group_vars:
       all:
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             security_groups:
               - name: molecule-http-80
                 rules:
@@ -52,14 +52,14 @@ provisioner:
 
         ec2_vpc_igw_list:
           - name: molecule
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule
             cidr_block: 192.168.0.0/24
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule-a
                 az: us-east-1a
@@ -77,10 +77,10 @@ provisioner:
                   - Type: forward
                     TargetGroupName: molecule-http-8080
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id }}"
+              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id | d(omit) }}"
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
 
           - name: molecule-http-81
             listeners:
@@ -90,10 +90,10 @@ provisioner:
                   - Type: forward
                     TargetGroupName: molecule-http-8081
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule-http-81'].group_id }}"
+              - "{{ _ec2_security_group_info_dict['molecule-http-81'].group_id | d(omit) }}"
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
 
         elb_target_group_list:
           - name: molecule-http-8080
@@ -108,7 +108,7 @@ provisioner:
             stickiness_enabled: true
             target_type: instance
             unhealthy_threshold_count: 3
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
 
           - name: molecule-http-8081
             health_check_interval: 10
@@ -122,7 +122,7 @@ provisioner:
             stickiness_enabled: true
             target_type: instance
             unhealthy_threshold_count: 3
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
 
 scenario:
   test_sequence:

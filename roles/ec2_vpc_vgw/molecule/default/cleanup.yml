@@ -12,8 +12,7 @@
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_vgw_list:
           "{{ ec2_vpc_vgw_list |
-              map('combine', {'state': 'absent'})
-              if 'molecule' in _ec2_vpc_net_info_dict else [] }}"
+              map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included
       ansible.builtin.include_role:

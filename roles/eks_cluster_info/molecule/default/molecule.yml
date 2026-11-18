@@ -31,7 +31,7 @@ provisioner:
     group_vars:
       all:
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             security_groups:
               - name: molecule-eks
                 rules:
@@ -48,7 +48,7 @@ provisioner:
             cidr_block: 10.0.0.0/16
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule-a
                 az: us-east-1a
@@ -70,11 +70,11 @@ provisioner:
               public_access_cidrs:
                 - 69.107.10.200/29
               security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id }}"
+                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id | d(omit) }}"
               subnet_ids:
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id | d(omit) }}"
             role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeEksClusterRole"
             version: '1.34'
             wait: true
@@ -84,11 +84,11 @@ provisioner:
               endpoint_private_access: true
               endpoint_public_access: false
               security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id }}"
+                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id | d(omit) }}"
               subnet_ids:
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id | d(omit) }}"
             role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeEksClusterRole"
             version: '1.35'
             wait: true
