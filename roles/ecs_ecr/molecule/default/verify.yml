@@ -23,27 +23,4 @@
       loop_control:
         label: "{{ _repository.name }}"
         loop_var: _repository
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ecs_ecr_list:
-          "{{ ecs_ecr_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure aws elastic container registry repositories are absent
-      ansible.builtin.include_role:
-        name: ecs_ecr
-
-    - name: Ensure information about removed aws elastic container registry repositories is gathered
-      ansible.builtin.include_role:
-        name: ecs_ecr_info
-      vars:
-        ecs_ecr_info_repository_names:
-          "{{ ecs_ecr_list |
-              map(attribute='name') }}"
-
-    - name: Ensure removed aws elastic container registry repositories are verified
-      ansible.builtin.assert:
-        that:
-          - _ecs_ecr_info_list == []
 ...

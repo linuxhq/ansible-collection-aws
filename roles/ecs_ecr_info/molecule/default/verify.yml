@@ -142,19 +142,4 @@
         that:
           - _ecs_ecr_info_list | length == 2
           - _ecs_ecr_info_dict.keys() | sort == ['molecule-00', 'molecule-01']
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ecs_ecr_list:
-          "{{ ecs_ecr_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - ecs_ecr
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...
