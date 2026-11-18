@@ -13,12 +13,9 @@
               map('combine', {'state': 'absent'}) }}"
         route53_zone_associate_list:
           "{{ route53_zone_associate_list |
-              selectattr('hosted_zone_id', 'defined') |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
         route53_zone_list:
           "{{ route53_zone_list |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included

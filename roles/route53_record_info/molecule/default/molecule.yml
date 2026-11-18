@@ -57,7 +57,7 @@ provisioner:
         route53_zone_list:
           - zone: pub.molecule.org
           - zone: pvt.molecule.org
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             vpc_region:
               "{{ lookup('ansible.builtin.ini',
                          'region',

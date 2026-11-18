@@ -13,7 +13,6 @@
       ansible.builtin.set_fact:
         ec2_security_group_list:
           "{{ ec2_security_group_list |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'security_groups': ec2_security_group_list.0.security_groups |
                                                  map('combine', {'state': 'absent'})}) }}"
         ec2_vpc_net_list:
@@ -21,20 +20,15 @@
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_subnet_list:
           "{{ ec2_vpc_subnet_list |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_list:
           "{{ route53_resolver_list |
-              selectattr('name', 'in', _route53_resolver_info_dict) |
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_rule_associate_list:
           "{{ route53_resolver_rule_associate_list |
-              selectattr('resolver_rule_id', 'defined') |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_rule_list:
           "{{ route53_resolver_rule_list |
-              selectattr('resolver_endpoint_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included

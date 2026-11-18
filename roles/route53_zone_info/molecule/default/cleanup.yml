@@ -11,8 +11,7 @@
           "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"
         route53_zone_list:
-          "{{ (route53_zone_list | rejectattr('vpc_region', 'defined') | list +
-               route53_zone_list | selectattr('vpc_id', 'defined') | list) |
+          "{{ route53_zone_list |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included

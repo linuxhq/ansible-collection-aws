@@ -11,9 +11,7 @@
           "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"
         route53_zone_list:
-          "{{ (route53_zone_list
-               if _ec2_vpc_net_info_dict['molecule'] is defined
-               else route53_zone_list | rejectattr('vpc_id', 'defined')) |
+          "{{ route53_zone_list |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included

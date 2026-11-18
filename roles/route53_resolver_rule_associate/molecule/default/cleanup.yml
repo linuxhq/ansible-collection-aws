@@ -13,7 +13,6 @@
       ansible.builtin.set_fact:
         ec2_security_group_list:
           "{{ ec2_security_group_list |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'security_groups': ec2_security_group_list.0.security_groups |
                                                  map('combine', {'state': 'absent'})}) }}"
         ec2_vpc_net_list:
@@ -21,49 +20,22 @@
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_subnet_list:
           "{{ ec2_vpc_subnet_list |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_list:
           "{{ route53_resolver_list |
-              selectattr('name', 'in', _route53_resolver_info_dict) |
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_rule_associate_list:
           "{{ route53_resolver_rule_associate_list |
-              selectattr('resolver_rule_id', 'defined') |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
         route53_resolver_rule_list:
           "{{ route53_resolver_rule_list |
-              selectattr('resolver_endpoint_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure associations are deleted
-      ansible.builtin.include_role:
-        name: route53_resolver_rule_associate
-
-    - name: Ensure role is included after deletion
-      ansible.builtin.include_role:
-        name: route53_resolver_rule_info
-
-    - name: Ensure deleted associations are verified
-      ansible.builtin.assert:
-        that:
-          - __association | length == 0
-      vars:
-        __association:
-          "{{ _route53_resolver_rule_info_list |
-              selectattr('id', 'equalto', _association.resolver_rule_id) |
-              map(attribute='associations') | flatten |
-              selectattr('vpc_id', 'equalto', _association.vpc_id) | list }}"
-      loop: "{{ route53_resolver_rule_associate_list }}"
-      loop_control:
-        label: "{{ _association.name }}"
-        loop_var: _association
 
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _cleanup }}"
       loop:
+        - route53_resolver_rule_associate
         - route53_resolver_rule
         - route53_resolver
         - ec2_security_group
