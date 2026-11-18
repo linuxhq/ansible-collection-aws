@@ -40,6 +40,18 @@
           - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].id is defined
           - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].name_servers | length == 4
 
+    - name: Ensure role is included with an unknown id
+      ansible.builtin.include_role:
+        name: route53_delegation_set_info
+      vars:
+        route53_delegation_set_info_id: N0000000000MOLECULE0
+
+    - name: Ensure info with an unknown id is verified
+      ansible.builtin.assert:
+        that:
+          - _route53_delegation_set_info_list == []
+          - _route53_delegation_set_info_dict == {}
+
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         route53_delegation_set_list:
@@ -54,4 +66,17 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
+
+    - name: Ensure role is included after teardown
+      ansible.builtin.include_role:
+        name: route53_delegation_set_info
+      vars:
+        route53_delegation_set_info_id: null
+
+    - name: Ensure delegation sets are absent
+      ansible.builtin.assert:
+        that:
+          - _route53_delegation_set_info_dict.keys() |
+              intersect(route53_delegation_set_list | map(attribute='name')) |
+              list == []
 ...

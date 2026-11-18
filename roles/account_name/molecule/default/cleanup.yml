@@ -1,0 +1,9 @@
+---
+- name: Cleanup
+  hosts: all
+  tasks:
+    - name: Ensure aws account name is reset
+      linuxhq.aws.account_name:
+        name: linuxhq
+        validate_certs: true
+...

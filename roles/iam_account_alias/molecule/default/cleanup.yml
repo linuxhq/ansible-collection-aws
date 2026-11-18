@@ -1,0 +1,10 @@
+---
+- name: Cleanup
+  hosts: all
+  tasks:
+    - name: Ensure aws iam account alias is reset
+      linuxhq.aws.iam_account_alias:
+        name: linuxhq
+        state: present
+        validate_certs: true
+...

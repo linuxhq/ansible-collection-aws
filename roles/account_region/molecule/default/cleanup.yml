@@ -1,0 +1,14 @@
+---
+- name: Cleanup
+  hosts: all
+  tasks:
+    - name: Ensure aws account regions are reset
+      linuxhq.aws.account_region:
+        name: "{{ _region.name }}"
+        state: absent
+        validate_certs: true
+      loop: "{{ account_region_list }}"
+      loop_control:
+        label: "{{ _region.name }}"
+        loop_var: _region
+...

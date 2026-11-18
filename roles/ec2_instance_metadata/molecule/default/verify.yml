@@ -5,35 +5,29 @@
     - aws_region_info
 
   tasks:
-    - name: Ensure ec2 instance metadata region defaults are verified
-      block:
-        - name: Ensure ec2 instance metadata region defaults are gathered
-          linuxhq.aws.ec2_instance_metadata_info:
-            region: "{{ _region }}"
-            validate_certs: true
-          register: __ec2_instance_metadata_result
-          loop: "{{ ec2_instance_metadata_regions }}"
-          loop_control:
-            label: "{{ _region | d(none) }}"
-            loop_var: _region
+    - name: Ensure ec2 instance metadata region defaults are gathered
+      linuxhq.aws.ec2_instance_metadata_info:
+        region: "{{ _region }}"
+        validate_certs: true
+      register: __ec2_instance_metadata_result
+      loop: "{{ ec2_instance_metadata_regions }}"
+      loop_control:
+        label: "{{ _region | d(none) }}"
+        loop_var: _region
 
-        - name: Ensure gathered ec2 instance metadata result is verified
-          ansible.builtin.assert:
-            quiet: true
-            that:
-              - not _result.changed
-              - _result.account_level.http_tokens == ec2_instance_metadata_http_tokens
-              - _result.account_level.http_put_response_hop_limit ==
-                  ec2_instance_metadata_http_put_response_hop_limit
-              - _result.account_level.http_endpoint == ec2_instance_metadata_http_endpoint
-              - _result.account_level.instance_metadata_tags ==
-                  ec2_instance_metadata_instance_metadata_tags
-          loop: "{{ __ec2_instance_metadata_result.results }}"
-          loop_control:
-            label: "{{ _result._region | d(none) }}"
-            loop_var: _result
-
-      always:
-        - name: Ensure original aws instance metadata region defaults are restored
-          ansible.builtin.include_tasks: restore.yml
+    - name: Ensure gathered ec2 instance metadata result is verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - not _result.changed
+          - _result.account_level.http_tokens == ec2_instance_metadata_http_tokens
+          - _result.account_level.http_put_response_hop_limit ==
+              ec2_instance_metadata_http_put_response_hop_limit
+          - _result.account_level.http_endpoint == ec2_instance_metadata_http_endpoint
+          - _result.account_level.instance_metadata_tags ==
+              ec2_instance_metadata_instance_metadata_tags
+      loop: "{{ __ec2_instance_metadata_result.results }}"
+      loop_control:
+        label: "{{ _result._region | d(none) }}"
+        loop_var: _result
 ...

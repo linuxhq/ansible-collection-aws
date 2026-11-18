@@ -104,4 +104,15 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
+
+    # Live, ListQueues can return a deleted queue for up to a minute.
+    - name: Ensure aws simple queue service queues are deleted
+      linuxhq.aws.sqs_queue_info:
+        queue_name_prefix: molecule-info-
+        region: "{{ _aws_az_info_list_l.0[:-1] }}"
+      register: __sqs_queue_info_deleted
+      retries: 30
+      delay: 5
+      until:
+        - __sqs_queue_info_deleted.queues == []
 ...

@@ -1,0 +1,6 @@
+---
+trivial:
+  - Molecule - scenarios that change account settings reset them to fixed values in cleanup, which also runs after a
+    failed step, instead of saving and restoring the previous values.
+  - Molecule - info scenarios assert empty results for unknown identifiers and that fixtures are gone after teardown.
+...
