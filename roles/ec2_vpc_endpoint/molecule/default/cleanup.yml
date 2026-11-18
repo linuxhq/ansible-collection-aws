@@ -3,31 +3,26 @@
   hosts: all
   roles:
     - ec2_vpc_net_info
+    - ec2_vpc_route_table_info
+    - ec2_vpc_subnet_info
 
-  post_tasks:
+  tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_vpc_endpoint_list:
           "{{ ec2_vpc_endpoint_list |
-              selectattr('vpc_id', 'defined') |
-              map('combine', {'route_table_ids': omit,
-                              'state': 'absent'}) }}"
+              map('combine', {'state': 'absent'}) }}"
         ec2_vpc_igw_list:
           "{{ ec2_vpc_igw_list |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_net_list:
           "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_route_table_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
-            state: absent
-            route_tables:
-              "{{ ec2_vpc_route_table_list.0.route_tables |
-                  map('combine', {'subnets': []}) }}"
+          "{{ ec2_vpc_route_table_list |
+              map('combine', {'state': 'absent'}) }}"
         ec2_vpc_subnet_list:
           "{{ ec2_vpc_subnet_list |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included
