@@ -1,0 +1,41 @@
+---
+- name: Cleanup
+  hosts: all
+  roles:
+    - ec2_security_group_info
+    - ec2_vpc_net_info
+    - ec2_vpc_subnet_info
+    - efs_info
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ec2_security_group_list:
+          "{{ [ec2_security_group_list.0 |
+               combine({'security_groups': ec2_security_group_list.0.security_groups |
+                                           map('combine', {'state': 'absent'})})]
+              if 'molecule' in _ec2_vpc_net_info_dict else [] }}"
+        ec2_vpc_net_list:
+          "{{ ec2_vpc_net_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_subnet_list:
+          "{{ ec2_vpc_subnet_list |
+              map('combine', {'state': 'absent'})
+              if 'molecule' in _ec2_vpc_net_info_dict else [] }}"
+        efs_list:
+          "{{ efs_list |
+              selectattr('name', 'in', _efs_info_dict) |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _cleanup }}"
+      loop:
+        - efs
+        - ec2_security_group
+        - ec2_vpc_subnet
+        - ec2_vpc_net
+      loop_control:
+        label: "{{ _cleanup }}"
+        loop_var: _cleanup
+...
