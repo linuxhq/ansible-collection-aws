@@ -6,18 +6,23 @@
     - aws_caller_info
 
   post_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        sqs_queue_list:
-          "{{ sqs_queue_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - sqs_queue
+    - name: Ensure queues are queried
+      linuxhq.aws.sqs_queue_info:
+        name: "{{ _queue.name }}"
+        region: "{{ _aws_az_info_list_l.0[:-1] }}"
+      register: __sqs_queue_query
+      loop: "{{ sqs_queue_list }}"
       loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
+        label: "{{ _queue.name }}"
+        loop_var: _queue
+
+    - name: Ensure queues are verified
+      ansible.builtin.assert:
+        that:
+          - _query.queues | length == 1
+          - _query.queues.0.queue_arn is defined
+      loop: "{{ __sqs_queue_query.results }}"
+      loop_control:
+        label: "{{ _query._queue.name }}"
+        loop_var: _query
 ...
