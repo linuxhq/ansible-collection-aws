@@ -6,7 +6,7 @@
     - aws_caller_info
     - elb_target_group_info
 
-  post_tasks:
+  tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         elb_target_group_list:
@@ -20,9 +20,7 @@
               map('combine', {'state': 'absent'}) }}"
         lambda_policy_list:
           "{{ lambda_policy_list |
-              map('combine', {'state': 'absent'})
-              if 'molecule-lambda' in _elb_target_group_info_dict
-              else [] }}"
+              map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included
       ansible.builtin.include_role:

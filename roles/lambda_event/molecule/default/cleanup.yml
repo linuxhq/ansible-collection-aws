@@ -5,23 +5,17 @@
     - aws_az_info
     - aws_caller_info
 
-    - role: lambda_info
-      lambda_info_function_name: "{{ lambda_list.0.name }}"
-      lambda_info_query: config
-
-  post_tasks:
+  tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         iam_role_list:
           "{{ iam_role_list |
               map('combine', {'state': 'absent'}) }}"
-        lambda_event_list:
-          "{{ lambda_event_list |
-              map('combine', {'state': 'absent'})
-              if lambda_list.0.name in _lambda_info_dict
-              else [] }}"
         lambda_list:
           "{{ lambda_list |
+              map('combine', {'state': 'absent'}) }}"
+        lambda_event_list:
+          "{{ lambda_event_list |
               map('combine', {'state': 'absent'}) }}"
         sqs_queue_list:
           "{{ sqs_queue_list |

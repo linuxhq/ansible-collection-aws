@@ -1,26 +1,14 @@
 ---
 - name: Cleanup
   hosts: all
-  roles:
-    - iam_policy_info
-
-  post_tasks:
-    # Removing an inline policy fails when its group, role, or user no longer exists.
+  pre_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         iam_group_list:
           "{{ iam_group_list |
               map('combine', {'state': 'absent'}) }}"
         iam_policy_list:
-          "{{ ((iam_policy_list |
-                selectattr('iam_type', '==', 'group') |
-                selectattr('iam_name', 'in', _iam_policy_info_group_dict)) +
-               (iam_policy_list |
-                selectattr('iam_type', '==', 'role') |
-                selectattr('iam_name', 'in', _iam_policy_info_role_dict)) +
-               (iam_policy_list |
-                selectattr('iam_type', '==', 'user') |
-                selectattr('iam_name', 'in', _iam_policy_info_user_dict))) |
+          "{{ iam_policy_list |
               map('combine', {'state': 'absent'}) }}"
         iam_role_list:
           "{{ iam_role_list |
@@ -29,15 +17,9 @@
           "{{ iam_user_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _cleanup }}"
-      loop:
-        - iam_policy
-        - iam_role
-        - iam_user
-        - iam_group
-      loop_control:
-        label: "{{ _cleanup }}"
-        loop_var: _cleanup
+  roles:
+    - iam_policy
+    - iam_role
+    - iam_user
+    - iam_group
 ...
