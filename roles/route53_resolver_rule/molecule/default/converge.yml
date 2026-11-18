@@ -30,10 +30,4 @@
     - role: route53_resolver_rule
       route53_resolver_rule_list:
         "{{ route53_resolver_rule_list_create }}"
-      tags:
-        - molecule-idempotence-notest
-
-    - role: route53_resolver_rule
-      route53_resolver_rule_list:
-        "{{ route53_resolver_rule_list_update }}"
 ...

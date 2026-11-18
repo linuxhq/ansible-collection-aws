@@ -1,11 +1,33 @@
 ---
 - name: Verify
   hosts: all
-  roles:
-    - cloudwatchlogs_log_group_info
+  tasks:
+    - name: Ensure information about created log groups is gathered
+      ansible.builtin.include_role:
+        name: cloudwatchlogs_log_group_info
 
-  post_tasks:
-    - name: Ensure info is verified
+    - name: Ensure created log groups are verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _cloudwatchlogs_log_group_info_dict[_log_group.name].retention_in_days ==
+              _log_group.retention
+      loop: "{{ cloudwatchlogs_log_group_list_create }}"
+      loop_control:
+        label: "{{ _log_group.name }}"
+        loop_var: _log_group
+
+    - name: Ensure log groups are updated
+      ansible.builtin.include_role:
+        name: cloudwatchlogs_log_group
+      vars:
+        cloudwatchlogs_log_group_list: "{{ cloudwatchlogs_log_group_list_update }}"
+
+    - name: Ensure information about updated log groups is gathered
+      ansible.builtin.include_role:
+        name: cloudwatchlogs_log_group_info
+
+    - name: Ensure updated log groups are verified
       ansible.builtin.assert:
         quiet: true
         that:

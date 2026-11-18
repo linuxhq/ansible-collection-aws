@@ -1,11 +1,35 @@
 ---
 - name: Verify
   hosts: all
-  roles:
-    - ec2_customer_gateway_info
+  tasks:
+    - name: Ensure information about created customer gateways is gathered
+      ansible.builtin.include_role:
+        name: ec2_customer_gateway_info
 
-  post_tasks:
-    - name: Ensure info is verified
+    - name: Ensure created customer gateways are verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _ec2_customer_gateway_info_list |
+            selectattr('customer_gateway_name', 'eq', _cgw.name) |
+            selectattr('ip_address', 'eq', _cgw.ip_address) |
+            list | length == 1
+      loop: "{{ ec2_customer_gateway_list_create }}"
+      loop_control:
+        label: "{{ _cgw.name }}"
+        loop_var: _cgw
+
+    - name: Ensure customer gateways are updated
+      ansible.builtin.include_role:
+        name: ec2_customer_gateway
+      vars:
+        ec2_customer_gateway_list: "{{ ec2_customer_gateway_list_update }}"
+
+    - name: Ensure information about updated customer gateways is gathered
+      ansible.builtin.include_role:
+        name: ec2_customer_gateway_info
+
+    - name: Ensure updated customer gateways are verified
       ansible.builtin.assert:
         quiet: true
         that:

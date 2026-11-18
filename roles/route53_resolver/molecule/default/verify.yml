@@ -1,13 +1,47 @@
 ---
 - name: Verify
   hosts: all
-  roles:
-    - ec2_security_group_info
-    - ec2_vpc_net_info
-    - ec2_vpc_subnet_info
-    - route53_resolver_info
+  tasks:
+    - name: Ensure ec2_security_group_info facts are gathered
+      ansible.builtin.include_role:
+        name: ec2_security_group_info
 
-  post_tasks:
+    - name: Ensure ec2_vpc_net_info facts are gathered
+      ansible.builtin.include_role:
+        name: ec2_vpc_net_info
+
+    - name: Ensure ec2_vpc_subnet_info facts are gathered
+      ansible.builtin.include_role:
+        name: ec2_vpc_subnet_info
+
+    - name: Ensure route53_resolver_info facts are gathered
+      ansible.builtin.include_role:
+        name: route53_resolver_info
+
+    - name: Ensure created endpoints are verified
+      ansible.builtin.assert:
+        that:
+          - _route53_resolver_info_dict[_endpoint.name].protocols | sort == _endpoint.protocols | sort
+          - _route53_resolver_info_dict[_endpoint.name].resolver_endpoint_type == 'IPV4'
+          - _route53_resolver_info_dict[_endpoint.name].status == 'OPERATIONAL'
+          - _route53_resolver_info_dict[_endpoint.name].tags.molecule == 'route53_resolver'
+          - (_route53_resolver_info_dict[_endpoint.name].ip_addresses | map(attribute='ip') | sort) ==
+              (_endpoint.ip_addresses | map(attribute='ip') | sort)
+      loop: "{{ route53_resolver_list_create }}"
+      loop_control:
+        label: "{{ _endpoint.name }}"
+        loop_var: _endpoint
+
+    - name: Ensure endpoints are updated
+      ansible.builtin.include_role:
+        name: route53_resolver
+      vars:
+        route53_resolver_list: "{{ route53_resolver_list_update }}"
+
+    - name: Ensure route53_resolver_info facts are gathered after the update
+      ansible.builtin.include_role:
+        name: route53_resolver_info
+
     - name: Ensure updated endpoints are verified
       ansible.builtin.assert:
         that:
