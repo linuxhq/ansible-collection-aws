@@ -11,9 +11,9 @@
           "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_subnet_list:
-          - state: absent
-            subnets: "{{ ec2_vpc_subnet_list.0.subnets }}"
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          "{{ ec2_vpc_subnet_list |
+              map('combine', {'state': 'absent'})
+              if 'molecule' in _ec2_vpc_net_info_dict else [] }}"
 
     - name: Ensure roles are included
       ansible.builtin.include_role:

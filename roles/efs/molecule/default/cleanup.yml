@@ -2,34 +2,30 @@
 - name: Cleanup
   hosts: all
   roles:
+    - ec2_security_group_info
     - ec2_vpc_net_info
     - ec2_vpc_subnet_info
+    - efs_info
 
-  tasks:
-    # The efs role skips items without targets; state absent ignores them.
+  post_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
-            security_groups:
-              "{{ ec2_security_group_list.0.security_groups |
-                  map('combine', {'state': 'absent'}) }}"
+          "{{ [ec2_security_group_list.0 |
+               combine({'security_groups': ec2_security_group_list.0.security_groups |
+                                           map('combine', {'state': 'absent'})})]
+              if 'molecule' in _ec2_vpc_net_info_dict else [] }}"
         ec2_vpc_net_list:
           "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_subnet_list:
-          - state: absent
-            subnets: "{{ ec2_vpc_subnet_list.0.subnets }}"
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          "{{ ec2_vpc_subnet_list |
+              map('combine', {'state': 'absent'})
+              if 'molecule' in _ec2_vpc_net_info_dict else [] }}"
         efs_list:
-          - name: molecule-efs1
-            state: absent
-            targets:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
-          - name: molecule-efs2
-            state: absent
-            targets:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
+          "{{ efs_list |
+              selectattr('name', 'in', _efs_info_dict) |
+              map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included
       ansible.builtin.include_role:
