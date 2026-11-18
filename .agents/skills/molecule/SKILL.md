@@ -66,8 +66,8 @@ scenario:
 - `verify.yml` asserts the initial provisioning. It may then apply further
   changes, one task per change, and assert each one.
 - `cleanup.yml` tears the provisioning down by re-running the role with
-  `state: absent`, and puts back account-level settings the scenario changed,
-  with hardcoded values. It contains no assertions: if the role did its job,
+  `state: absent`, and puts back account-level settings the scenario changed
+  by re-running the role with hardcoded values. It contains no assertions: if the role did its job,
   the resources are gone. Molecule runs it before `destroy` at the start and end of the
   sequence and after a failed step, so it must succeed whether or not the
   resources exist. Keep teardown out of `verify.yml`.
