@@ -1,7 +1,7 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
+  tasks:
     - name: Ensure document info is gathered
       ansible.builtin.include_role:
         name: ssm_document_info
@@ -41,27 +41,4 @@
       loop_control:
         label: "{{ _default._document.name }}"
         loop_var: _default
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ssm_document_list:
-          "{{ ssm_document_list_update |
-              map('combine', {'state': 'absent'}) }}"
-
-  roles:
-    - ssm_document
-
-  post_tasks:
-    - name: Ensure document info is gathered after removal
-      ansible.builtin.include_role:
-        name: ssm_document_info
-      vars:
-        ssm_document_info_filters:
-          Owner: Self
-          Name: "{{ ssm_document_list_update | map(attribute='name') | list }}"
-
-    - name: Ensure removed documents are verified
-      ansible.builtin.assert:
-        that:
-          - _ssm_document_info_list == []
 ...

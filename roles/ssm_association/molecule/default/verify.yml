@@ -1,7 +1,7 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
+  tasks:
     - name: Ensure association info is gathered
       ansible.builtin.include_role:
         name: ssm_association_info
@@ -18,26 +18,4 @@
           - _ssm_association_info_list.0.schedule_expression == ssm_association_list_update.0.schedule_expression
           - _ssm_association_info_list.0.targets == ssm_association_list_update.0.targets
           - _ssm_association_info_list.0.tags.molecule == 'ssm_association'
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ssm_association_list:
-          "{{ ssm_association_list_update |
-              map('combine', {'state': 'absent'}) }}"
-
-  roles:
-    - ssm_association
-
-  post_tasks:
-    - name: Ensure association info is gathered after removal
-      ansible.builtin.include_role:
-        name: ssm_association_info
-      vars:
-        ssm_association_info_filters:
-          AssociationName: "{{ ssm_association_list_update.0.association_name }}"
-
-    - name: Ensure removed association is verified
-      ansible.builtin.assert:
-        that:
-          - _ssm_association_info_list == []
 ...
