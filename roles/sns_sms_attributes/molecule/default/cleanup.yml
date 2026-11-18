@@ -4,6 +4,7 @@
   tasks:
     - name: Ensure aws simple notification service sms attributes are reset
       linuxhq.aws.sns_sms_attributes:
+        default_sender_id: ""
         default_sms_type: Promotional
         validate_certs: true
 ...
