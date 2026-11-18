@@ -7,5 +7,10 @@
         - molecule-idempotence-notest
       check_mode: false
 
+    - role: s3_bucket_info
+      s3_bucket_info_bucket_facts: {}
+      tags:
+        - molecule-idempotence-notest
+
     - s3_bucket_info
 ...

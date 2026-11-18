@@ -1,0 +1,28 @@
+---
+- name: Cleanup
+  hosts: all
+  roles:
+    - s3_bucket_info
+
+  tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        s3_bucket_list:
+          "{{ s3_bucket_list |
+              map('combine', {'state': 'absent'}) }}"
+        s3_lifecycle_list:
+          - name: "{{ s3_lifecycle_list.0.name }}"
+            lifecycle_rules:
+              "{{ s3_lifecycle_list.0.lifecycle_rules |
+                  map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure lifecycle rules are removed from an existing bucket
+      ansible.builtin.include_role:
+        name: s3_lifecycle
+      when:
+        - s3_lifecycle_list.0.name in _s3_bucket_info_dict
+
+    - name: Ensure buckets are removed
+      ansible.builtin.include_role:
+        name: s3_bucket
+...
