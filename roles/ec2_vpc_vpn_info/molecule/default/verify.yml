@@ -4,9 +4,7 @@
   roles:
     - ec2_customer_gateway_info
     - ec2_transit_gateway_info
-    - role: ec2_vpc_vpn_info
-      no_log: true
-      diff: false
+    - ec2_vpc_vpn_info
 
   post_tasks:
     - name: Ensure info is verified
@@ -46,10 +44,6 @@
     - name: Ensure role is included
       ansible.builtin.include_role:
         name: ec2_vpc_vpn
-        apply:
-          diff: false
-          no_log: true
-      no_log: true
 
     - name: Ensure vpn connections are deleted
       amazon.aws.ec2_vpc_vpn_info:
