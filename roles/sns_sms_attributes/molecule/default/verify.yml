@@ -1,20 +1,59 @@
 ---
 - name: Verify
   hosts: all
-  roles:
-    - sns_sms_attributes_info
-
   tasks:
     - name: Ensure aws simple notification service sms attributes are verified
-      ansible.builtin.assert:
-        that:
-          - _sns_sms_attributes_info_dict is mapping
-          - _sns_sms_attributes_info_dict.default_sender_id is not defined
-          - _sns_sms_attributes_info_dict.default_sms_type == 'Transactional'
-          - _sns_sms_attributes_info_dict.delivery_status_success_sampling_rate == '0'
+      block:
+        - name: Ensure information about aws simple notification service sms attributes is gathered
+          ansible.builtin.include_role:
+            name: sns_sms_attributes_info
 
-    - name: Ensure aws simple notification service sms attributes are reset
-      linuxhq.aws.sns_sms_attributes:
-        default_sms_type: Promotional
-        validate_certs: true
+        - name: Ensure converged aws simple notification service sms attributes are verified
+          ansible.builtin.assert:
+            that:
+              - _sns_sms_attributes_info_dict is mapping
+              - _sns_sms_attributes_info_dict.default_sender_id is not defined
+              - _sns_sms_attributes_info_dict.default_sms_type == 'Transactional'
+              - _sns_sms_attributes_info_dict.delivery_status_success_sampling_rate == '0'
+
+      always:
+        - name: Ensure original aws simple notification service sms attributes are loaded
+          ansible.builtin.set_fact:
+            __sns_sms_attributes_original_dict: >-
+              {{ lookup('ansible.builtin.file',
+                 lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') ~ '/original-sms-attributes.json') |
+                 from_json }}
+
+        # The module accepts only valid values for these attributes, so the CLI clears an attribute that was not set.
+        - name: Ensure original aws simple notification service sms attributes are restored
+          ansible.builtin.command:
+            argv:
+              - aws
+              - sns
+              - set-sms-attributes
+              - --attributes
+              - "DefaultSenderID={{ __sns_sms_attributes_original_dict.default_sender_id | d('') }},\
+                 DefaultSMSType={{ __sns_sms_attributes_original_dict.default_sms_type | d('') }},\
+                 DeliveryStatusSuccessSamplingRate={{
+                   __sns_sms_attributes_original_dict.delivery_status_success_sampling_rate | d('') }}"
+          changed_when: true
+
+        - name: Ensure information about restored aws simple notification service sms attributes is gathered
+          ansible.builtin.include_role:
+            name: sns_sms_attributes_info
+
+        - name: Ensure restored aws simple notification service sms attributes are verified
+          ansible.builtin.assert:
+            that:
+              - _sns_sms_attributes_info_dict.default_sender_id | d(none) ==
+                  __sns_sms_attributes_original_dict.default_sender_id | d(none)
+              - _sns_sms_attributes_info_dict.default_sms_type | d(none) ==
+                  __sns_sms_attributes_original_dict.default_sms_type | d(none)
+              - _sns_sms_attributes_info_dict.delivery_status_success_sampling_rate | d(none) ==
+                  __sns_sms_attributes_original_dict.delivery_status_success_sampling_rate | d(none)
+
+        - name: Ensure saved aws simple notification service sms attributes file is absent
+          ansible.builtin.file:
+            path: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-sms-attributes.json"
+            state: absent
 ...

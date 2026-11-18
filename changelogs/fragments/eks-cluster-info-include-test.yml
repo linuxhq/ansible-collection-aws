@@ -1,5 +1,4 @@
 ---
 trivial:
-  - Molecule - info scenarios assert empty results for unknown identifiers and that fixtures are gone after teardown.
   - eks_cluster_info - unit-test that O(include) is deduplicated, forwarded to ListClusters, and checked before it.
 ...

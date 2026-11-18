@@ -173,3 +173,4 @@ it for reviews, triage, or probes.
 - Scenarios do not depend on earlier runs.
 - Test edits keep the facts later steps rely on.
 - No test resources remain, even after a failed or stopped run.
+- Tasks that handle secrets use task-level `no_log`.

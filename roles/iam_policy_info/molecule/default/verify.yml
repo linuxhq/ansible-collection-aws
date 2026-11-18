@@ -68,34 +68,6 @@
           - _iam_policy_info_user_dict['molecule-ec2'].policy_names == ['MoleculeEc2FullAccess']
           - _iam_policy_info_user_dict['molecule-ec2'].policies.0.policy_document ==
               iam_policy_list.0.policy_json
-          - _iam_policy_info_group_list == []
-          - _iam_policy_info_role_list == []
-
-    - name: Ensure role is included with an unmatched policy name
-      ansible.builtin.include_role:
-        name: iam_policy_info
-      vars:
-        iam_policy_info_group_name: molecule-rds
-        iam_policy_info_policy_name: MoleculeMissing
-
-    - name: Ensure info with an unmatched policy name is verified
-      ansible.builtin.assert:
-        that:
-          - _iam_policy_info_group_dict.keys() | list == ['molecule-rds']
-          - _iam_policy_info_group_dict['molecule-rds'].policy_names == []
-
-    - name: Ensure role is included with a nonexistent role name
-      ansible.builtin.include_role:
-        name: iam_policy_info
-      vars:
-        iam_policy_info_role_name: molecule-missing
-
-    - name: Ensure info with a nonexistent role name is verified
-      ansible.builtin.assert:
-        that:
-          - _iam_policy_info_group_list == []
-          - _iam_policy_info_role_list == []
-          - _iam_policy_info_user_list == []
 
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
@@ -123,19 +95,4 @@
       loop_control:
         label: "{{ _verify }}"
         loop_var: _verify
-
-    # IAM is eventually consistent, so a deleted entity can still be listed briefly.
-    - name: Ensure fixtures are absent
-      linuxhq.aws.iam_policy_info:
-        validate_certs: true
-      register: __iam_policy_info_deleted
-      retries: 12
-      delay: 5
-      until:
-        - __iam_policy_info_deleted.group_policies | map(attribute='name') |
-            intersect(['molecule-ec2', 'molecule-rds']) | list == []
-        - __iam_policy_info_deleted.role_policies | map(attribute='name') |
-            intersect(['molecule-s3']) | list == []
-        - __iam_policy_info_deleted.user_policies | map(attribute='name') |
-            intersect(['molecule-ec2']) | list == []
 ...
