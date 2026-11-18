@@ -22,7 +22,7 @@
       ansible.builtin.include_role:
         name: route53_resolver_rule_info
 
-    - name: Ensure created rules are verified
+    - name: Ensure rules are verified
       ansible.builtin.assert:
         that:
           - _route53_resolver_rule_info_dict[_rule.name].status == 'COMPLETE'
@@ -30,31 +30,54 @@
           - (_route53_resolver_rule_info_dict[_rule.name].target_ips | map(attribute='ip') | sort) ==
               (_rule.target_ips | map(attribute='ip') | sort)
           - _route53_resolver_rule_info_dict[_rule.name].target_ips | map(attribute='port') | unique == [53]
-      loop: "{{ route53_resolver_rule_list_create }}"
+      loop: "{{ route53_resolver_rule_list }}"
       loop_control:
         label: "{{ _rule.name }}"
         loop_var: _rule
 
-    - name: Ensure rules are updated
+    - name: Ensure rule target addresses are changed
       ansible.builtin.include_role:
         name: route53_resolver_rule
       vars:
-        route53_resolver_rule_list: "{{ route53_resolver_rule_list_update }}"
+        route53_resolver_rule_list:
+          - name: molecule-cloudflare
+            tags:
+              molecule: route53_resolver_rule
+            domain_name: cloudflare.com
+            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
+            rule_type: FORWARD
+            target_ips:
+              - ip: 1.1.1.3
+                port: 53
+              - ip: 1.1.1.4
+                port: 53
 
-    - name: Ensure route53_resolver_rule_info facts are gathered after the update
+          - name: molecule-google
+            tags:
+              molecule: route53_resolver_rule
+            domain_name: google.com
+            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].id }}"
+            rule_type: FORWARD
+            target_ips:
+              - ip: 8.8.8.9
+              - ip: 8.8.8.5
+                port: 53
+
+    - name: Ensure route53_resolver_rule_info facts are gathered after the change
       ansible.builtin.include_role:
         name: route53_resolver_rule_info
 
-    - name: Ensure updated rules are verified
+    - name: Ensure changed rule target addresses are verified
       ansible.builtin.assert:
         that:
-          - _route53_resolver_rule_info_dict[_rule.name].status == 'COMPLETE'
-          - _route53_resolver_rule_info_dict[_rule.name].tags.molecule == 'route53_resolver_rule'
-          - (_route53_resolver_rule_info_dict[_rule.name].target_ips | map(attribute='ip') | sort) ==
-              (_rule.target_ips | map(attribute='ip') | sort)
-          - _route53_resolver_rule_info_dict[_rule.name].target_ips | map(attribute='port') | unique == [53]
-      loop: "{{ route53_resolver_rule_list_update }}"
-      loop_control:
-        label: "{{ _rule.name }}"
-        loop_var: _rule
+          - _route53_resolver_rule_info_dict['molecule-cloudflare'].status == 'COMPLETE'
+          - (_route53_resolver_rule_info_dict['molecule-cloudflare'].target_ips | map(attribute='ip') | sort) ==
+              ['1.1.1.3', '1.1.1.4']
+          - _route53_resolver_rule_info_dict['molecule-cloudflare'].target_ips | map(attribute='port') | unique ==
+              [53]
+          - _route53_resolver_rule_info_dict['molecule-google'].status == 'COMPLETE'
+          - (_route53_resolver_rule_info_dict['molecule-google'].target_ips | map(attribute='ip') | sort) ==
+              ['8.8.8.5', '8.8.8.9']
+          - _route53_resolver_rule_info_dict['molecule-google'].target_ips | map(attribute='port') | unique ==
+              [53]
 ...

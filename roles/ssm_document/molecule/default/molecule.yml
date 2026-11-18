@@ -30,7 +30,7 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ssm_document_list_create:
+        ssm_document_list:
           - name: molecule-command-shell
             tags:
               molecule: ssm_document
@@ -70,49 +70,6 @@ provisioner:
                 runAsEnabled: false
                 shellProfile:
                   linux: cd
-                  windows: ''
-
-        ssm_document_list_update:
-          - name: molecule-command-shell
-            tags:
-              molecule: ssm_document
-            document_type: Command
-            content:
-              schemaVersion: '2.2'
-              description: Run an updated shell command
-              mainSteps:
-                - action: aws:runShellScript
-                  name: runShellScript
-                  inputs:
-                    runCommand:
-                      - echo molecule-updated
-          - name: molecule-command-env
-            tags:
-              molecule: ssm_document
-            document_type: Command
-            content:
-              schemaVersion: '2.2'
-              description: Print updated environment
-              mainSteps:
-                - action: aws:runShellScript
-                  name: printEnvironment
-                  inputs:
-                    runCommand:
-                      - env | sort
-                      - pwd
-          - name: molecule-session-shell
-            tags:
-              molecule: ssm_document
-            document_type: Session
-            content:
-              schemaVersion: '1.0'
-              description: Updated Session Manager shell preferences
-              sessionType: Standard_Stream
-              inputs:
-                idleSessionTimeout: 60
-                runAsEnabled: false
-                shellProfile:
-                  linux: pwd
                   windows: ''
 
 scenario:

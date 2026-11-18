@@ -60,7 +60,7 @@ provisioner:
                 az: us-east-1d
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,2) }}"
 
-        eks_cluster_list_create:
+        eks_cluster_list:
           - name: molecule-eks1
             encryption_config:
               - provider:
@@ -90,44 +90,6 @@ provisioner:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
             role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeEksClusterRole"
             version: '1.34'
-            wait: true
-
-        eks_cluster_list_update:
-          - name: molecule-eks1
-            encryption_config:
-              - provider:
-                  key_arn: "{{ _kms_key_info_dict['molecule-eks'].key_arn }}"
-            resources_vpc_config:
-              endpoint_private_access: false
-              endpoint_public_access: true
-              public_access_cidrs:
-                - 69.107.10.200/29
-              security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id }}"
-              subnet_ids:
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
-            role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeEksClusterRole"
-            version: '1.34'
-            wait: true
-
-          - name: molecule-eks2
-            # Associates encryption with the existing unencrypted cluster alongside its version and endpoint updates.
-            encryption_config:
-              - provider:
-                  key_arn: "{{ _kms_key_info_dict['molecule-eks'].key_arn }}"
-            resources_vpc_config:
-              endpoint_private_access: true
-              endpoint_public_access: false
-              security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id }}"
-              subnet_ids:
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
-                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
-            role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeEksClusterRole"
-            version: '1.35'
             wait: true
 
         iam_role_list:

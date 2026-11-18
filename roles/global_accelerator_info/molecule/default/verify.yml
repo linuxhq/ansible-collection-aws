@@ -14,14 +14,14 @@
         that:
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].accelerator_arn is defined
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].dns_name is defined
-          - not (_global_accelerator_info_dict['molecule-global-accelerator-info-00'].enabled | bool)
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].enabled | bool
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].ip_address_type == 'IPV4'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].status == 'DEPLOYED'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].tags.molecule ==
               'global_accelerator_info'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].accelerator_arn is defined
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].dns_name is defined
-          - not (_global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled | bool)
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled | bool
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].ip_address_type == 'IPV4'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].status == 'DEPLOYED'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].tags.molecule ==
@@ -75,7 +75,7 @@
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners | length == 2
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
               selectattr('endpoint_groups', 'defined') | list == []
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 0
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 1
 
     - name: Ensure role is included with endpoint groups
       ansible.builtin.include_role:
@@ -89,6 +89,72 @@
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners | length == 2
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
               json_query('[].protocol') | unique == ['TCP']
+          - __global_accelerator_info_listener_80.endpoint_groups | d([]) | length == 0
+          - __global_accelerator_info_listener_443.endpoint_groups | length == 1
+          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_group_region == 'us-east-1'
+          - __global_accelerator_info_listener_443.endpoint_groups.0.traffic_dial_percentage == 100
+          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
+              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 1
+      vars:
+        __global_accelerator_info_listener_80:
+          "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 80) |
+              first }}"
+        __global_accelerator_info_listener_443:
+          "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 443) |
+              first }}"
+
+    - name: Ensure accelerators are disabled and their listeners are changed
+      ansible.builtin.include_role:
+        name: global_accelerator
+      vars:
+        global_accelerator_list:
+          - name: molecule-global-accelerator-info-00
+            enabled: false
+            tags:
+              molecule: global_accelerator_info
+            listeners:
+              - protocol: TCP
+                port_ranges:
+                  - from_port: 81
+                    to_port: 81
+                endpoint_groups: []
+              - protocol: TCP
+                port_ranges:
+                  - from_port: 444
+                    to_port: 444
+                endpoint_groups:
+                  - endpoint_group_region: us-east-1
+                    traffic_dial_percentage: 50
+                    endpoint_configurations:
+                      - endpoint_id:
+                          "{{ _elb_application_lb_info_dict[
+                                'molecule-http-80'
+                              ].load_balancer_arn }}"
+                        weight: 200
+          - name: molecule-global-accelerator-info-01
+            enabled: false
+            tags:
+              molecule: global_accelerator_info
+            listeners: []
+
+    - name: Ensure role is included with endpoint groups after the change
+      ansible.builtin.include_role:
+        name: global_accelerator_info
+      vars:
+        global_accelerator_info_include_endpoint_groups: true
+
+    - name: Ensure changed info with endpoint groups is verified
+      ansible.builtin.assert:
+        that:
+          - not (_global_accelerator_info_dict['molecule-global-accelerator-info-00'].enabled | bool)
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].status == 'DEPLOYED'
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners | length == 2
+          - __global_accelerator_info_listener_81.endpoint_groups | d([]) | length == 0
           - __global_accelerator_info_listener_444.endpoint_groups | length == 1
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_group_region == 'us-east-1'
           - __global_accelerator_info_listener_444.endpoint_groups.0.traffic_dial_percentage == 50
@@ -96,8 +162,14 @@
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
               _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions.0.weight == 200
+          - not (_global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled | bool)
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].status == 'DEPLOYED'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 0
       vars:
+        __global_accelerator_info_listener_81:
+          "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 81) |
+              first }}"
         __global_accelerator_info_listener_444:
           "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
               selectattr('port_ranges.0.from_port', 'equalto', 444) |

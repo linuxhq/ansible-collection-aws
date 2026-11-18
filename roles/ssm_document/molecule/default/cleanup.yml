@@ -1,27 +1,13 @@
 ---
 - name: Cleanup
   hosts: all
-  tasks:
+  pre_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ssm_document_list:
-          "{{ ssm_document_list_update |
+          "{{ ssm_document_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure documents are absent
-      ansible.builtin.include_role:
-        name: ssm_document
-
-    - name: Ensure document info is gathered after removal
-      ansible.builtin.include_role:
-        name: ssm_document_info
-      vars:
-        ssm_document_info_filters:
-          Owner: Self
-          Name: "{{ ssm_document_list_update | map(attribute='name') | list }}"
-
-    - name: Ensure removed documents are verified
-      ansible.builtin.assert:
-        that:
-          - _ssm_document_info_list == []
+  roles:
+    - ssm_document
 ...

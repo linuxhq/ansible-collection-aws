@@ -7,15 +7,42 @@
         name: ssm_association_info
       vars:
         ssm_association_info_filters:
-          AssociationName: "{{ ssm_association_list_update.0.association_name }}"
+          AssociationName: "{{ ssm_association_list.0.association_name }}"
 
-    - name: Ensure updated association is verified
+    - name: Ensure association is verified
       ansible.builtin.assert:
         that:
           - _ssm_association_info_list | length == 1
-          - _ssm_association_info_list.0.association_name == ssm_association_list_update.0.association_name
-          - _ssm_association_info_list.0.name == ssm_association_list_update.0.name
-          - _ssm_association_info_list.0.schedule_expression == ssm_association_list_update.0.schedule_expression
-          - _ssm_association_info_list.0.targets == ssm_association_list_update.0.targets
+          - _ssm_association_info_list.0.association_name == ssm_association_list.0.association_name
+          - _ssm_association_info_list.0.name == ssm_association_list.0.name
+          - _ssm_association_info_list.0.schedule_expression == ssm_association_list.0.schedule_expression
+          - _ssm_association_info_list.0.targets == ssm_association_list.0.targets
           - _ssm_association_info_list.0.tags.molecule == 'ssm_association'
+
+    - name: Ensure association schedule is changed
+      ansible.builtin.include_role:
+        name: ssm_association
+      vars:
+        ssm_association_list:
+          - name: AWS-UpdateSSMAgent
+            association_name: molecule-ssm-association
+            tags:
+              molecule: ssm_association
+            schedule_expression: 'cron(15 0 * * ? *)'
+            targets:
+              - key: InstanceIds
+                values: ['*']
+
+    - name: Ensure changed association info is gathered
+      ansible.builtin.include_role:
+        name: ssm_association_info
+      vars:
+        ssm_association_info_filters:
+          AssociationName: molecule-ssm-association
+
+    - name: Ensure changed association schedule is verified
+      ansible.builtin.assert:
+        that:
+          - _ssm_association_info_list | length == 1
+          - _ssm_association_info_list.0.schedule_expression == 'cron(15 0 * * ? *)'
 ...

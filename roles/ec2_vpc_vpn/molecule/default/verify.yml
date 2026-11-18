@@ -12,10 +12,107 @@
       ansible.builtin.assert:
         that:
           - _ec2_vpc_vpn_info_dict['molecule-00'].vpn_connection_id is defined
-          - _ec2_vpc_vpn_info_dict['molecule-00'].customer_gateway_id == ec2_vpc_vpn_list_update.0.customer_gateway_id
-          - _ec2_vpc_vpn_info_dict['molecule-00'].transit_gateway_id == ec2_vpc_vpn_list_update.0.transit_gateway_id
+          - _ec2_vpc_vpn_info_dict['molecule-00'].customer_gateway_id == ec2_vpc_vpn_list.0.customer_gateway_id
+          - _ec2_vpc_vpn_info_dict['molecule-00'].transit_gateway_id == ec2_vpc_vpn_list.0.transit_gateway_id
           - _ec2_vpc_vpn_info_dict['molecule-00'].state == 'available'
           - _ec2_vpc_vpn_info_dict['molecule-00'].tags.Name == 'molecule-00'
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_bandwidth == 'large'
+          - _ec2_vpc_vpn_info_dict['molecule-00'].pre_shared_key_arn is not defined
+          - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | length == 2
+          - _ec2_vpc_vpn_info_dict['molecule-01'].vpn_connection_id is defined
+          - _ec2_vpc_vpn_info_dict['molecule-01'].customer_gateway_id == ec2_vpc_vpn_list.1.customer_gateway_id
+          - _ec2_vpc_vpn_info_dict['molecule-01'].transit_gateway_id == ec2_vpc_vpn_list.1.transit_gateway_id
+          - _ec2_vpc_vpn_info_dict['molecule-01'].state == 'available'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].tags.Name == 'molecule-01'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.static_routes_only
+          - not _ec2_vpc_vpn_info_dict['molecule-01'].options.enable_acceleration
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.outside_ip_address_type == 'PublicIpv4'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].pre_shared_key_arn is not defined
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options | length == 2
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options |
+            selectattr('pre_shared_key', 'defined') |
+            list |
+            length == 2
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase1_encryption_algorithms.0.value == 'AES256'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase2_encryption_algorithms.0.value == 'AES256'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.ike_versions.0.value == 'ikev2'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase1_integrity_algorithms.0.value == 'SHA2-256'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase2_integrity_algorithms.0.value == 'SHA2-256'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase1_dh_group_numbers.0.value == 16
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase2_dh_group_numbers.0.value == 16
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase1_encryption_algorithms.0.value == 'AES256'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase2_encryption_algorithms.0.value == 'AES256'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.ike_versions.0.value == 'ikev2'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase1_integrity_algorithms.0.value == 'SHA2-256'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase2_integrity_algorithms.0.value == 'SHA2-256'
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase1_dh_group_numbers.0.value == 16
+          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase2_dh_group_numbers.0.value == 16
+          - _ec2_vpc_vpn_info_dict['molecule-02'].vpn_connection_id is defined
+          - _ec2_vpc_vpn_info_dict['molecule-02'].customer_gateway_id == ec2_vpc_vpn_list.2.customer_gateway_id
+          - _ec2_vpc_vpn_info_dict['molecule-02'].transit_gateway_id == ec2_vpc_vpn_list.2.transit_gateway_id
+          - _ec2_vpc_vpn_info_dict['molecule-02'].state == 'available'
+          - _ec2_vpc_vpn_info_dict['molecule-02'].tags.Name == 'molecule-02'
+          - _ec2_vpc_vpn_info_dict['molecule-02'].options.tunnel_inside_ip_version == 'ipv6'
+          - _ec2_vpc_vpn_info_dict['molecule-02'].options.tunnel_options | length == 2
+          - _ec2_vpc_vpn_info_dict['molecule-02'].options.tunnel_options |
+            map(attribute='tunnel_inside_ipv6_cidr') |
+            sort == ['fd00::100/126', 'fd00::200/126']
+
+    - name: Ensure vpn connection tunnel options are changed
+      ansible.builtin.include_role:
+        name: ec2_vpc_vpn
+      vars:
+        ec2_vpc_vpn_list:
+          - name: molecule-00
+            customer_gateway_id:
+              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
+            transit_gateway_id:
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+            pre_shared_key_storage: SecretsManager
+            skip_tunnel_replacement: true
+            wait_timeout: 1200
+            tunnel_options:
+              - dpd_timeout_action: restart
+                dpd_timeout_seconds: 45
+                enable_tunnel_lifecycle_control: true
+                log_options:
+                  cloud_watch_log_options:
+                    bgp_log_enabled: true
+                    bgp_log_group_arn:
+                      "{{ _cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn }}"
+                    bgp_log_output_format: text
+                    log_enabled: true
+                    log_group_arn:
+                      "{{ _cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn }}"
+                    log_output_format: text
+                phase1_lifetime_seconds: 27000
+                phase2_lifetime_seconds: 3000
+                rekey_fuzz_percentage: 50
+                rekey_margin_time_seconds: 1500
+                replay_window_size: 2048
+                startup_action: add
+
+          - name: molecule-01
+            customer_gateway_id:
+              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id }}"
+            transit_gateway_id:
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+            local_ipv4_network_cidr: 10.20.0.0/16
+            wait_timeout: 1200
+            tunnel_options:
+              - phase1_encryption_algorithms: [AES128]
+                phase2_encryption_algorithms: [AES128]
+              - phase1_encryption_algorithms: [AES128]
+                phase2_encryption_algorithms: [AES128]
+
+    - name: Ensure information about changed vpn connections is gathered
+      ansible.builtin.include_role:
+        name: ec2_vpc_vpn_info
+
+    - name: Ensure changed vpn connections are verified
+      ansible.builtin.assert:
+        that:
+          - _ec2_vpc_vpn_info_dict['molecule-00'].state == 'available'
           - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_bandwidth == 'large'
           - _ec2_vpc_vpn_info_dict['molecule-00'].pre_shared_key_arn is defined
           - _ec2_vpc_vpn_info_dict['molecule-00'].options.tunnel_options | length == 2
@@ -59,44 +156,12 @@
                   bgp_log_enabled=true,
                   bgp_log_group_arn=_cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn,
                   bgp_log_output_format='text')]
-          - _ec2_vpc_vpn_info_dict['molecule-01'].vpn_connection_id is defined
-          - _ec2_vpc_vpn_info_dict['molecule-01'].customer_gateway_id == ec2_vpc_vpn_list_update.1.customer_gateway_id
-          - _ec2_vpc_vpn_info_dict['molecule-01'].transit_gateway_id == ec2_vpc_vpn_list_update.1.transit_gateway_id
           - _ec2_vpc_vpn_info_dict['molecule-01'].state == 'available'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].tags.Name == 'molecule-01'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.static_routes_only
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.local_ipv4_network_cidr == '10.20.0.0/16'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_bandwidth == 'standard'
-          - not _ec2_vpc_vpn_info_dict['molecule-01'].options.enable_acceleration
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.outside_ip_address_type == 'PublicIpv4'
           - _ec2_vpc_vpn_info_dict['molecule-01'].pre_shared_key_arn is not defined
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options | length == 2
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options |
-            selectattr('pre_shared_key', 'defined') |
-            list |
-            length == 2
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase1_encryption_algorithms.0.value == 'AES128'
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase2_encryption_algorithms.0.value == 'AES128'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.ike_versions.0.value == 'ikev2'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase1_integrity_algorithms.0.value == 'SHA2-256'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase2_integrity_algorithms.0.value == 'SHA2-256'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase1_dh_group_numbers.0.value == 16
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.0.phase2_dh_group_numbers.0.value == 16
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase1_encryption_algorithms.0.value == 'AES128'
           - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase2_encryption_algorithms.0.value == 'AES128'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.ike_versions.0.value == 'ikev2'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase1_integrity_algorithms.0.value == 'SHA2-256'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase2_integrity_algorithms.0.value == 'SHA2-256'
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase1_dh_group_numbers.0.value == 16
-          - _ec2_vpc_vpn_info_dict['molecule-01'].options.tunnel_options.1.phase2_dh_group_numbers.0.value == 16
-          - _ec2_vpc_vpn_info_dict['molecule-02'].vpn_connection_id is defined
-          - _ec2_vpc_vpn_info_dict['molecule-02'].customer_gateway_id == ec2_vpc_vpn_list_update.2.customer_gateway_id
-          - _ec2_vpc_vpn_info_dict['molecule-02'].transit_gateway_id == ec2_vpc_vpn_list_update.2.transit_gateway_id
-          - _ec2_vpc_vpn_info_dict['molecule-02'].state == 'available'
-          - _ec2_vpc_vpn_info_dict['molecule-02'].tags.Name == 'molecule-02'
-          - _ec2_vpc_vpn_info_dict['molecule-02'].options.tunnel_inside_ip_version == 'ipv6'
-          - _ec2_vpc_vpn_info_dict['molecule-02'].options.tunnel_options | length == 2
-          - _ec2_vpc_vpn_info_dict['molecule-02'].options.tunnel_options |
-            map(attribute='tunnel_inside_ipv6_cidr') |
-            sort == ['fd00::100/126', 'fd00::200/126']
 ...

@@ -34,13 +34,5 @@
       tags:
         - molecule-idempotence-notest
 
-    - role: eks_cluster
-      eks_cluster_list:
-        "{{ eks_cluster_list_create }}"
-      tags:
-        - molecule-idempotence-notest
-
-    - role: eks_cluster
-      eks_cluster_list:
-        "{{ eks_cluster_list_update }}"
+    - eks_cluster
 ...

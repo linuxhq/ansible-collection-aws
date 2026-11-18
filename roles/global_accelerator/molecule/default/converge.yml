@@ -37,13 +37,5 @@
       tags:
         - molecule-idempotence-notest
 
-    - role: global_accelerator
-      global_accelerator_list:
-        "{{ global_accelerator_list_create }}"
-      tags:
-        - molecule-idempotence-notest
-
-    - role: global_accelerator
-      global_accelerator_list:
-        "{{ global_accelerator_list_update }}"
+    - global_accelerator
 ...

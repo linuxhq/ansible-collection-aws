@@ -44,15 +44,6 @@
       check_mode: false
 
     - role: global_accelerator
-      global_accelerator_list:
-        "{{ global_accelerator_list_create }}"
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: global_accelerator
-      global_accelerator_list:
-        "{{ global_accelerator_list_update }}"
       tags:
         - molecule-idempotence-notest
       check_mode: false

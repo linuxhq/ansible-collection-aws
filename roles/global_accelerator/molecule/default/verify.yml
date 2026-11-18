@@ -11,6 +11,94 @@
       vars:
         global_accelerator_info_include_endpoint_groups: true
 
+    - name: Ensure accelerator 00 listeners and endpoint groups are verified
+      ansible.builtin.assert:
+        that:
+          - __global_accelerator_listeners | length == 2
+          - __global_accelerator_listener_80.port_ranges | length == 1
+          - __global_accelerator_listener_80.port_ranges.0.to_port == 80
+          - __global_accelerator_listener_80.endpoint_groups | length == 1
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_group_region == 'us-east-1'
+          - __global_accelerator_listener_80.endpoint_groups.0.traffic_dial_percentage == 90
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
+              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.weight == 64
+          - __global_accelerator_listener_443.port_ranges | length == 1
+          - __global_accelerator_listener_443.port_ranges.0.to_port == 443
+          - __global_accelerator_listener_443.endpoint_groups | length == 1
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_group_region == 'us-east-1'
+          - __global_accelerator_listener_443.endpoint_groups.0.traffic_dial_percentage == 100
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
+              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
+      vars:
+        __global_accelerator_listeners:
+          "{{ _global_accelerator_info_dict['molecule-global-accelerator-00'].listeners }}"
+        __global_accelerator_listener_80:
+          "{{ __global_accelerator_listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 80) |
+              first }}"
+        __global_accelerator_listener_443:
+          "{{ __global_accelerator_listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 443) |
+              first }}"
+
+    - name: Ensure both accelerators are enabled and tagged, and accelerator 01 has one listener
+      ansible.builtin.assert:
+        that:
+          - _global_accelerator_info_dict['molecule-global-accelerator-01'].listeners | length == 1
+          - _global_accelerator_info_dict['molecule-global-accelerator-01'].listeners.0.port_ranges ==
+              [dict(from_port=8080, to_port=8080)]
+          - _global_accelerator_info_dict[_accelerator.name].enabled is true
+          - _global_accelerator_info_dict[_accelerator.name].tags == __global_accelerator_tags
+      loop: "{{ global_accelerator_list }}"
+      loop_control:
+        label: "{{ _accelerator.name }}"
+        loop_var: _accelerator
+      vars:
+        __global_accelerator_tags: "{{ _accelerator.tags | combine({'Name': _accelerator.name}) }}"
+
+    - name: Ensure accelerators are disabled and their listeners are changed
+      ansible.builtin.include_role:
+        name: global_accelerator
+      vars:
+        global_accelerator_list:
+          - name: molecule-global-accelerator-00
+            enabled: false
+            tags:
+              Environment: molecule
+            listeners:
+              - protocol: TCP
+                port_ranges:
+                  - from_port: 80
+                    to_port: 81
+                endpoint_groups:
+                  - endpoint_group_region: us-east-1
+                    traffic_dial_percentage: 50
+                    endpoint_configurations:
+                      - endpoint_id:
+                          "{{ _elb_application_lb_info_dict[
+                                'molecule-http-80'
+                              ].load_balancer_arn }}"
+                        weight: 200
+              - protocol: TCP
+                port_ranges:
+                  - from_port: 443
+                    to_port: 444
+          - name: molecule-global-accelerator-01
+            enabled: false
+            tags:
+              Environment: molecule
+            listeners: []
+
+    - name: Ensure global accelerator info role is included with endpoint groups after the change
+      ansible.builtin.include_role:
+        name: global_accelerator_info
+      vars:
+        global_accelerator_info_include_endpoint_groups: true
+
     - name: Ensure endpoint groups stay on the listener whose ports overlap
       ansible.builtin.assert:
         that:
@@ -51,7 +139,7 @@
           - _global_accelerator_info_dict['molecule-global-accelerator-01'].listeners | length == 0
           - _global_accelerator_info_dict[_accelerator.name].enabled is false
           - _global_accelerator_info_dict[_accelerator.name].tags == __global_accelerator_tags
-      loop: "{{ global_accelerator_list_update }}"
+      loop: "{{ global_accelerator_list }}"
       loop_control:
         label: "{{ _accelerator.name }}"
         loop_var: _accelerator

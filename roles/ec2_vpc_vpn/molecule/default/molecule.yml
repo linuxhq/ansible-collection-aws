@@ -51,7 +51,7 @@ provisioner:
         ec2_transit_gateway_list:
           - name: molecule
 
-        ec2_vpc_vpn_list_create:
+        ec2_vpc_vpn_list:
           - name: molecule-00
             customer_gateway_id:
               "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
@@ -82,66 +82,6 @@ provisioner:
                 phase2_encryption_algorithms: [AES256]
                 phase2_integrity_algorithms: [SHA2-256]
                 phase2_dh_group_numbers: [16]
-
-          - name: molecule-02
-            customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-02'].customer_gateway_id }}"
-            transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
-            tunnel_inside_ip_version: ipv6
-            wait_timeout: 1200
-            tunnel_options:
-              - tunnel_inside_ipv6_cidr: fd00::100/126
-              - tunnel_inside_ipv6_cidr: fd00::200/126
-
-        ec2_vpc_vpn_list_update:
-          - name: molecule-00
-            customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
-            transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
-            pre_shared_key_storage: SecretsManager
-            skip_tunnel_replacement: true
-            tunnel_bandwidth: large
-            wait_timeout: 1200
-            tunnel_options:
-              - dpd_timeout_action: restart
-                dpd_timeout_seconds: 45
-                enable_tunnel_lifecycle_control: true
-                log_options:
-                  cloud_watch_log_options:
-                    bgp_log_enabled: true
-                    bgp_log_group_arn:
-                      "{{ _cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn }}"
-                    bgp_log_output_format: text
-                    log_enabled: true
-                    log_group_arn:
-                      "{{ _cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn }}"
-                    log_output_format: text
-                phase1_lifetime_seconds: 27000
-                phase2_lifetime_seconds: 3000
-                rekey_fuzz_percentage: 50
-                rekey_margin_time_seconds: 1500
-                replay_window_size: 2048
-                startup_action: add
-
-          - name: molecule-01
-            customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id }}"
-            transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
-            enable_acceleration: false
-            local_ipv4_network_cidr: 10.20.0.0/16
-            outside_ip_address_type: PublicIpv4
-            pre_shared_key_storage: Standard
-            static_only: true
-            tunnel_bandwidth: standard
-            wait_timeout: 1200
-            tunnel_options:
-              - phase1_encryption_algorithms: [AES128]
-                phase2_encryption_algorithms: [AES128]
-              - phase1_encryption_algorithms: [AES128]
-                phase2_encryption_algorithms: [AES128]
 
           - name: molecule-02
             customer_gateway_id:

@@ -18,7 +18,7 @@
       ansible.builtin.include_role:
         name: route53_resolver_info
 
-    - name: Ensure created endpoints are verified
+    - name: Ensure endpoints are verified
       ansible.builtin.assert:
         that:
           - _route53_resolver_info_dict[_endpoint.name].protocols | sort == _endpoint.protocols | sort
@@ -27,32 +27,58 @@
           - _route53_resolver_info_dict[_endpoint.name].tags.molecule == 'route53_resolver'
           - (_route53_resolver_info_dict[_endpoint.name].ip_addresses | map(attribute='ip') | sort) ==
               (_endpoint.ip_addresses | map(attribute='ip') | sort)
-      loop: "{{ route53_resolver_list_create }}"
+      loop: "{{ route53_resolver_list }}"
       loop_control:
         label: "{{ _endpoint.name }}"
         loop_var: _endpoint
 
-    - name: Ensure endpoints are updated
+    - name: Ensure endpoints are moved to new addresses with DoH enabled
       ansible.builtin.include_role:
         name: route53_resolver
       vars:
-        route53_resolver_list: "{{ route53_resolver_list_update }}"
+        route53_resolver_list:
+          - name: molecule-cloudflare
+            tags:
+              molecule: route53_resolver
+            direction: OUTBOUND
+            ip_addresses:
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+                ip: 192.168.0.125
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                ip: 192.168.0.253
+            protocols:
+              - Do53
+              - DoH
+            security_group_ids:
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
+          - name: molecule-google
+            tags:
+              molecule: route53_resolver
+            direction: OUTBOUND
+            ip_addresses:
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+                ip: 192.168.0.126
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                ip: 192.168.0.254
+            protocols:
+              - Do53
+              - DoH
+            security_group_ids:
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
 
-    - name: Ensure route53_resolver_info facts are gathered after the update
+    - name: Ensure route53_resolver_info facts are gathered after the change
       ansible.builtin.include_role:
         name: route53_resolver_info
 
-    - name: Ensure updated endpoints are verified
+    - name: Ensure changed endpoints are verified
       ansible.builtin.assert:
         that:
-          - _route53_resolver_info_dict[_endpoint.name].protocols | sort == ['Do53', 'DoH']
-          - _route53_resolver_info_dict[_endpoint.name].resolver_endpoint_type == 'IPV4'
-          - _route53_resolver_info_dict[_endpoint.name].status == 'OPERATIONAL'
-          - _route53_resolver_info_dict[_endpoint.name].tags.molecule == 'route53_resolver'
-          - (_route53_resolver_info_dict[_endpoint.name].ip_addresses | map(attribute='ip') | sort) ==
-              (_endpoint.ip_addresses | map(attribute='ip') | sort)
-      loop: "{{ route53_resolver_list_update }}"
-      loop_control:
-        label: "{{ _endpoint.name }}"
-        loop_var: _endpoint
+          - _route53_resolver_info_dict['molecule-cloudflare'].protocols | sort == ['Do53', 'DoH']
+          - _route53_resolver_info_dict['molecule-cloudflare'].status == 'OPERATIONAL'
+          - (_route53_resolver_info_dict['molecule-cloudflare'].ip_addresses | map(attribute='ip') | sort) ==
+              ['192.168.0.125', '192.168.0.253']
+          - _route53_resolver_info_dict['molecule-google'].protocols | sort == ['Do53', 'DoH']
+          - _route53_resolver_info_dict['molecule-google'].status == 'OPERATIONAL'
+          - (_route53_resolver_info_dict['molecule-google'].ip_addresses | map(attribute='ip') | sort) ==
+              ['192.168.0.126', '192.168.0.254']
 ...

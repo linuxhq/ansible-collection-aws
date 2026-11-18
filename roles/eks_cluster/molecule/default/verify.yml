@@ -2,6 +2,10 @@
 - name: Verify
   hosts: all
   roles:
+    - aws_caller_info
+    - ec2_security_group_info
+    - ec2_vpc_net_info
+    - ec2_vpc_subnet_info
     - eks_cluster_info
     - kms_key_info
 
@@ -13,12 +17,72 @@
           - _eks_cluster_info_dict['molecule-eks1'].encryption_config ==
             [dict(provider=dict(key_arn=_kms_key_info_dict['molecule-eks'].key_arn),
                   resources=['secrets'])]
+          - _eks_cluster_info_dict['molecule-eks1'].version == '1.33'
+          - _eks_cluster_info_dict['molecule-eks1'].resources_vpc_config.endpoint_private_access
+          - not _eks_cluster_info_dict['molecule-eks1'].resources_vpc_config.endpoint_public_access
+          - _eks_cluster_info_dict['molecule-eks1'].tags.Name == 'molecule-eks1'
+          - _eks_cluster_info_dict['molecule-eks2'].status == 'ACTIVE'
+          - _eks_cluster_info_dict['molecule-eks2'].encryption_config | d([]) == []
+          - _eks_cluster_info_dict['molecule-eks2'].version == '1.34'
+          - not _eks_cluster_info_dict['molecule-eks2'].resources_vpc_config.endpoint_private_access
+          - _eks_cluster_info_dict['molecule-eks2'].resources_vpc_config.endpoint_public_access
+          - _eks_cluster_info_dict['molecule-eks2'].tags.Name == 'molecule-eks2'
+
+    - name: Ensure cluster versions, endpoint access and encryption are changed
+      ansible.builtin.include_role:
+        name: eks_cluster
+      vars:
+        eks_cluster_list:
+          - name: molecule-eks1
+            encryption_config:
+              - provider:
+                  key_arn: "{{ _kms_key_info_dict['molecule-eks'].key_arn }}"
+            resources_vpc_config:
+              endpoint_private_access: false
+              endpoint_public_access: true
+              public_access_cidrs:
+                - 69.107.10.200/29
+              security_group_ids:
+                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id }}"
+              subnet_ids:
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
+            role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeEksClusterRole"
+            version: '1.34'
+            wait: true
+
+          - name: molecule-eks2
+            # Associates encryption with the existing unencrypted cluster alongside its version and endpoint updates.
+            encryption_config:
+              - provider:
+                  key_arn: "{{ _kms_key_info_dict['molecule-eks'].key_arn }}"
+            resources_vpc_config:
+              endpoint_private_access: true
+              endpoint_public_access: false
+              security_group_ids:
+                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id }}"
+              subnet_ids:
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                - "{{ _ec2_vpc_subnet_info_dict['molecule-d'].id }}"
+            role_arn: "arn:aws:iam::{{ _aws_caller_info_account }}:role/MoleculeEksClusterRole"
+            version: '1.35'
+            wait: true
+
+    - name: Ensure information about changed clusters is gathered
+      ansible.builtin.include_role:
+        name: eks_cluster_info
+
+    - name: Ensure changed clusters are verified
+      ansible.builtin.assert:
+        that:
+          - _eks_cluster_info_dict['molecule-eks1'].status == 'ACTIVE'
           - _eks_cluster_info_dict['molecule-eks1'].version == '1.34'
           - not _eks_cluster_info_dict['molecule-eks1'].resources_vpc_config.endpoint_private_access
           - _eks_cluster_info_dict['molecule-eks1'].resources_vpc_config.endpoint_public_access
           - _eks_cluster_info_dict['molecule-eks1'].resources_vpc_config.public_access_cidrs ==
             ['69.107.10.200/29']
-          - _eks_cluster_info_dict['molecule-eks1'].tags.Name == 'molecule-eks1'
           - _eks_cluster_info_dict['molecule-eks2'].status == 'ACTIVE'
           - _eks_cluster_info_dict['molecule-eks2'].encryption_config ==
             [dict(provider=dict(key_arn=_kms_key_info_dict['molecule-eks'].key_arn),
@@ -26,5 +90,4 @@
           - _eks_cluster_info_dict['molecule-eks2'].version == '1.35'
           - _eks_cluster_info_dict['molecule-eks2'].resources_vpc_config.endpoint_private_access
           - not _eks_cluster_info_dict['molecule-eks2'].resources_vpc_config.endpoint_public_access
-          - _eks_cluster_info_dict['molecule-eks2'].tags.Name == 'molecule-eks2'
 ...

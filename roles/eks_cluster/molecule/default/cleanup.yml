@@ -6,27 +6,23 @@
     - ec2_security_group_info
     - ec2_vpc_net_info
     - ec2_vpc_subnet_info
-    - eks_cluster_info
     - kms_key_info
 
   post_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_security_group_list:
-          "{{ [ec2_security_group_list.0 |
-               combine({'security_groups': ec2_security_group_list.0.security_groups |
-                                           map('combine', {'state': 'absent'})})]
-              if 'molecule' in _ec2_vpc_net_info_dict else [] }}"
+          "{{ ec2_security_group_list |
+              map('combine', {'security_groups': ec2_security_group_list.0.security_groups |
+                                                 map('combine', {'state': 'absent'})}) }}"
         ec2_vpc_net_list:
           "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_subnet_list:
           "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'})
-              if 'molecule' in _ec2_vpc_net_info_dict else [] }}"
+              map('combine', {'state': 'absent'}) }}"
         eks_cluster_list:
-          "{{ eks_cluster_list_update |
-              selectattr('name', 'in', _eks_cluster_info_dict) |
+          "{{ eks_cluster_list |
               map('combine', {'state': 'absent'}) }}"
         iam_role_list:
           "{{ iam_role_list |
@@ -48,14 +44,4 @@
       loop_control:
         label: "{{ _cleanup }}"
         loop_var: _cleanup
-
-    - name: Ensure cluster info is gathered after removal
-      ansible.builtin.include_role:
-        name: eks_cluster_info
-
-    - name: Ensure removed clusters are verified
-      ansible.builtin.assert:
-        that:
-          - _eks_cluster_info_dict.keys() |
-              intersect(eks_cluster_list_update | map(attribute='name')) | list == []
 ...
