@@ -32,7 +32,7 @@ provisioner:
       all:
         ec2_vpc_igw_list:
           - name: molecule
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
 
         ec2_vpc_nat_gateway_info_filters:
           state:
@@ -42,17 +42,17 @@ provisioner:
           - name: molecule-pub-a
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id }}"
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id | d(omit) }}"
             wait: true
           - name: molecule-pub-c
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id }}"
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id | d(omit) }}"
             wait: true
           - name: molecule-pub-d
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-d'].id }}"
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-d'].id | d(omit) }}"
             wait: true
 
         ec2_vpc_net_list:
@@ -60,7 +60,7 @@ provisioner:
             cidr_block: 10.0.0.0/16
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule-pub-a
                 az: us-east-1a

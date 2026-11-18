@@ -38,7 +38,7 @@ provisioner:
           - name: molecule
             tags:
               molecule: ec2_vpc_igw_info
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule
