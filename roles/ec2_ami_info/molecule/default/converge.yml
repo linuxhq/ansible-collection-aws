@@ -2,5 +2,10 @@
 - name: Converge
   hosts: all
   roles:
+    - role: ec2_ami_info
+      ec2_ami_info_list: []
+      tags:
+        - molecule-idempotence-notest
+
     - ec2_ami_info
 ...
