@@ -4,23 +4,19 @@
   roles:
     - aws_caller_info
 
-  post_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        iam_role_list:
-          "{{ iam_role_list |
-              map('combine', {'state': 'absent'}) }}"
-        lambda_list:
-          "{{ lambda_list |
-              map('combine', {'state': 'absent'}) }}"
+    - role: lambda_info
+      lambda_info_function_name: "{{ lambda_list.0.name }}"
+      lambda_info_query: config
 
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - lambda
-        - iam_role
+  post_tasks:
+    - name: Ensure aws lambda functions are verified
+      ansible.builtin.assert:
+        that:
+          - _lambda_info_dict[_function.name].function_arn is defined
+          - _lambda_info_dict[_function.name].role == _function.role
+          - _lambda_info_dict[_function.name].runtime == _function.runtime
+      loop: "{{ lambda_list }}"
       loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
+        label: "{{ _function.name }}"
+        loop_var: _function
 ...
