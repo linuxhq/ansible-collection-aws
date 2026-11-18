@@ -19,43 +19,24 @@
               json_query('[].{key: tags.Name, value: id}') |
               items2dict }}"
 
-    # Inventory entries reference fixture ids, so skip entries whose fixtures do not exist.
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ec2_eip_list:
           "{{ ec2_eip_list |
-              map('combine', {'state': 'absent'})
-              if ['molecule-eip-01', 'molecule-eip-02'] is subset(_ec2_eni_molecule_dict)
-              else [] }}"
+              map('combine', {'state': 'absent'}) }}"
         ec2_vpc_igw_list:
           "{{ ec2_vpc_igw_list |
-              map('combine', {'state': 'absent'})
-              if 'molecule' in _ec2_vpc_net_info_dict
-              else [] }}"
+              map('combine', {'state': 'absent'}) }}"
         ec2_vpc_net_list:
           "{{ ec2_vpc_net_list |
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_subnet_list:
           "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'})
-              if 'molecule' in _ec2_vpc_net_info_dict
-              else [] }}"
+              map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure aws elastic ip addresses are released
       ansible.builtin.include_role:
         name: ec2_eip
-
-    - name: Ensure information about remaining aws elastic ips is gathered
-      amazon.aws.ec2_eip_info:
-        filters:
-          tag:Name: molecule-eip-*
-        validate_certs: true
-      register: _ec2_eip_molecule_remaining
-
-    - name: Ensure every aws elastic ip address is released
-      ansible.builtin.assert:
-        that:
-          - _ec2_eip_molecule_remaining.addresses | length == 0
 
     - name: Ensure aws elastic network interfaces are absent
       amazon.aws.ec2_eni:

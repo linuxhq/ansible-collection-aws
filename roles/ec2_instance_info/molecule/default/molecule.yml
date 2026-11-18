@@ -50,24 +50,24 @@ provisioner:
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id | d(omit) }}"
           - name: molecule-c
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id | d(omit) }}"
           - name: molecule-d
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-d'].id }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-d'].id | d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule
             cidr_block: 10.0.0.0/16
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule-pub-a
                 az: us-east-1a
