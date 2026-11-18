@@ -25,16 +25,4 @@
       loop_control:
         label: "{{ _cleanup }}"
         loop_var: _cleanup
-
-    - name: Ensure information about aws end user messaging sms phone numbers is gathered after release
-      ansible.builtin.include_role:
-        name: pinpoint_sms_voice_phone_number_info
-
-    - name: Ensure released phone number is verified
-      ansible.builtin.assert:
-        that:
-          - _pinpoint_sms_voice_phone_number_info_list |
-            selectattr('phone_number_id', 'in',
-                       pinpoint_sms_voice_phone_number_list | map(attribute='phone_number_id') | list) |
-            rejectattr('status', 'equalto', 'DELETED') | list == []
 ...

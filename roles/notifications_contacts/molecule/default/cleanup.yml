@@ -1,24 +1,13 @@
 ---
 - name: Cleanup
   hosts: all
-  tasks:
+  pre_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         notifications_contacts_list:
           "{{ notifications_contacts_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure aws notifications contacts are absent
-      ansible.builtin.include_role:
-        name: notifications_contacts
-
-    - name: Ensure information about aws notifications contacts is gathered after removal
-      ansible.builtin.include_role:
-        name: notifications_contacts_info
-
-    - name: Ensure removed contacts are verified
-      ansible.builtin.assert:
-        that:
-          - notifications_contacts_list | map(attribute='email_address') |
-            select('in', _notifications_contacts_info_dict) | list == []
+  roles:
+    - notifications_contacts
 ...

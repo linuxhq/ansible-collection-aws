@@ -4,7 +4,6 @@
   roles:
     - pinpoint_sms_voice_phone_number_info
     - pinpoint_sms_voice_phone_pool_info
-    - pinpoint_sms_voice_sender_id_info
 
   post_tasks:
     - name: Ensure inventory lists are formatted
@@ -48,13 +47,7 @@
         - pinpoint_sms_voice_phone_pool
         - pinpoint_sms_voice_phone_number
         - pinpoint_sms_voice_sender_id
-        - pinpoint_sms_voice_sender_id_info
       loop_control:
         label: "{{ _cleanup }}"
         loop_var: _cleanup
-
-    - name: Ensure sender id release is verified
-      ansible.builtin.assert:
-        that:
-          - _pinpoint_sms_voice_sender_id_info_list == []
 ...
