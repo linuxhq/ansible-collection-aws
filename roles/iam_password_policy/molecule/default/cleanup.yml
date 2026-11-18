@@ -1,0 +1,18 @@
+---
+- name: Cleanup
+  hosts: all
+  tasks:
+    - name: Ensure aws iam password policy is reset
+      amazon.aws.iam_password_policy:
+        allow_pw_change: true
+        min_pw_length: 12
+        pw_expire: false
+        pw_max_age: 90
+        pw_reuse_prevent: 24
+        require_lowercase: true
+        require_numbers: true
+        require_symbols: true
+        require_uppercase: true
+        state: present
+        validate_certs: true
+...
