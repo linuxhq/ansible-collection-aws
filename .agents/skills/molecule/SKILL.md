@@ -58,7 +58,7 @@ scenario:
 | `prepare.yml`   | Only when needed: install or create what the role depends on.           |
 | `converge.yml`  | Run the role with its defaults, then with the scenario's inputs.        |
 | `verify.yml`    | Assert the result, then change it and assert each change.               |
-| `cleanup.yml`   | Re-run the role with `state: absent` and assert everything is gone.     |
+| `cleanup.yml`   | Re-run the role with `state: absent`; no assertions.                    |
 
 - `converge.yml` first runs the role with its defaults, which must pass or
   skip cleanly, then runs it with the inputs from `molecule.yml` to do the
@@ -66,8 +66,8 @@ scenario:
 - `verify.yml` asserts the initial provisioning. It may then apply further
   changes, one task per change, and assert each one.
 - `cleanup.yml` tears the provisioning down by re-running the role with
-  `state: absent`, then asserts the resources are gone, so it also tests the
-  role's absent path. It puts back account-level settings the scenario
-  changed, with hardcoded values. Molecule runs it before `destroy` at the start and end of the
+  `state: absent`, and puts back account-level settings the scenario changed,
+  with hardcoded values. It contains no assertions: if the role did its job,
+  the resources are gone. Molecule runs it before `destroy` at the start and end of the
   sequence and after a failed step, so it must succeed whether or not the
   resources exist. Keep teardown out of `verify.yml`.

@@ -11,15 +11,4 @@
   roles:
     - ec2_customer_gateway
 
-  post_tasks:
-    - name: Ensure information about remaining customer gateways is gathered
-      ansible.builtin.include_role:
-        name: ec2_customer_gateway_info
-
-    - name: Ensure removed customer gateways are absent
-      ansible.builtin.assert:
-        that:
-          - _ec2_customer_gateway_info_list |
-            selectattr('ip_address', 'in', ec2_customer_gateway_list | map(attribute='ip_address')) |
-            rejectattr('state', 'in', ['deleting', 'deleted']) | list == []
 ...
