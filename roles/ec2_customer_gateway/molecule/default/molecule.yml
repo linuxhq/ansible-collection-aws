@@ -30,7 +30,7 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ec2_customer_gateway_list_create:
+        ec2_customer_gateway_list:
           - name: molecule-00
             ip_address: 1.1.1.0
           - name: molecule-01
@@ -41,18 +41,6 @@ provisioner:
             ip_address: 1.1.1.3
           - name: molecule-04
             ip_address: 1.1.1.4
-
-        ec2_customer_gateway_list_update:
-          - name: molecule-00
-            ip_address: 1.1.1.5
-          - name: molecule-01
-            ip_address: 1.1.1.6
-          - name: molecule-02
-            ip_address: 1.1.1.7
-          - name: molecule-03
-            ip_address: 1.1.1.8
-          - name: molecule-04
-            ip_address: 1.1.1.9
 
 scenario:
   test_sequence:

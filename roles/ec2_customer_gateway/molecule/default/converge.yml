@@ -7,7 +7,5 @@
       tags:
         - molecule-idempotence-notest
 
-    - role: ec2_customer_gateway
-      ec2_customer_gateway_list:
-        "{{ ec2_customer_gateway_list_create }}"
+    - ec2_customer_gateway
 ...
