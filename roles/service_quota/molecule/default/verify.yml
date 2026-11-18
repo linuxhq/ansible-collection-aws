@@ -23,7 +23,8 @@
       ansible.builtin.assert:
         that:
           - _query is not changed
-          - _query.current_quota.value >= _query._servicequota.1.value | float or
+          - _query.current_quota.value >= _query._servicequota.1.value |
+            float or
             _query.pending_requests | length > 0
       loop: "{{ __service_quota_query.results }}"
       loop_control:

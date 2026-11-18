@@ -41,11 +41,14 @@
       ansible.builtin.assert:
         that:
           - _sqs_queue_info_dict['molecule-info-bounce'].queue_arn is defined
-          - _sqs_queue_info_dict['molecule-info-bounce'].sqs_managed_sse_enabled | bool
+          - _sqs_queue_info_dict['molecule-info-bounce'].sqs_managed_sse_enabled |
+            bool
           - _sqs_queue_info_dict['molecule-info-complaint'].queue_arn is defined
-          - _sqs_queue_info_dict['molecule-info-complaint'].sqs_managed_sse_enabled | bool
+          - _sqs_queue_info_dict['molecule-info-complaint'].sqs_managed_sse_enabled |
+            bool
           - _sqs_queue_info_dict['molecule-info-delivery'].queue_arn is defined
-          - _sqs_queue_info_dict['molecule-info-delivery'].sqs_managed_sse_enabled | bool
+          - _sqs_queue_info_dict['molecule-info-delivery'].sqs_managed_sse_enabled |
+            bool
           - _sqs_queue_info_dict['molecule-info-bounce'].tags.Name == 'molecule-info-bounce'
           - _sqs_queue_info_dict['molecule-info-complaint'].tags.Name == 'molecule-info-complaint'
           - _sqs_queue_info_dict['molecule-info-delivery'].tags.Name == 'molecule-info-delivery'
@@ -63,7 +66,8 @@
           - _sqs_queue_info_list.0.name == 'molecule-info-bounce'
           - _sqs_queue_info_dict.keys() | list == ['molecule-info-bounce']
           - _sqs_queue_info_dict['molecule-info-bounce'].queue_arn is defined
-          - _sqs_queue_info_dict['molecule-info-bounce'].sqs_managed_sse_enabled | bool
+          - _sqs_queue_info_dict['molecule-info-bounce'].sqs_managed_sse_enabled |
+            bool
 
     - name: Ensure role is included with a missing name
       ansible.builtin.include_role:

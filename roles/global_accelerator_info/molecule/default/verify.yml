@@ -14,14 +14,16 @@
         that:
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].accelerator_arn is defined
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].dns_name is defined
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].enabled | bool
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].enabled |
+            bool
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].ip_address_type == 'IPV4'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].status == 'DEPLOYED'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].tags.molecule ==
               'global_accelerator_info'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].accelerator_arn is defined
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].dns_name is defined
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled | bool
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled |
+            bool
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].ip_address_type == 'IPV4'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].status == 'DEPLOYED'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].tags.molecule ==
@@ -72,10 +74,13 @@
     - name: Ensure info with listeners is verified
       ansible.builtin.assert:
         that:
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners | length == 2
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
-              selectattr('endpoint_groups', 'defined') | list == []
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 1
+            length == 2
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              selectattr('endpoint_groups', 'defined') |
+              list == []
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners |
+            length == 1
 
     - name: Ensure role is included with endpoint groups
       ansible.builtin.include_role:
@@ -86,18 +91,24 @@
     - name: Ensure info with endpoint groups is verified
       ansible.builtin.assert:
         that:
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners | length == 2
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
-              json_query('[].protocol') | unique == ['TCP']
-          - __global_accelerator_info_listener_80.endpoint_groups | d([]) | length == 0
+            length == 2
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              json_query('[].protocol') |
+              unique == ['TCP']
+          - __global_accelerator_info_listener_80.endpoint_groups |
+            d([]) |
+            length == 0
           - __global_accelerator_info_listener_443.endpoint_groups | length == 1
           - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_group_region == 'us-east-1'
           - __global_accelerator_info_listener_443.endpoint_groups.0.traffic_dial_percentage == 100
-          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions |
+            length == 1
           - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
               _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
           - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 1
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners |
+            length == 1
       vars:
         __global_accelerator_info_listener_80:
           "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
@@ -153,18 +164,23 @@
         that:
           - not (_global_accelerator_info_dict['molecule-global-accelerator-info-00'].enabled | bool)
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].status == 'DEPLOYED'
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners | length == 2
-          - __global_accelerator_info_listener_81.endpoint_groups | d([]) | length == 0
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+            length == 2
+          - __global_accelerator_info_listener_81.endpoint_groups |
+            d([]) |
+            length == 0
           - __global_accelerator_info_listener_444.endpoint_groups | length == 1
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_group_region == 'us-east-1'
           - __global_accelerator_info_listener_444.endpoint_groups.0.traffic_dial_percentage == 50
-          - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions |
+            length == 1
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
               _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions.0.weight == 200
           - not (_global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled | bool)
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].status == 'DEPLOYED'
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 0
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners |
+            length == 0
       vars:
         __global_accelerator_info_listener_81:
           "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |

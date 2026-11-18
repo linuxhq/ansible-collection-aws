@@ -16,7 +16,10 @@
       ansible.builtin.assert:
         quiet: true
         that:
-          - _query.iam_users | map(attribute='user_name') | sort == _query._group.users | sort
+          - _query.iam_users |
+            map(attribute='user_name') |
+            sort == _query._group.users |
+            sort
       loop: "{{ __iam_group_query.results }}"
       loop_control:
         label: "{{ _query._group.name }}"

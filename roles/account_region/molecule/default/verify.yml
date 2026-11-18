@@ -19,6 +19,8 @@
       ansible.builtin.assert:
         that:
           - __account_region_enabled is not changed
-          - __account_region_enabled.results | map(attribute='previous_region_opt_status') |
-            reject('in', ['ENABLED', 'ENABLED_BY_DEFAULT']) | list == []
+          - __account_region_enabled.results |
+            map(attribute='previous_region_opt_status') |
+            reject('in', ['ENABLED', 'ENABLED_BY_DEFAULT']) |
+            list == []
 ...

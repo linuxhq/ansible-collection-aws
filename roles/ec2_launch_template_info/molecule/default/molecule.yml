@@ -51,62 +51,74 @@ provisioner:
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 8'] }}"
             instance_type: t3a.nano
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el8-micro
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 8'] }}"
             instance_type: t3a.micro
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el8-small
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 8'] }}"
             instance_type: t3a.small
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el8-medium
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 8'] }}"
             instance_type: t3a.medium
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el8-large
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 8'] }}"
             instance_type: t3a.large
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el8-xlarge
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 8'] }}"
             instance_type: t3a.xlarge
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el9-nano
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.nano
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el9-micro
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.micro
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el9-small
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.small
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el9-medium
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.medium
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el9-large
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.large
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
           - template_name: molecule-el9-xlarge
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.xlarge
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-ssh'].group_id |
+                    d(omit) }}"
 
         ec2_security_group_list:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"

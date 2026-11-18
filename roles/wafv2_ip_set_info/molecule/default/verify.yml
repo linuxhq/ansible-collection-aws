@@ -10,7 +10,8 @@
       ansible.builtin.assert:
         that:
           - _wafv2_ip_set_info_dict['molecule-cloudflare'].arn is defined
-          - _wafv2_ip_set_info_dict['molecule-cloudflare'].addresses | length == 1
+          - _wafv2_ip_set_info_dict['molecule-cloudflare'].addresses |
+            length == 1
           - _wafv2_ip_set_info_dict['molecule-cloudflare'].ip_address_version == 'IPV4'
           - _wafv2_ip_set_info_dict['molecule-cloudflare'].id is defined
           - _wafv2_ip_set_info_dict['molecule-google'].arn is defined

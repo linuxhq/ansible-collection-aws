@@ -10,7 +10,9 @@
         quiet: true
         that:
           - _ec2_vol_info_dict[_vol.name].id is defined
-      loop: "{{ ec2_vol_list | map(attribute='volumes') | flatten }}"
+      loop: "{{ ec2_vol_list |
+                map(attribute='volumes') |
+                flatten }}"
       loop_control:
         label: "{{ _vol.name }}"
         loop_var: _vol

@@ -39,7 +39,8 @@ provisioner:
             cidr_block: 192.168.2.0/24
 
         route53_zone_associate_list:
-          - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.0.zone].id | d(omit) }}"
+          - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.0.zone].id |
+                                d(omit) }}"
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-2'].id | d(omit) }}"
             vpc_region:
               "{{ lookup('ansible.builtin.ini',
@@ -47,7 +48,8 @@ provisioner:
                          file='~/.aws/config',
                          section='profile molecule') }}"
 
-          - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.1.zone].id | d(omit) }}"
+          - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.1.zone].id |
+                                d(omit) }}"
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-2'].id | d(omit) }}"
             vpc_region:
               "{{ lookup('ansible.builtin.ini',
@@ -55,7 +57,8 @@ provisioner:
                          file='~/.aws/config',
                          section='profile molecule') }}"
 
-          - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.0.zone].id | d(omit) }}"
+          - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.0.zone].id |
+                                d(omit) }}"
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-3'].id | d(omit) }}"
             vpc_region:
               "{{ lookup('ansible.builtin.ini',
@@ -63,7 +66,8 @@ provisioner:
                          file='~/.aws/config',
                          section='profile molecule') }}"
 
-          - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.1.zone].id | d(omit) }}"
+          - hosted_zone_id: "{{ _route53_zone_info_dict[route53_zone_list.1.zone].id |
+                                d(omit) }}"
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-3'].id | d(omit) }}"
             vpc_region:
               "{{ lookup('ansible.builtin.ini',

@@ -61,14 +61,16 @@ provisioner:
                              'region',
                              file='~/.aws/config',
                              section='profile molecule') ~ 'a' }}"
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,0) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(25,0) }}"
               - name: molecule-c
                 az:
                   "{{ lookup('ansible.builtin.ini',
                              'region',
                              file='~/.aws/config',
                              section='profile molecule') ~ 'c' }}"
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,1) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(25,1) }}"
 
         route53_resolver_list:
           - name: molecule-cloudflare
@@ -76,28 +78,34 @@ provisioner:
               molecule: route53_resolver
             direction: OUTBOUND
             ip_addresses:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(none) }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id |
+                               d(none) }}"
                 ip: 192.168.0.123
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(none) }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id |
+                               d(none) }}"
                 ip: 192.168.0.251
             protocols:
               - Do53
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id |
+                    d(omit) }}"
 
           - name: molecule-google
             tags:
               molecule: route53_resolver
             direction: OUTBOUND
             ip_addresses:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(none) }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id |
+                               d(none) }}"
                 ip: 192.168.0.124
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(none) }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id |
+                               d(none) }}"
                 ip: 192.168.0.252
             protocols:
               - Do53
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id |
+                    d(omit) }}"
 
 scenario:
   test_sequence:

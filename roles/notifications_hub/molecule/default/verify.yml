@@ -11,7 +11,9 @@
         that:
           - _notifications_hub_info_dict[_hub] is defined
           - _notifications_hub_info_dict[_hub].status_summary.status in ['ACTIVE', 'REGISTERING']
-      loop: "{{ ['us-east-1'] + notifications_hub_list | map(attribute='region') | list }}"
+      loop: "{{ ['us-east-1'] + notifications_hub_list |
+                map(attribute='region') |
+                list }}"
       loop_control:
         label: "{{ _hub }}"
         loop_var: _hub

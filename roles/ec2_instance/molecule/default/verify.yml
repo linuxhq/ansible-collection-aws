@@ -22,8 +22,12 @@
         quiet: true
         that:
           - __ec2_instance_matches | length == _i.exact_count
-          - __ec2_instance_matches | map(attribute='instance_type') | unique == [_i.instance_type]
-          - __ec2_instance_matches | map(attribute='subnet_id') | unique == [_i.vpc_subnet_id]
+          - __ec2_instance_matches |
+            map(attribute='instance_type') |
+            unique == [_i.instance_type]
+          - __ec2_instance_matches |
+            map(attribute='subnet_id') |
+            unique == [_i.vpc_subnet_id]
       loop: "{{ ec2_instance_list }}"
       loop_control:
         label: "{{ _i.name }}"

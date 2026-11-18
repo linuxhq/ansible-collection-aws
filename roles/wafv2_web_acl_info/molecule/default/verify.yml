@@ -13,33 +13,41 @@
           - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].id is defined
           - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].name is defined
           - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].rules |
+            length == 1
           - _wafv2_web_acl_info_dict['molecule-commonruleset'].arn is defined
           - _wafv2_web_acl_info_dict['molecule-commonruleset'].id is defined
           - _wafv2_web_acl_info_dict['molecule-commonruleset'].name is defined
           - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules |
+            length == 1
           - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].arn is defined
           - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].id is defined
           - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].name is defined
           - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].rules |
+            length == 1
           - _wafv2_web_acl_info_dict['molecule-linuxruleset'].arn is defined
           - _wafv2_web_acl_info_dict['molecule-linuxruleset'].id is defined
           - _wafv2_web_acl_info_dict['molecule-linuxruleset'].name is defined
           - _wafv2_web_acl_info_dict['molecule-linuxruleset'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].rules |
+            length == 1
           - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].arn is defined
           - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].id is defined
           - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].name is defined
           - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].rules |
+            length == 1
           - _wafv2_web_acl_info_dict['molecule-sqliruleset'].arn is defined
           - _wafv2_web_acl_info_dict['molecule-sqliruleset'].id is defined
           - _wafv2_web_acl_info_dict['molecule-sqliruleset'].name is defined
           - _wafv2_web_acl_info_dict['molecule-sqliruleset'].rules is defined
           - _wafv2_web_acl_info_dict['molecule-sqliruleset'].rules | length == 1
-          - _wafv2_web_acl_info_dict.values() | map(attribute='tags') | map(attribute='Name') | list ==
+          - _wafv2_web_acl_info_dict.values() |
+            map(attribute='tags') |
+            map(attribute='Name') |
+            list ==
               _wafv2_web_acl_info_dict.keys() | list
 
     - name: Ensure web acl id filter target is generated
@@ -70,7 +78,8 @@
         that:
           - _wafv2_web_acl_info_list | length == 1
           - _wafv2_web_acl_info_dict.keys() | list == ['molecule-commonruleset']
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules | length == 1
+          - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules |
+            length == 1
 
     - name: Ensure role is included with a missing web acl name
       ansible.builtin.include_role:

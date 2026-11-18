@@ -20,7 +20,8 @@
           - _route53_resolver_info_dict['molecule-cloudflare'].direction == 'OUTBOUND'
           - _route53_resolver_info_dict['molecule-cloudflare'].id is defined
           - _route53_resolver_info_dict['molecule-cloudflare'].ip_address_count == 2
-          - _route53_resolver_info_dict['molecule-cloudflare'].ip_addresses | length == 2
+          - _route53_resolver_info_dict['molecule-cloudflare'].ip_addresses |
+            length == 2
           - _route53_resolver_info_dict['molecule-cloudflare'].tags.molecule ==
               'route53_resolver_info'
           - route53_resolver_list.0.ip_addresses.0.ip in
@@ -47,7 +48,8 @@
           - _route53_resolver_info_dict['molecule-google'].direction == 'OUTBOUND'
           - _route53_resolver_info_dict['molecule-google'].id is defined
           - _route53_resolver_info_dict['molecule-google'].ip_address_count == 2
-          - _route53_resolver_info_dict['molecule-google'].ip_addresses | length == 2
+          - _route53_resolver_info_dict['molecule-google'].ip_addresses |
+            length == 2
           - route53_resolver_list.1.ip_addresses.0.ip in
               _route53_resolver_info_dict['molecule-google'].ip_addresses |
               map(attribute='ip') |
@@ -84,7 +86,8 @@
           - _route53_resolver_info_dict[route53_resolver_list.0.name].direction == 'OUTBOUND'
           - _route53_resolver_info_dict[route53_resolver_list.0.name].id is defined
           - _route53_resolver_info_dict[route53_resolver_list.0.name].ip_address_count == 2
-          - _route53_resolver_info_dict[route53_resolver_list.0.name].ip_addresses | length == 2
+          - _route53_resolver_info_dict[route53_resolver_list.0.name].ip_addresses |
+            length == 2
           - _route53_resolver_info_dict[route53_resolver_list.0.name].protocols.0 == 'Do53'
           - _route53_resolver_info_dict[route53_resolver_list.0.name].resolver_endpoint_type == 'IPV4'
 

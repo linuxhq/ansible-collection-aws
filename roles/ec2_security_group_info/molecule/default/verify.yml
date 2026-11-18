@@ -41,11 +41,17 @@
         that:
           - __cluster.ip_permissions | length == 2
           - __cluster_self | length == 1
-          - __cluster_self.0.user_id_group_pairs | map(attribute='group_id') |
+          - __cluster_self.0.user_id_group_pairs |
+            map(attribute='group_id') |
             list == [__cluster.group_id]
-          - __cluster_self.0.ip_ranges | d([]) | length == 0
+          - __cluster_self.0.ip_ranges |
+            d([]) |
+            length == 0
           - __cluster_ssh | length == 1
-          - __cluster_ssh.0.user_id_group_pairs | map(attribute='group_id') |
+          - __cluster_ssh.0.user_id_group_pairs |
+            map(attribute='group_id') |
             list == [_ec2_security_group_info_dict['molecule-ssh'].group_id]
-          - __cluster_ssh.0.ip_ranges | d([]) | length == 0
+          - __cluster_ssh.0.ip_ranges |
+            d([]) |
+            length == 0
 ...

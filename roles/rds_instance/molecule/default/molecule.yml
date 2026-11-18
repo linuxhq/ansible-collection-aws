@@ -59,10 +59,12 @@ provisioner:
             subnets:
               - name: molecule-a
                 az: us-east-1a
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,0) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(25,0) }}"
               - name: molecule-c
                 az: us-east-1c
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25,1) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(25,1) }}"
 
         iam_role_list:
           - name: MoleculeRdsMonitoring
@@ -90,7 +92,8 @@ provisioner:
             publicly_accessible: true
             skip_final_snapshot: true
             vpc_security_group_ids:
-              - "{{ _ec2_security_group_info_dict['mariadb106'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['mariadb106'].group_id |
+                    d(omit) }}"
 
           - allocated_storage: 20
             auto_minor_version_upgrade: false
@@ -120,7 +123,8 @@ provisioner:
             storage_type: gp3
             skip_final_snapshot: true
             vpc_security_group_ids:
-              - "{{ _ec2_security_group_info_dict['mariadb118'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['mariadb118'].group_id |
+                    d(omit) }}"
 
         rds_instance_param_group_list:
           - name: mariadb118

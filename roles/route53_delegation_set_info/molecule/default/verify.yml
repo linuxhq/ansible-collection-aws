@@ -14,15 +14,18 @@
           - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].caller_reference is defined
           - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].id is defined
           - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].name_servers is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].name_servers | length == 4
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].name_servers |
+            length == 4
           - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].caller_reference is defined
           - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].id is defined
           - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].name_servers is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].name_servers | length == 4
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.1.name].name_servers |
+            length == 4
           - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].caller_reference is defined
           - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].id is defined
           - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].name_servers is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].name_servers | length == 4
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.2.name].name_servers |
+            length == 4
 
     - name: Ensure role is included with name
       ansible.builtin.include_role:
@@ -36,9 +39,11 @@
         that:
           - _route53_delegation_set_info_list | length == 1
           - _route53_delegation_set_info_list.0.caller_reference == route53_delegation_set_list.0.name
-          - _route53_delegation_set_info_dict.keys() | list == [route53_delegation_set_list.0.name]
+          - _route53_delegation_set_info_dict.keys() |
+            list == [route53_delegation_set_list.0.name]
           - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].id is defined
-          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].name_servers | length == 4
+          - _route53_delegation_set_info_dict[route53_delegation_set_list.0.name].name_servers |
+            length == 4
 
     - name: Ensure role is included with an unknown id
       ansible.builtin.include_role:

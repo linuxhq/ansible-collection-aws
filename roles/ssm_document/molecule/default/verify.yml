@@ -8,7 +8,9 @@
       vars:
         ssm_document_info_filters:
           Owner: Self
-          Name: "{{ ssm_document_list | map(attribute='name') | list }}"
+          Name: "{{ ssm_document_list |
+                    map(attribute='name') |
+                    list }}"
 
     - name: Ensure documents are verified
       ansible.builtin.assert:
@@ -76,7 +78,9 @@
       vars:
         ssm_document_info_filters:
           Owner: Self
-          Name: "{{ ssm_document_list | map(attribute='name') | list }}"
+          Name: "{{ ssm_document_list |
+                    map(attribute='name') |
+                    list }}"
 
     - name: Ensure changed document content is verified
       ansible.builtin.assert:

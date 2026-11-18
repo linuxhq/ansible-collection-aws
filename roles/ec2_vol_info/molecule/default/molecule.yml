@@ -48,15 +48,18 @@ provisioner:
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id |
+                               d(omit) }}"
           - name: molecule-c
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id |
+                               d(omit) }}"
 
         ec2_vol_list:
-          - instance: "{{ _ec2_instance_info_dict['molecule-a'].instance_id | d(omit) }}"
+          - instance: "{{ _ec2_instance_info_dict['molecule-a'].instance_id |
+                          d(omit) }}"
             volumes:
               - name: molecule-vol-a-01
                 tags:
@@ -79,7 +82,8 @@ provisioner:
                 device_name: sdk
                 volume_size: "{{ 10 | random(start=1) }}"
 
-          - instance: "{{ _ec2_instance_info_dict['molecule-c'].instance_id | d(omit) }}"
+          - instance: "{{ _ec2_instance_info_dict['molecule-c'].instance_id |
+                          d(omit) }}"
             volumes:
               - name: molecule-vol-c-01
                 device_name: sdf
@@ -109,10 +113,12 @@ provisioner:
             subnets:
               - name: molecule-a
                 az: us-east-1a
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25, 0) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(25, 0) }}"
               - name: molecule-c
                 az: us-east-1c
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(25, 1) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(25, 1) }}"
 
 scenario:
   test_sequence:

@@ -61,8 +61,10 @@ provisioner:
               KAFKA_SSL_ENABLED: 'false'
             connection_type: NETWORK
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule-rds'].group_id | d(omit) }}"
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule'].id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-rds'].group_id |
+                    d(omit) }}"
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule'].id |
+                           d(omit) }}"
 
 scenario:
   test_sequence:

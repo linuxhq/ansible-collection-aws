@@ -49,7 +49,8 @@
         record: "{{ __ses_identity_dkim_record_list.0.name }}"
         state: present
         type: CNAME
-        value: "{{ __ses_identity_dkim_record_list.0.name.split('.') | first }}.dkim.ap-southeast-4.amazonses.com"
+        value: "{{ __ses_identity_dkim_record_list.0.name.split('.') |
+                   first }}.dkim.ap-southeast-4.amazonses.com"
         zone: "{{ __ses_identity_dkim_record_list.0.zone }}"
 
     - name: Ensure dmarc and spf records hold other values
@@ -123,7 +124,9 @@
     - name: Ensure identity dns records are verified
       ansible.builtin.assert:
         that:
-          - __ses_identity_dkim_records.results | length == ses_identity_list | length * 3
+          - __ses_identity_dkim_records.results |
+            length == ses_identity_list |
+            length * 3
           - __ses_identity_dkim_records.results |
               map(attribute='resource_record_sets') |
               map('length') |

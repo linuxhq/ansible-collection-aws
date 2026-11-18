@@ -20,7 +20,8 @@
           - __global_accelerator_listener_80.endpoint_groups | length == 1
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_group_region == 'us-east-1'
           - __global_accelerator_listener_80.endpoint_groups.0.traffic_dial_percentage == 90
-          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions |
+            length == 1
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
               _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.weight == 64
@@ -29,7 +30,8 @@
           - __global_accelerator_listener_443.endpoint_groups | length == 1
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_group_region == 'us-east-1'
           - __global_accelerator_listener_443.endpoint_groups.0.traffic_dial_percentage == 100
-          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions |
+            length == 1
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
               _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
@@ -48,7 +50,8 @@
     - name: Ensure both accelerators are enabled and tagged, and accelerator 01 has one listener
       ansible.builtin.assert:
         that:
-          - _global_accelerator_info_dict['molecule-global-accelerator-01'].listeners | length == 1
+          - _global_accelerator_info_dict['molecule-global-accelerator-01'].listeners |
+            length == 1
           - _global_accelerator_info_dict['molecule-global-accelerator-01'].listeners.0.port_ranges ==
               [dict(from_port=8080, to_port=8080)]
           - _global_accelerator_info_dict[_accelerator.name].enabled is true
@@ -58,7 +61,8 @@
         label: "{{ _accelerator.name }}"
         loop_var: _accelerator
       vars:
-        __global_accelerator_tags: "{{ _accelerator.tags | combine({'Name': _accelerator.name}) }}"
+        __global_accelerator_tags: "{{ _accelerator.tags |
+                                       combine({'Name': _accelerator.name}) }}"
 
     - name: Ensure accelerators are disabled and their listeners are changed
       ansible.builtin.include_role:
@@ -108,7 +112,8 @@
           - __global_accelerator_listener_80.endpoint_groups | length == 1
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_group_region == 'us-east-1'
           - __global_accelerator_listener_80.endpoint_groups.0.traffic_dial_percentage == 50
-          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions |
+            length == 1
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
               _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.weight == 200
@@ -117,7 +122,8 @@
           - __global_accelerator_listener_443.endpoint_groups | length == 1
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_group_region == 'us-east-1'
           - __global_accelerator_listener_443.endpoint_groups.0.traffic_dial_percentage == 100
-          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions |
+            length == 1
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
               _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
@@ -136,7 +142,8 @@
     - name: Ensure both accelerators are disabled and tagged, and accelerator 01 has no listeners
       ansible.builtin.assert:
         that:
-          - _global_accelerator_info_dict['molecule-global-accelerator-01'].listeners | length == 0
+          - _global_accelerator_info_dict['molecule-global-accelerator-01'].listeners |
+            length == 0
           - _global_accelerator_info_dict[_accelerator.name].enabled is false
           - _global_accelerator_info_dict[_accelerator.name].tags == __global_accelerator_tags
       loop: "{{ global_accelerator_list }}"
@@ -144,5 +151,6 @@
         label: "{{ _accelerator.name }}"
         loop_var: _accelerator
       vars:
-        __global_accelerator_tags: "{{ _accelerator.tags | combine({'Name': _accelerator.name}) }}"
+        __global_accelerator_tags: "{{ _accelerator.tags |
+                                       combine({'Name': _accelerator.name}) }}"
 ...

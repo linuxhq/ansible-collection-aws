@@ -48,17 +48,20 @@ provisioner:
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id |
+                               d(omit) }}"
           - name: molecule-2
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id |
+                               d(omit) }}"
           - name: molecule-3
             exact_count: 1
             image_id: "{{ _ec2_ami_info_latest['AlmaLinux OS 9'] }}"
             instance_type: t3a.medium
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id |
+                               d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule
@@ -83,11 +86,14 @@ provisioner:
             stickiness_enabled: true
             target_type: instance
             targets:
-              - Id: "{{ _ec2_instance_info_dict['molecule-1'].instance_id | d(omit) }}"
+              - Id: "{{ _ec2_instance_info_dict['molecule-1'].instance_id |
+                        d(omit) }}"
                 Port: 8080
-              - Id: "{{ _ec2_instance_info_dict['molecule-2'].instance_id | d(omit) }}"
+              - Id: "{{ _ec2_instance_info_dict['molecule-2'].instance_id |
+                        d(omit) }}"
                 Port: 8080
-              - Id: "{{ _ec2_instance_info_dict['molecule-3'].instance_id | d(omit) }}"
+              - Id: "{{ _ec2_instance_info_dict['molecule-3'].instance_id |
+                        d(omit) }}"
                 Port: 8080
             unhealthy_threshold_count: 3
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
@@ -103,11 +109,14 @@ provisioner:
             stickiness_enabled: true
             target_type: instance
             targets:
-              - Id: "{{ _ec2_instance_info_dict['molecule-1'].instance_id | d(omit) }}"
+              - Id: "{{ _ec2_instance_info_dict['molecule-1'].instance_id |
+                        d(omit) }}"
                 Port: 8081
-              - Id: "{{ _ec2_instance_info_dict['molecule-2'].instance_id | d(omit) }}"
+              - Id: "{{ _ec2_instance_info_dict['molecule-2'].instance_id |
+                        d(omit) }}"
                 Port: 8081
-              - Id: "{{ _ec2_instance_info_dict['molecule-3'].instance_id | d(omit) }}"
+              - Id: "{{ _ec2_instance_info_dict['molecule-3'].instance_id |
+                        d(omit) }}"
                 Port: 8081
             unhealthy_threshold_count: 3
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"

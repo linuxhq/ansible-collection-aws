@@ -61,7 +61,8 @@ provisioner:
         elb_application_lb_list:
           - name: molecule-http-80
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id |
+                    d(omit) }}"
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
               - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"

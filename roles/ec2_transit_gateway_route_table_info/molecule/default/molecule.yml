@@ -46,24 +46,28 @@ provisioner:
             tags:
               molecule: ec2_transit_gateway_route_table_info
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+                  d(omit) }}"
             routes:
               - destination_cidr_block: 192.168.0.0/24
                 blackhole: true
               - destination_cidr_block: 192.168.1.0/24
                 transit_gateway_attachment_id:
-                  "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id | d(omit) }}"
+                  "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id |
+                      d(omit) }}"
 
           - name: molecule-rtb
             purge_routes: true
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+                  d(omit) }}"
             routes:
               - destination_cidr_block: 10.10.0.0/16
                 blackhole: true
               - destination_cidr_block: 10.20.0.0/16
                 transit_gateway_attachment_id:
-                  "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id | d(omit) }}"
+                  "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id |
+                      d(omit) }}"
 
         ec2_transit_gateway_vpc_attachment_info_filters:
           state:
@@ -74,7 +78,8 @@ provisioner:
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule'].id | d(omit) }}"
             transit_gateway:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+                  d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule
@@ -85,7 +90,8 @@ provisioner:
             subnets:
               - name: molecule
                 az: us-east-1a
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24, 0) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(24, 0) }}"
 
 scenario:
   test_sequence:

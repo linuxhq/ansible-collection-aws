@@ -19,9 +19,12 @@
           - __pinpoint_sms_voice_phone_pool_verify.message_type == 'TRANSACTIONAL'
           - __pinpoint_sms_voice_phone_pool_verify.status == 'ACTIVE'
           - __pinpoint_sms_voice_phone_pool_verify.origination_identities |
-            map(attribute='origination_identity') | list ==
+            map(attribute='origination_identity') |
+            list ==
               [__pinpoint_sms_voice_phone_number_verify.phone_number_id]
-          - __pinpoint_sms_voice_phone_pool_verify.tags | dict2items | length == 2
+          - __pinpoint_sms_voice_phone_pool_verify.tags |
+            dict2items |
+            length == 2
           - __pinpoint_sms_voice_phone_pool_verify.tags.Name == 'molecule-pinpoint-pool'
           - __pinpoint_sms_voice_phone_pool_verify.tags.molecule == 'pinpoint_sms_voice_phone_pool'
           - __pinpoint_sms_voice_phone_number_verify.pool_id == __pinpoint_sms_voice_phone_pool_verify.pool_id

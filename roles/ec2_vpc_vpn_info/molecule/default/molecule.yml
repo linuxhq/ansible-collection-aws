@@ -52,15 +52,19 @@ provisioner:
             tags:
               molecule: ec2_vpc_vpn_info
             customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id | d(omit) }}"
+              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id |
+                  d(omit) }}"
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+                  d(omit) }}"
 
           - name: molecule-01
             customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id | d(omit) }}"
+              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id |
+                  d(omit) }}"
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+                  d(omit) }}"
             static_only: true
             tunnel_options:
               - ike_versions: [ikev2]

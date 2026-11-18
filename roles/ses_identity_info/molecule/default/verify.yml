@@ -16,19 +16,23 @@
       ansible.builtin.assert:
         that:
           - _ses_identity_info_dict['molecule.org'].dkim_attributes is defined
-          - _ses_identity_info_dict['molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['molecule.org'].dkim_attributes.tokens |
+            length == 3
           - _ses_identity_info_dict['molecule.org'].identity_type == 'DOMAIN'
           - _ses_identity_info_dict['molecule.org'].verification_status == 'PENDING'
           - _ses_identity_info_dict['a.molecule.org'].dkim_attributes is defined
-          - _ses_identity_info_dict['a.molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['a.molecule.org'].dkim_attributes.tokens |
+            length == 3
           - _ses_identity_info_dict['a.molecule.org'].identity_type == 'DOMAIN'
           - _ses_identity_info_dict['a.molecule.org'].verification_status == 'PENDING'
           - _ses_identity_info_dict['b.molecule.org'].dkim_attributes is defined
-          - _ses_identity_info_dict['b.molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['b.molecule.org'].dkim_attributes.tokens |
+            length == 3
           - _ses_identity_info_dict['b.molecule.org'].identity_type == 'DOMAIN'
           - _ses_identity_info_dict['b.molecule.org'].verification_status == 'PENDING'
           - _ses_identity_info_dict['c.molecule.org'].dkim_attributes is defined
-          - _ses_identity_info_dict['c.molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['c.molecule.org'].dkim_attributes.tokens |
+            length == 3
           - _ses_identity_info_dict['c.molecule.org'].identity_type == 'DOMAIN'
           - _ses_identity_info_dict['c.molecule.org'].verification_status == 'PENDING'
 
@@ -44,7 +48,8 @@
           - _ses_identity_info_list | length == 1
           - _ses_identity_info_list.0.name == 'molecule.org'
           - _ses_identity_info_dict.keys() | list == ['molecule.org']
-          - _ses_identity_info_dict['molecule.org'].dkim_attributes.tokens | length == 3
+          - _ses_identity_info_dict['molecule.org'].dkim_attributes.tokens |
+            length == 3
           - _ses_identity_info_dict['molecule.org'].identity_type == 'DOMAIN'
           - _ses_identity_info_dict['molecule.org'].verification_status == 'PENDING'
 

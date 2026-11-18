@@ -60,7 +60,8 @@
         validate_certs: true
       register: __ssm_instance_info_connection
       until:
-        - __ssm_instance_info_connection.instances.0.connection_status | d('') == 'connected'
+        - __ssm_instance_info_connection.instances.0.connection_status |
+          d('') == 'connected'
       retries: 30
       delay: 10
 

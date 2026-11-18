@@ -22,5 +22,6 @@
     - name: Ensure info with requested attributes is verified
       ansible.builtin.assert:
         that:
-          - _sns_sms_attributes_info_dict.keys() | list == ['monthly_spend_limit']
+          - _sns_sms_attributes_info_dict.keys() |
+            list == ['monthly_spend_limit']
 ...

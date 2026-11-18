@@ -19,8 +19,10 @@
         __association:
           "{{ _route53_resolver_rule_info_list |
               selectattr('id', 'equalto', _association.resolver_rule_id) |
-              map(attribute='associations') | flatten |
-              selectattr('vpc_id', 'equalto', _association.vpc_id) | list }}"
+              map(attribute='associations') |
+              flatten |
+              selectattr('vpc_id', 'equalto', _association.vpc_id) |
+              list }}"
       loop: "{{ route53_resolver_rule_associate_list }}"
       loop_control:
         label: "{{ _association.name }}"

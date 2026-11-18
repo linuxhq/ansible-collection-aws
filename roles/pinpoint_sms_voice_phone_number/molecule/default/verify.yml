@@ -18,7 +18,9 @@
           - __pinpoint_sms_voice_phone_number_verify.number_capabilities == ['SMS']
           - __pinpoint_sms_voice_phone_number_verify.number_type == 'SIMULATOR'
           - __pinpoint_sms_voice_phone_number_verify.status == 'ACTIVE'
-          - __pinpoint_sms_voice_phone_number_verify.tags | dict2items | length == 2
+          - __pinpoint_sms_voice_phone_number_verify.tags |
+            dict2items |
+            length == 2
           - __pinpoint_sms_voice_phone_number_verify.tags.Name == 'molecule-pinpoint-simulator'
           - __pinpoint_sms_voice_phone_number_verify.tags.molecule == 'pinpoint_sms_voice_phone_number'
 ...

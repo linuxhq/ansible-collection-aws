@@ -77,7 +77,8 @@
         that:
           - _notifications_contacts_info_list | length == 1
           - _notifications_contacts_info_list.0.name == notifications_contacts_list.0.name
-          - _notifications_contacts_info_dict.keys() | list == [notifications_contacts_list.0.email_address]
+          - _notifications_contacts_info_dict.keys() |
+            list == [notifications_contacts_list.0.email_address]
           - _notifications_contacts_info_dict[notifications_contacts_list.0.email_address].address ==
               notifications_contacts_list.0.email_address
           - _notifications_contacts_info_dict[notifications_contacts_list.0.email_address].name ==

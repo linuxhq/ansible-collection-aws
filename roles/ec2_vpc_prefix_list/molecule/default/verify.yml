@@ -5,7 +5,9 @@
     - name: Ensure prefix lists are queried
       linuxhq.aws.ec2_vpc_prefix_list_info:
         filters:
-          prefix-list-name: "{{ ec2_vpc_prefix_list_entries | map(attribute='name') | list }}"
+          prefix-list-name: "{{ ec2_vpc_prefix_list_entries |
+                                map(attribute='name') |
+                                list }}"
         validate_certs: true
       register: __ec2_vpc_prefix_list_query
 

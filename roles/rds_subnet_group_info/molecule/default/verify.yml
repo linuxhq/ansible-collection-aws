@@ -20,7 +20,8 @@
           - _rds_subnet_group_info_dict['molecule'].db_subnet_group_name == rds_subnet_group_list.0.name
           - (_rds_subnet_group_info_dict['molecule'].subnets |
              map(attribute='subnet_identifier') |
-             sort) == (rds_subnet_group_list.0.subnets | sort)
+             sort) == (rds_subnet_group_list.0.subnets |
+             sort)
           - _rds_subnet_group_info_dict['molecule'].vpc_id == _ec2_vpc_net_info_dict['molecule'].id
           - _rds_subnet_group_info_dict['molecule'].tags.Name == rds_subnet_group_list.0.name
 
@@ -35,7 +36,8 @@
         that:
           - _rds_subnet_group_info_list | length == 1
           - _rds_subnet_group_info_list.0.db_subnet_group_name == rds_subnet_group_list.0.name
-          - _rds_subnet_group_info_dict.keys() | list == [rds_subnet_group_list.0.name]
+          - _rds_subnet_group_info_dict.keys() |
+            list == [rds_subnet_group_list.0.name]
           - _rds_subnet_group_info_dict['molecule'].db_subnet_group_arn is defined
 
     - name: Ensure role is included with a missing name

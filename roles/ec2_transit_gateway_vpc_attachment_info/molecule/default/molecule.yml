@@ -43,7 +43,8 @@ provisioner:
               molecule: ec2_transit_gateway_vpc_attachment_info
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule'].id | d(omit) }}"
-            transit_gateway: "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
+            transit_gateway: "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+                                 d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule
@@ -54,7 +55,8 @@ provisioner:
             subnets:
               - name: molecule
                 az: us-east-1a
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24, 0) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(24, 0) }}"
 
 scenario:
   test_sequence:

@@ -6,7 +6,8 @@
       community.aws.acm_certificate_info:
         domain_name: "{{ _certificate.domain_name }}"
         validate_certs: true
-      loop: "{{ acm_certificate_list | selectattr('type', 'eq', 'amazon_issued') }}"
+      loop: "{{ acm_certificate_list |
+                selectattr('type', 'eq', 'amazon_issued') }}"
       loop_control:
         label: "{{ _certificate.domain_name }}"
         loop_var: _certificate
@@ -18,11 +19,14 @@
           - _query.certificates | length == 1
           - _query.certificates.0.status in ['PENDING_VALIDATION', 'ISSUED']
           - _query.certificates.0.subject_alternative_names | sort ==
-            ([_query._certificate.domain_name] + _query._certificate.subject_alternative_names | d([])) | sort
+            ([_query._certificate.domain_name] + _query._certificate.subject_alternative_names | d([])) |
+            sort
           - _query.certificates.0.domain_validation_options | length ==
             _query.certificates.0.subject_alternative_names | length
           - _query.certificates.0.domain_validation_options |
-            selectattr('resource_record', 'defined') | list | length ==
+            selectattr('resource_record', 'defined') |
+            list |
+            length ==
             _query.certificates.0.domain_validation_options | length
       loop: "{{ __molecule_certificate_query.results }}"
       loop_control:
@@ -47,7 +51,8 @@
           - _query.certificates.0.type == 'IMPORTED'
           - _query.certificates.0.domain_name == _query._certificate.domain_name
           - _query.certificates.0.certificate | trim ==
-            lookup('ansible.builtin.file', molecule_certificate_dir ~ '/' ~ _query._certificate.domain_name ~ '.crt') | trim
+            lookup('ansible.builtin.file', molecule_certificate_dir ~ '/' ~ _query._certificate.domain_name ~ '.crt') |
+            trim
       loop: "{{ __molecule_imported_certificate_query.results }}"
       loop_control:
         label: "{{ _query._certificate.domain_name }}"
@@ -55,7 +60,8 @@
 
     - name: Ensure amazon issued molecule validation records are listed
       ansible.builtin.set_fact:
-        __molecule_validation_records: "{{ __molecule_validation_records | d([]) + _records }}"
+        __molecule_validation_records: "{{ __molecule_validation_records |
+                                           d([]) + _records }}"
       vars:
         _records: >-
           {{ _query.certificates.0.domain_validation_options |

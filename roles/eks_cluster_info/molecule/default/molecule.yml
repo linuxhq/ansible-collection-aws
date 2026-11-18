@@ -52,13 +52,16 @@ provisioner:
             subnets:
               - name: molecule-a
                 az: us-east-1a
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,0) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(24,0) }}"
               - name: molecule-c
                 az: us-east-1c
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,1) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(24,1) }}"
               - name: molecule-d
                 az: us-east-1d
-                cidr: "{{ ec2_vpc_net_list.0.cidr_block | ansible.utils.ipsubnet(24,2) }}"
+                cidr: "{{ ec2_vpc_net_list.0.cidr_block |
+                          ansible.utils.ipsubnet(24,2) }}"
 
         eks_cluster_list:
           - name: molecule-eks1
@@ -70,7 +73,8 @@ provisioner:
               public_access_cidrs:
                 - 69.107.10.200/29
               security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id | d(omit) }}"
+                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id |
+                      d(omit) }}"
               subnet_ids:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
@@ -84,7 +88,8 @@ provisioner:
               endpoint_private_access: true
               endpoint_public_access: false
               security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id | d(omit) }}"
+                - "{{ _ec2_security_group_info_dict['molecule-eks'].group_id |
+                      d(omit) }}"
               subnet_ids:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"

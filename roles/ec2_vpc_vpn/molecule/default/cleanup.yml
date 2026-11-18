@@ -28,14 +28,17 @@
     - name: Ensure vpn connections are deleted
       amazon.aws.ec2_vpc_vpn_info:
         filters:
-          tag:Name: "{{ ec2_vpc_vpn_list | map(attribute='name') | list }}"
+          tag:Name: "{{ ec2_vpc_vpn_list |
+                        map(attribute='name') |
+                        list }}"
         validate_certs: true
       register: __ec2_vpc_vpn_deleted
       no_log: true
       until:
         - __ec2_vpc_vpn_deleted.vpn_connections |
           rejectattr('state', 'eq', 'deleted') |
-          list | length == 0
+          list |
+          length == 0
       retries: 40
       delay: 15
 

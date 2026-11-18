@@ -77,7 +77,8 @@ provisioner:
                   - Type: forward
                     TargetGroupName: molecule-http-8080
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id |
+                    d(omit) }}"
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
               - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
@@ -90,7 +91,8 @@ provisioner:
                   - Type: forward
                     TargetGroupName: molecule-http-8081
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule-http-81'].group_id | d(omit) }}"
+              - "{{ _ec2_security_group_info_dict['molecule-http-81'].group_id |
+                    d(omit) }}"
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
               - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"

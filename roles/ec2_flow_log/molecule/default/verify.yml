@@ -11,8 +11,12 @@
   post_tasks:
     - name: Ensure flow log names and resource ids are set
       ansible.builtin.set_fact:
-        __ec2_flow_log_names: "{{ ec2_flow_log_list | map(attribute='name') | list }}"
-        __ec2_flow_log_resource_ids: "{{ ec2_flow_log_list | map(attribute='resource_ids') | flatten }}"
+        __ec2_flow_log_names: "{{ ec2_flow_log_list |
+                                  map(attribute='name') |
+                                  list }}"
+        __ec2_flow_log_resource_ids: "{{ ec2_flow_log_list |
+                                         map(attribute='resource_ids') |
+                                         flatten }}"
 
     - name: Ensure flow logs are queried
       linuxhq.aws.ec2_flow_log_info:

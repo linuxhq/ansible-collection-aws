@@ -14,7 +14,9 @@
       ansible.builtin.assert:
         that:
           - _lambda_info_dict[lambda_list.0.name].mappings |
-            map(attribute='event_source_arn') | sort ==
+            map(attribute='event_source_arn') |
+            sort ==
             lambda_event_list |
-            map(attribute='source_params.source_arn') | sort
+            map(attribute='source_params.source_arn') |
+            sort
 ...

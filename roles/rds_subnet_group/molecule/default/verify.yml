@@ -11,5 +11,6 @@
         that:
           - (_rds_subnet_group_info_dict['molecule'].subnets |
              map(attribute='subnet_identifier') |
-             sort) == (rds_subnet_group_list.0.subnets | sort)
+             sort) == (rds_subnet_group_list.0.subnets |
+             sort)
 ...

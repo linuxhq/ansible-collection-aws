@@ -49,13 +49,17 @@ provisioner:
             zone: aws.linuxhq.org
 
           - domain_name: molecule-import.linuxhq.net
-            certificate: "{{ lookup('ansible.builtin.file', molecule_certificate_dir ~ '/molecule-import.linuxhq.net.crt', errors='ignore') | d(omit, true) }}"
-            private_key: "{{ lookup('ansible.builtin.file', molecule_certificate_dir ~ '/molecule-import.linuxhq.net.key', errors='ignore') | d(omit, true) }}"
+            certificate: "{{ lookup('ansible.builtin.file', molecule_certificate_dir ~ '/molecule-import.linuxhq.net.crt', errors='ignore') |
+                             d(omit, true) }}"
+            private_key: "{{ lookup('ansible.builtin.file', molecule_certificate_dir ~ '/molecule-import.linuxhq.net.key', errors='ignore') |
+                             d(omit, true) }}"
             type: imported
 
           - domain_name: molecule-import.linuxhq.org
-            certificate: "{{ lookup('ansible.builtin.file', molecule_certificate_dir ~ '/molecule-import.linuxhq.org.crt', errors='ignore') | d(omit, true) }}"
-            private_key: "{{ lookup('ansible.builtin.file', molecule_certificate_dir ~ '/molecule-import.linuxhq.org.key', errors='ignore') | d(omit, true) }}"
+            certificate: "{{ lookup('ansible.builtin.file', molecule_certificate_dir ~ '/molecule-import.linuxhq.org.crt', errors='ignore') |
+                             d(omit, true) }}"
+            private_key: "{{ lookup('ansible.builtin.file', molecule_certificate_dir ~ '/molecule-import.linuxhq.org.key', errors='ignore') |
+                             d(omit, true) }}"
             type: imported
 
         # prepare.yml generates a short-lived self-signed certificate and key for each imported domain here.

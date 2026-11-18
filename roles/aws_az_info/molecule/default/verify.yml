@@ -9,7 +9,13 @@
       ansible.builtin.assert:
         that:
           - _aws_az_info_list | length > 0
-          - _aws_az_info_dict | length == _aws_az_info_list | length
-          - _aws_az_info_list_l | length == _aws_az_info_list | length
-          - _aws_az_info_list_s | length == _aws_az_info_list | length
+          - _aws_az_info_dict |
+            length == _aws_az_info_list |
+            length
+          - _aws_az_info_list_l |
+            length == _aws_az_info_list |
+            length
+          - _aws_az_info_list_s |
+            length == _aws_az_info_list |
+            length
 ...

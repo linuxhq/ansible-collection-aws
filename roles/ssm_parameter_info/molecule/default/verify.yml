@@ -33,7 +33,10 @@
         that:
           - _ssm_parameter_info_list | map(attribute='name') ==
             [ssm_parameter_list.2.name, ssm_parameter_list.3.name]
-          - _ssm_parameter_info_dict | dict2items | map(attribute='key') | sort ==
+          - _ssm_parameter_info_dict |
+            dict2items |
+            map(attribute='key') |
+            sort ==
             [ssm_parameter_list.2.name, ssm_parameter_list.3.name] | sort
           - _ssm_parameter_info_dict[ssm_parameter_list.3.name].value == ssm_parameter_list.3.value
 ...

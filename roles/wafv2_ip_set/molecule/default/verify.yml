@@ -10,7 +10,8 @@
         that:
           - _ip_set.name in _wafv2_ip_set_info_dict
           - (_wafv2_ip_set_info_dict[_ip_set.name].addresses | sort) == (_ip_set.addresses | sort)
-          - _wafv2_ip_set_info_dict[_ip_set.name].ip_address_version == _ip_set.ip_address_version | upper
+          - _wafv2_ip_set_info_dict[_ip_set.name].ip_address_version == _ip_set.ip_address_version |
+            upper
           - _wafv2_ip_set_info_dict[_ip_set.name].tags.Name == _ip_set.name
       loop: "{{ wafv2_ip_set_list }}"
       loop_control:

@@ -56,14 +56,16 @@ provisioner:
 
           - name: molecule-tgw
             resource_ids:
-              - "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
+              - "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+                    d(omit) }}"
             resource_type: TransitGateway
             log_destination_type: s3
             log_destination: "{{ ec2_flow_log_bucket_resource }}"
 
           - name: molecule-tgw-attachment
             resource_ids:
-              - "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id | d(omit) }}"
+              - "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id |
+                    d(omit) }}"
             resource_type: TransitGatewayAttachment
             log_destination_type: s3
             log_destination: "{{ ec2_flow_log_bucket_resource }}"
@@ -87,7 +89,8 @@ provisioner:
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule'].id | d(omit) }}"
             transit_gateway:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+                  d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule
