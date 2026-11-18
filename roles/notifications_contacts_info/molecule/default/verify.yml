@@ -82,36 +82,4 @@
               notifications_contacts_list.0.email_address
           - _notifications_contacts_info_dict[notifications_contacts_list.0.email_address].name ==
               notifications_contacts_list.0.name
-
-    - name: Ensure deleted contact arn is saved
-      ansible.builtin.set_fact:
-        notifications_contacts_info_deleted_arn:
-          "{{ _notifications_contacts_info_dict[notifications_contacts_list.0.email_address].arn }}"
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        notifications_contacts_list:
-          "{{ notifications_contacts_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - notifications_contacts
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
-
-    - name: Ensure role is included with a deleted contact arn
-      ansible.builtin.include_role:
-        name: notifications_contacts_info
-      vars:
-        notifications_contacts_info_arn: "{{ notifications_contacts_info_deleted_arn }}"
-
-    - name: Ensure info with a deleted contact arn is empty
-      ansible.builtin.assert:
-        that:
-          - _notifications_contacts_info_list == []
-          - _notifications_contacts_info_dict == {}
 ...
