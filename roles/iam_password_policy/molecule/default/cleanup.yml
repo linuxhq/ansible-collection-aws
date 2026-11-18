@@ -1,9 +1,7 @@
 ---
 - name: Cleanup
   hosts: all
-  tasks:
-    - name: Ensure aws iam password policy is reset
-      amazon.aws.iam_password_policy:
-        state: absent
-        validate_certs: true
+  roles:
+    - role: iam_password_policy
+      iam_password_policy_state: absent
 ...

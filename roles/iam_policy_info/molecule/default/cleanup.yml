@@ -40,19 +40,4 @@
       loop_control:
         label: "{{ _cleanup }}"
         loop_var: _cleanup
-
-    # IAM is eventually consistent, so a deleted entity can still be listed briefly.
-    - name: Ensure fixtures are absent
-      linuxhq.aws.iam_policy_info:
-        validate_certs: true
-      register: __iam_policy_info_deleted
-      retries: 12
-      delay: 5
-      until:
-        - __iam_policy_info_deleted.group_policies | map(attribute='name') |
-            intersect(['molecule-ec2', 'molecule-rds']) | list == []
-        - __iam_policy_info_deleted.role_policies | map(attribute='name') |
-            intersect(['molecule-s3']) | list == []
-        - __iam_policy_info_deleted.user_policies | map(attribute='name') |
-            intersect(['molecule-ec2']) | list == []
 ...

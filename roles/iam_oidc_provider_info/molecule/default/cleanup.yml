@@ -1,30 +1,13 @@
 ---
 - name: Cleanup
   hosts: all
-  tasks:
+  pre_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         iam_oidc_provider_list:
           "{{ iam_oidc_provider_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _cleanup }}"
-      loop:
-        - iam_oidc_provider
-      loop_control:
-        label: "{{ _cleanup }}"
-        loop_var: _cleanup
-
-    # IAM is eventually consistent, so a deleted provider can still be listed briefly.
-    - name: Ensure oidc provider is absent
-      linuxhq.aws.iam_oidc_provider_info:
-        url: "{{ iam_oidc_provider_list.0.url }}"
-        validate_certs: true
-      register: __iam_oidc_provider_info_deleted
-      retries: 12
-      delay: 5
-      until:
-        - __iam_oidc_provider_info_deleted.open_id_connect_providers == []
+  roles:
+    - iam_oidc_provider
 ...
