@@ -1,13 +1,18 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        secretsmanager_secret_list:
-          "{{ secretsmanager_secret_list |
-              map('combine', {'state': 'absent'}) }}"
-
   roles:
-    - secretsmanager_secret
+    - role: secretsmanager_secret_info
+      secretsmanager_secret_info_list: "{{ secretsmanager_secret_list }}"
+
+  post_tasks:
+    - name: Ensure secrets are verified
+      ansible.builtin.assert:
+        that:
+          - (_secretsmanager_secret_info_dict[_secret.name].value | from_json) ==
+              (_secret.secret | items2dict)
+      loop: "{{ secretsmanager_secret_list }}"
+      loop_control:
+        label: "{{ _secret.name }}"
+        loop_var: _secret
 ...
