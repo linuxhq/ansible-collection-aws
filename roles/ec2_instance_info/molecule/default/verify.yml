@@ -24,27 +24,4 @@
               _ec2_ami_info_latest[ec2_ami_info_list.0.name]
           - _ec2_instance_info_dict['molecule-d'].instance_id is defined
           - _ec2_instance_info_dict['molecule-d'].instance_type == 't3a.medium'
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_instance_list:
-          "{{ ec2_instance_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_net_list:
-          "{{ ec2_vpc_net_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_subnet_list:
-          "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - ec2_instance
-        - ec2_vpc_subnet
-        - ec2_vpc_net
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...
