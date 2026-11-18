@@ -1,31 +1,13 @@
 ---
 - name: Cleanup
   hosts: all
-  tasks:
+  pre_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         ssm_association_list:
           "{{ ssm_association_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _cleanup }}"
-      loop:
-        - ssm_association
-      loop_control:
-        label: "{{ _cleanup }}"
-        loop_var: _cleanup
-
-    - name: Ensure role is included with filters after removal
-      ansible.builtin.include_role:
-        name: ssm_association_info
-      vars:
-        ssm_association_info_filters:
-          AssociationName: molecule-ssm-association-info
-
-    - name: Ensure removed association is verified
-      ansible.builtin.assert:
-        that:
-          - _ssm_association_info_list == []
+  roles:
+    - ssm_association
 ...

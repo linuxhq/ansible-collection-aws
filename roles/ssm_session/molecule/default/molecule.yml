@@ -50,10 +50,10 @@ provisioner:
             instance_type: t3a.medium
             security_groups:
               - molecule
-            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt'].id }}"
+            vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pvt'].id | d(omit) }}"
 
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             security_groups:
               - name: molecule
                 rules:
@@ -65,7 +65,7 @@ provisioner:
 
         ec2_vpc_igw_list:
           - name: molecule
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
 
         ec2_vpc_nat_gateway_info_filters:
           state:
@@ -75,7 +75,7 @@ provisioner:
           - name: molecule-pub
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub'].id }}"
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub'].id | d(omit) }}"
             wait: true
 
         ec2_vpc_net_list:
@@ -83,25 +83,25 @@ provisioner:
             cidr_block: 192.168.0.0/24
 
         ec2_vpc_route_table_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             route_tables:
               - name: molecule-pub
                 routes:
                   - dest: '0.0.0.0/0'
                     gateway_id: igw
                 subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pub'].id }}"
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pub'].id | d(omit) }}"
               - name: molecule-pvt
                 routes:
                   - dest: '0.0.0.0/0'
-                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub'].nat_gateway_id }}"
+                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub'].nat_gateway_id | d(omit) }}"
                 subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt'].id }}"
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt'].id | d(omit) }}"
 
         ec2_vpc_subnet_async: 0
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule-pub
                 az: us-east-1a

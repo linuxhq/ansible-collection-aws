@@ -32,7 +32,7 @@ provisioner:
       all:
         ec2_vpc_igw_list:
           - name: molecule
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
 
         ec2_vpc_nat_gateway_info_filters:
           state:
@@ -42,7 +42,7 @@ provisioner:
           - name: molecule
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
             wait: true
 
         ec2_vpc_net_list:
@@ -50,24 +50,24 @@ provisioner:
             cidr_block: 192.168.0.0/24
 
         ec2_vpc_route_table_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             route_tables:
               - name: molecule-a
                 routes:
                   - dest: '0.0.0.0/0'
                     gateway_id: igw
                 subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
 
               - name: molecule-c
                 routes:
                   - dest: '0.0.0.0/0'
-                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule'].nat_gateway_id }}"
+                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule'].nat_gateway_id | d(omit) }}"
                 subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule-a
                 az:
@@ -87,25 +87,25 @@ provisioner:
 
         ssm_parameter_list:
           - name: /molecule/vpc/id
-            value: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+            value: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
 
           - name: /molecule/vpc/igw/id
-            value: "{{ _ec2_vpc_igw_info_dict['molecule'].internet_gateway_id }}"
+            value: "{{ _ec2_vpc_igw_info_dict['molecule'].internet_gateway_id | d(omit) }}"
 
           - name: /molecule/vpc/nat/id
-            value: "{{ _ec2_vpc_nat_gateway_info_dict['molecule'].nat_gateway_id }}"
+            value: "{{ _ec2_vpc_nat_gateway_info_dict['molecule'].nat_gateway_id | d(omit) }}"
 
           - name: /molecule/vpc/rtb/a/id
-            value: "{{ _ec2_vpc_route_table_info_dict['molecule-a'].route_table_id }}"
+            value: "{{ _ec2_vpc_route_table_info_dict['molecule-a'].route_table_id | d(omit) }}"
 
           - name: /molecule/vpc/rtb/c/id
-            value: "{{ _ec2_vpc_route_table_info_dict['molecule-c'].route_table_id }}"
+            value: "{{ _ec2_vpc_route_table_info_dict['molecule-c'].route_table_id | d(omit) }}"
 
           - name: /molecule/vpc/subnet/a/id
-            value: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+            value: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
 
           - name: /molecule/vpc/subnet/c/id
-            value: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+            value: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
 
 scenario:
   test_sequence:
