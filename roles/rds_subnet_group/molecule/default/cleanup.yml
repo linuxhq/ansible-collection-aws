@@ -3,6 +3,7 @@
   hosts: all
   roles:
     - ec2_vpc_net_info
+    - ec2_vpc_subnet_info
 
   tasks:
     - name: Ensure inventory lists are formatted
@@ -12,11 +13,10 @@
               map('combine', {'state': 'absent'}) }}"
         ec2_vpc_subnet_list:
           "{{ ec2_vpc_subnet_list |
-              selectattr('vpc_id', 'defined') |
               map('combine', {'state': 'absent'}) }}"
         rds_subnet_group_list:
           "{{ rds_subnet_group_list |
-              map('combine', {'state': 'absent', 'subnets': []}) }}"
+              map('combine', {'state': 'absent'}) }}"
 
     - name: Ensure roles are included
       ansible.builtin.include_role:
