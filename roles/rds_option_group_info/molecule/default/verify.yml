@@ -29,19 +29,4 @@
           - _rds_option_group_info_dict['mariadb118'].option_group_name is defined
           - _rds_option_group_info_dict['mariadb118'].options is defined
           - _rds_option_group_info_dict['mariadb118'].options | length > 0
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        rds_option_group_list:
-          "{{ rds_option_group_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - rds_option_group
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...

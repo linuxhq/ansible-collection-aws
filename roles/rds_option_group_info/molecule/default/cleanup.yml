@@ -1,0 +1,14 @@
+---
+- name: Cleanup
+  hosts: all
+  tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        rds_option_group_list:
+          "{{ rds_option_group_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: rds_option_group
+...

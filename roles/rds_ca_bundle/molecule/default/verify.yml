@@ -1,13 +1,24 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        rds_ca_bundle_list:
-          "{{ rds_ca_bundle_list |
-              map('combine', {'state': 'absent'}) }}"
+  tasks:
+    - name: Ensure aws rds certificate authority bundles are queried
+      ansible.builtin.stat:
+        path: "/etc/pki/ca-trust/source/anchors/{{ _bundle.url | basename }}"
+      register: __rds_ca_bundle_stat
+      loop: "{{ rds_ca_bundle_list }}"
+      loop_control:
+        label: "{{ _bundle.url }}"
+        loop_var: _bundle
 
-  roles:
-    - rds_ca_bundle
+    - name: Ensure aws rds certificate authority bundles are verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _stat.stat.exists
+          - _stat.stat.mode == '0644'
+      loop: "{{ __rds_ca_bundle_stat.results }}"
+      loop_control:
+        label: "{{ _stat._bundle.url }}"
+        loop_var: _stat
 ...

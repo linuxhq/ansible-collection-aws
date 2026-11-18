@@ -49,27 +49,4 @@
         that:
           - _rds_subnet_group_info_list == []
           - _rds_subnet_group_info_dict == {}
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_vpc_net_list:
-          "{{ ec2_vpc_net_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_subnet_list:
-          "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'}) }}"
-        rds_subnet_group_list:
-          "{{ rds_subnet_group_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - rds_subnet_group
-        - ec2_vpc_subnet
-        - ec2_vpc_net
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...
