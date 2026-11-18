@@ -1,0 +1,145 @@
+---
+- name: Cleanup
+  hosts: all
+  roles:
+    - aws_az_info
+    - aws_caller_info
+    - route53_zone_info
+
+  tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        route53_zone_list:
+          "{{ route53_zone_list |
+              map('combine', {'state': 'absent'}) }}"
+        ses_identity_list:
+          "{{ ses_identity_list |
+              selectattr('zone', 'in', _route53_zone_info_dict) |
+              map('combine', {'state': 'absent'}) }}"
+        sns_topic_list:
+          "{{ sns_topic_list |
+              map('combine', {'state': 'absent'}) }}"
+        sqs_queue_list:
+          "{{ sqs_queue_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure identities are queried before removal
+      linuxhq.aws.ses_identity_info:
+        name: "{{ _identity.identity }}"
+      register: __ses_identity_present
+      loop: "{{ ses_identity_list }}"
+      loop_control:
+        label: "{{ _identity.identity }}"
+        loop_var: _identity
+
+    - name: Ensure identity dkim record names are generated
+      ansible.builtin.set_fact:
+        __ses_identity_dkim_record_list: >-
+          {%- set records = [] -%}
+          {%- for _query in __ses_identity_present.results if _query.identities -%}
+          {%- for _token in _query.identities.0.dkim_attributes.tokens | d([]) -%}
+          {%- set _ = records.append({'name': _token ~ '._domainkey.' ~ _query._identity.identity,
+                                      'zone': _query._identity.zone}) -%}
+          {%- endfor -%}
+          {%- endfor -%}
+          {{ records }}
+
+    - name: Ensure a dkim record points to another dkim domain before removal
+      amazon.aws.route53:
+        overwrite: true
+        record: "{{ __ses_identity_dkim_record_list.0.name }}"
+        state: present
+        type: CNAME
+        value: "{{ __ses_identity_dkim_record_list.0.name.split('.') | first }}.dkim.ap-southeast-4.amazonses.com"
+        zone: "{{ __ses_identity_dkim_record_list.0.zone }}"
+      when:
+        - __ses_identity_dkim_record_list | length > 0
+
+    - name: Ensure dmarc and spf records hold other values before removal
+      amazon.aws.route53:
+        overwrite: true
+        record: "{{ _record.1.0 ~ _record.0.identity }}"
+        state: present
+        type: TXT
+        value: '"{{ _record.1.1 }}"'
+        zone: "{{ _record.0.zone }}"
+      loop:
+        "{{ ses_identity_list[:1] |
+            product([['_dmarc.', 'v=DMARC1; p=none;'], ['', 'v=spf1 -all']]) |
+            list }}"
+      loop_control:
+        label: "{{ _record.1.0 ~ _record.0.identity }}"
+        loop_var: _record
+
+    - name: Ensure ses identity role is included
+      ansible.builtin.include_role:
+        name: ses_identity
+
+    - name: Ensure identity dkim records are queried after removal
+      amazon.aws.route53:
+        record: "{{ _record.name }}"
+        state: get
+        type: CNAME
+        zone: "{{ _record.zone }}"
+      register: __ses_identity_dkim_removed
+      loop: "{{ __ses_identity_dkim_record_list }}"
+      loop_control:
+        label: "{{ _record.name }}"
+        loop_var: _record
+
+    - name: Ensure identity dkim records are removed
+      ansible.builtin.assert:
+        that:
+          - __ses_identity_dkim_removed.results |
+            map(attribute='resource_record_sets') |
+            map('length') |
+            max == 0
+      when:
+        - __ses_identity_dkim_record_list | length > 0
+
+    - name: Ensure identities are queried after removal
+      linuxhq.aws.ses_identity_info:
+        name: "{{ _identity.identity }}"
+      register: __ses_identity_removed
+      loop: "{{ ses_identity_list }}"
+      loop_control:
+        label: "{{ _identity.identity }}"
+        loop_var: _identity
+
+    - name: Ensure identity dmarc and spf records are queried after removal
+      amazon.aws.route53:
+        record: "{{ _record.1 ~ _record.0.identity }}"
+        state: get
+        type: TXT
+        zone: "{{ _record.0.zone }}"
+      register: __ses_identity_txt_removed
+      loop: "{{ ses_identity_list | product(['_dmarc.', '']) | list }}"
+      loop_control:
+        label: "{{ _record.1 ~ _record.0.identity }}"
+        loop_var: _record
+
+    - name: Ensure identities and their dmarc and spf records are removed
+      ansible.builtin.assert:
+        that:
+          - __ses_identity_removed.results |
+            map(attribute='identities') |
+            map('length') |
+            max == 0
+          - __ses_identity_txt_removed.results |
+            map(attribute='resource_record_sets') |
+            map('length') |
+            max == 0
+      when:
+        - ses_identity_list | length > 0
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _cleanup }}"
+      loop:
+        - sns_topic
+        - sqs_queue
+        - route53_zone
+      loop_control:
+        label: "{{ _cleanup }}"
+        loop_var: _cleanup
+...
