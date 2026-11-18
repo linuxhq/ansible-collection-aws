@@ -42,15 +42,15 @@ provisioner:
             tags:
               molecule: ec2_transit_gateway_vpc_attachment_info
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule'].id }}"
-            transit_gateway: "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule'].id | d(omit) }}"
+            transit_gateway: "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule
             cidr_block: 10.0.0.0/16
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule
                 az: us-east-1a

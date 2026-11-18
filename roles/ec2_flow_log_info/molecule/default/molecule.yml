@@ -40,7 +40,7 @@ provisioner:
             tags:
               molecule: ec2_flow_log_info
             resource_ids:
-              - "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+              - "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             resource_type: VPC
             traffic_type: ALL
             log_destination_type: s3
@@ -48,7 +48,7 @@ provisioner:
 
           - name: molecule-subnet
             resource_ids:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule'].id | d(omit) }}"
             resource_type: Subnet
             traffic_type: ACCEPT
             log_destination_type: s3
@@ -56,15 +56,14 @@ provisioner:
 
           - name: molecule-tgw
             resource_ids:
-              - "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+              - "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
             resource_type: TransitGateway
             log_destination_type: s3
             log_destination: "{{ ec2_flow_log_bucket_resource }}"
 
           - name: molecule-tgw-attachment
             resource_ids:
-              - "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'] |
-                    json_query('transit_gateway_attachment_id') }}"
+              - "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id | d(omit) }}"
             resource_type: TransitGatewayAttachment
             log_destination_type: s3
             log_destination: "{{ ec2_flow_log_bucket_resource }}"
@@ -86,16 +85,16 @@ provisioner:
         ec2_transit_gateway_vpc_attachment_list:
           - name: molecule
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule'].id }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule'].id | d(omit) }}"
             transit_gateway:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule
             cidr_block: 192.168.0.0/24
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule
                 az: us-east-1a
