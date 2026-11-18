@@ -14,10 +14,5 @@
 
     - name: Ensure roles are included
       ansible.builtin.include_role:
-        name: "{{ _cleanup }}"
-      loop:
-        - sqs_queue
-      loop_control:
-        label: "{{ _cleanup }}"
-        loop_var: _cleanup
+        name: sqs_queue
 ...

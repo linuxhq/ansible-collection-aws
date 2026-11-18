@@ -4,7 +4,6 @@
   roles:
     - aws_az_info
     - aws_caller_info
-    - route53_zone_info
 
   tasks:
     - name: Ensure inventory lists are formatted
@@ -14,7 +13,6 @@
               map('combine', {'state': 'absent'}) }}"
         ses_identity_list:
           "{{ ses_identity_list |
-              selectattr('zone', 'in', _route53_zone_info_dict) |
               map('combine', {'state': 'absent'}) }}"
         sns_topic_list:
           "{{ sns_topic_list |

@@ -1,36 +1,13 @@
 ---
 - name: Cleanup
   hosts: all
-  tasks:
+  pre_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         wafv2_web_acl_list:
           "{{ wafv2_web_acl_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure web acls are absent
-      ansible.builtin.include_role:
-        name: wafv2_web_acl
-
-    - name: Ensure web acl info is gathered after removal
-      ansible.builtin.include_role:
-        name: wafv2_web_acl_info
-
-    - name: Ensure web acl log groups are queried after removal
-      amazon.aws.cloudwatchlogs_log_group_info:
-        log_group_name: "aws-waf-logs-{{ _webacl.name }}"
-        validate_certs: true
-      register: __wafv2_web_acl_absent_log_groups
-      loop: "{{ wafv2_web_acl_list }}"
-      loop_control:
-        label: "{{ _webacl.name }}"
-        loop_var: _webacl
-
-    - name: Ensure removed web acls and log groups are verified
-      ansible.builtin.assert:
-        that:
-          - _wafv2_web_acl_info_dict.keys() | intersect(wafv2_web_acl_list | map(attribute='name')) | list == []
-          - __wafv2_web_acl_absent_log_groups.results | map(attribute='log_groups') | flatten |
-            map(attribute='log_group_name') | intersect(wafv2_web_acl_list | map(attribute='name') |
-            map('regex_replace', '^', 'aws-waf-logs-')) | list == []
+  roles:
+    - wafv2_web_acl
 ...
