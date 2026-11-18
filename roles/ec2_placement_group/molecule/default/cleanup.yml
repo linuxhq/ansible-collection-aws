@@ -1,0 +1,13 @@
+---
+- name: Cleanup
+  hosts: all
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ec2_placement_group_list:
+          "{{ ec2_placement_group_list |
+              map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - ec2_placement_group
+...

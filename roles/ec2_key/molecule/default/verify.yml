@@ -1,13 +1,18 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_key_list:
-          "{{ ec2_key_list |
-              map('combine', {'state': 'absent'}) }}"
-
   roles:
-    - ec2_key
+    - ec2_key_info
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _ec2_key_info_dict[_key.name].key_pair_id is defined
+          - _ec2_key_info_dict[_key.name].key_type == 'ed25519'
+      loop: "{{ ec2_key_list }}"
+      loop_control:
+        label: "{{ _key.name }}"
+        loop_var: _key
 ...
