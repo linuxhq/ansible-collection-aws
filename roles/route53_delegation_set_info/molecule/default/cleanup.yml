@@ -1,0 +1,27 @@
+---
+- name: Cleanup
+  hosts: all
+  tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        route53_delegation_set_list:
+          "{{ route53_delegation_set_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: route53_delegation_set
+
+    - name: Ensure role is included after teardown
+      ansible.builtin.include_role:
+        name: route53_delegation_set_info
+      vars:
+        route53_delegation_set_info_id: null
+
+    - name: Ensure delegation sets are absent
+      ansible.builtin.assert:
+        that:
+          - _route53_delegation_set_info_dict.keys() |
+              intersect(route53_delegation_set_list | map(attribute='name')) |
+              list == []
+...
