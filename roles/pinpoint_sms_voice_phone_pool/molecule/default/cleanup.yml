@@ -1,0 +1,59 @@
+---
+- name: Cleanup
+  hosts: all
+  roles:
+    - pinpoint_sms_voice_phone_number_info
+    - pinpoint_sms_voice_phone_pool_info
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        pinpoint_sms_voice_phone_number_list:
+          "{{ pinpoint_sms_voice_phone_number_list |
+              map('combine',
+                  {'phone_number_id':
+                   _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'].phone_number_id,
+                   'state':
+                   'absent'})
+              if 'molecule-pinpoint-simulator' in _pinpoint_sms_voice_phone_number_info_dict
+              else [] }}"
+        pinpoint_sms_voice_phone_pool_list:
+          "{{ pinpoint_sms_voice_phone_pool_list |
+              map('combine',
+                  {'pool_id':
+                   _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id,
+                   'state':
+                   'absent'})
+              if 'molecule-pinpoint-pool' in _pinpoint_sms_voice_phone_pool_info_dict
+              else [] }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _cleanup }}"
+      loop:
+        - pinpoint_sms_voice_phone_pool
+        - pinpoint_sms_voice_phone_number
+      loop_control:
+        label: "{{ _cleanup }}"
+        loop_var: _cleanup
+
+    - name: Ensure information about aws end user messaging sms phone pools is gathered after deletion
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_phone_pool_info
+
+    - name: Ensure information about aws end user messaging sms phone numbers is gathered after release
+      ansible.builtin.include_role:
+        name: pinpoint_sms_voice_phone_number_info
+
+    - name: Ensure deleted pool and released phone number are verified
+      ansible.builtin.assert:
+        that:
+          - _pinpoint_sms_voice_phone_pool_info_list |
+            selectattr('pool_id', 'in',
+                       pinpoint_sms_voice_phone_pool_list | map(attribute='pool_id') | list) |
+            rejectattr('status', 'equalto', 'DELETING') | list == []
+          - _pinpoint_sms_voice_phone_number_info_list |
+            selectattr('phone_number_id', 'in',
+                       pinpoint_sms_voice_phone_number_list | map(attribute='phone_number_id') | list) |
+            rejectattr('status', 'equalto', 'DELETED') | list == []
+...
