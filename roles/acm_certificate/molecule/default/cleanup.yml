@@ -1,73 +1,13 @@
 ---
 - name: Cleanup
   hosts: all
-  tasks:
-    # Absent entries omit type, so the role must remove validation records without it.
+  pre_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         acm_certificate_list:
           "{{ acm_certificate_list |
-              json_query('[].{domain_name: domain_name, zone: zone}') |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure amazon issued molecule certificates are queried
-      community.aws.acm_certificate_info:
-        domain_name: "{{ _certificate.domain_name }}"
-        validate_certs: true
-      loop: "{{ acm_certificate_list | selectattr('zone') }}"
-      loop_control:
-        label: "{{ _certificate.domain_name }}"
-        loop_var: _certificate
-      register: __molecule_certificate_query
-
-    - name: Ensure amazon issued molecule validation records are listed
-      ansible.builtin.set_fact:
-        __molecule_validation_records: "{{ __molecule_validation_records | d([]) + _records }}"
-      vars:
-        _records: >-
-          {{ _query.certificates |
-             map(attribute='domain_validation_options') |
-             flatten |
-             selectattr('resource_record', 'defined') |
-             map(attribute='resource_record') |
-             map('combine', {'zone': _query._certificate.zone}) }}
-      loop: "{{ __molecule_certificate_query.results }}"
-      loop_control:
-        label: "{{ _query._certificate.domain_name }}"
-        loop_var: _query
-
-    - name: Ensure molecule certificates are absent
-      ansible.builtin.include_role:
-        name: acm_certificate
-
-    - name: Ensure molecule certificates are queried after teardown
-      community.aws.acm_certificate_info:
-        domain_name: "{{ _certificate.domain_name }}"
-        validate_certs: true
-      loop: "{{ acm_certificate_list }}"
-      loop_control:
-        label: "{{ _certificate.domain_name }}"
-        loop_var: _certificate
-      register: __molecule_certificate_absent_query
-
-    - name: Ensure amazon issued molecule validation records are gathered after teardown
-      amazon.aws.route53:
-        record: "{{ _record.name }}"
-        state: get
-        type: "{{ _record.type }}"
-        validate_certs: true
-        zone: "{{ _record.zone }}"
-      loop: "{{ __molecule_validation_records | d([]) | unique }}"
-      loop_control:
-        label: "{{ _record.name }}"
-        loop_var: _record
-      register: __molecule_record_absent_query
-
-    - name: Ensure molecule certificates and amazon issued validation records are gone
-      ansible.builtin.assert:
-        that:
-          - __molecule_certificate_absent_query.results |
-            map(attribute='certificates') | flatten | length == 0
-          - __molecule_record_absent_query.results |
-            map(attribute='resource_record_sets') | flatten | length == 0
+  roles:
+    - acm_certificate
 ...
