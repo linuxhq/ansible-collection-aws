@@ -39,13 +39,30 @@
           "{{ rds_subnet_group_list |
               map('combine', {'state': 'absent'}) }}"
 
+    - name: Ensure rds instances are deleted
+      ansible.builtin.include_role:
+        name: rds_instance
+
+    - name: Ensure rds option groups are deleted once the instances release them
+      amazon.aws.rds_option_group:
+        option_group_name: "{{ _og.option_group_name }}"
+        state: absent
+        validate_certs: true
+      register: __rds_option_group_deleted
+      loop: "{{ rds_option_group_list }}"
+      loop_control:
+        label: "{{ _og.option_group_name }}"
+        loop_var: _og
+      until:
+        - __rds_option_group_deleted is succeeded
+      retries: 20
+      delay: 30
+
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _cleanup }}"
       loop:
-        - rds_instance
         - rds_subnet_group
-        - rds_option_group
         - rds_instance_param_group
         - ec2_security_group
         - ec2_vpc_subnet
