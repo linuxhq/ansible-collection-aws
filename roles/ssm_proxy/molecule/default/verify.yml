@@ -1,89 +1,25 @@
 ---
 - name: Verify
   hosts: all
-
-  pre_tasks:
-    - name: Ensure aws session manager proxy instances are identified
+  tasks:
+    - name: Ensure aws session manager proxy instance is identified
       amazon.aws.ec2_instance_info:
         filters:
-          instance-state-name:
-            - pending
-            - running
-            - stopping
-            - stopped
+          instance-state-name: running
           'tag:Name': "{{ ssm_proxy_instance }}"
         validate_certs: true
-      register: __ssm_proxy_instances
+      register: __ssm_proxy_instance
 
-    - name: Ensure aws session manager proxy processes are terminated
+    - name: Ensure aws session manager proxy processes are gathered
       ansible.builtin.command:
         cmd: >
-          pkill -TERM -f "session-manager-plugin.*({{ __ssm_proxy_instances.instances |
-            map(attribute='instance_id') | join('|') }})"
-      register: __ssm_proxy_kill
-      changed_when: __ssm_proxy_kill.rc == 0
-      failed_when: __ssm_proxy_kill.rc > 1
-      when:
-        - __ssm_proxy_instances.instances | length > 0
+          pgrep -f "session-manager-plugin.*{{ __ssm_proxy_instance.instances.0.instance_id }}"
+      register: __ssm_proxy_processes
+      changed_when: false
+      failed_when: false
 
-  roles:
-    - aws_az_info
-    - aws_caller_info
-    - ec2_ami_info
-    - ec2_vpc_nat_gateway_info
-    - ec2_vpc_net_info
-    - ec2_vpc_subnet_info
-
-  post_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_instance_list:
-          "{{ ec2_instance_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
-            security_groups:
-              "{{ ec2_security_group_list.0.security_groups |
-                  map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_igw_list:
-          "{{ ec2_vpc_igw_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_nat_gateway_list:
-          "{{ ec2_vpc_nat_gateway_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_net_list:
-          "{{ ec2_vpc_net_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_route_table_list:
-          "{{ ec2_vpc_route_table_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_subnet_list:
-          "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'}) }}"
-        iam_instance_profile_list:
-          "{{ iam_instance_profile_list |
-              map('combine', {'state': 'absent'}) }}"
-        iam_role_list:
-          "{{ iam_role_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - iam_instance_profile
-        - iam_role
-        - ssm_session
-        - ec2_instance
-        - ec2_security_group
-        - ec2_vpc_route_table
-        - ec2_vpc_nat_gateway
-        - ec2_vpc_subnet
-        - ec2_vpc_igw
-        - ec2_vpc_net
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
-      vars:
-        ssm_session_state: absent
+    - name: Ensure aws session manager proxy is verified
+      ansible.builtin.assert:
+        that:
+          - __ssm_proxy_processes.rc == 0
 ...
