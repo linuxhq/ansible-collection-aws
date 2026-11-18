@@ -1,0 +1,27 @@
+---
+- name: Cleanup
+  hosts: all
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ec2_vpc_prefix_list_entries:
+          "{{ ec2_vpc_prefix_list_entries |
+              map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - ec2_vpc_prefix_list
+
+  post_tasks:
+    - name: Ensure prefix lists are deleted
+      linuxhq.aws.ec2_vpc_prefix_list_info:
+        filters:
+          prefix-list-name: "{{ ec2_vpc_prefix_list_entries | map(attribute='name') | list }}"
+        validate_certs: true
+      register: __ec2_vpc_prefix_list_deleted
+      until:
+        - __ec2_vpc_prefix_list_deleted.prefix_lists |
+          rejectattr('state', 'eq', 'delete-complete') |
+          list | length == 0
+      retries: 20
+      delay: 15
+...
