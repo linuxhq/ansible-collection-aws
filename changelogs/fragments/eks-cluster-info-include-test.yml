@@ -1,0 +1,4 @@
+---
+trivial:
+  - eks_cluster_info - unit-test that O(include) is deduplicated, forwarded to ListClusters, and checked before it.
+...

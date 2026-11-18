@@ -330,7 +330,7 @@ def main():
         # camel_dict_to_snake_dict does not pass ignore_list to nested dictionaries, so this nested map of
         # user-defined parameter names is restored unchanged here.
         oauth2 = (connection.get("AuthenticationConfiguration") or {}).get("OAuth2Properties") or {}
-        if isinstance(oauth2.get("TokenUrlParametersMap"), dict):
+        if "TokenUrlParametersMap" in oauth2:
             result["authentication_configuration"]["o_auth2_properties"]["token_url_parameters_map"] = dict(
                 oauth2["TokenUrlParametersMap"]
             )

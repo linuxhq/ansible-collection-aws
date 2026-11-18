@@ -92,7 +92,8 @@ options:
     type: str
   routes:
     description:
-      - Static IPv4 route destinations. Requires static routing on a virtual private gateway connection.
+      - Static IPv4 route destinations. Requires static routing on a virtual private gateway connection or a
+        connection attached to no gateway; transit gateway and VPN concentrator connections do not support them.
       - Omitted routes are unchanged. An empty list removes routes when O(purge_routes=true).
       - Waits for requested routes to become available and removed routes to disappear, except in check mode.
       - A virtual private gateway connection allows at most 100 static routes, counting routes kept by
@@ -969,14 +970,6 @@ def normalize_connection(connection):
     return result
 
 
-def validate_connection(module, connection, changed=False):
-    # The module reads Options throughout; deleted connections, which omit them, are skipped before this check.
-    if not isinstance(connection.get("Options"), dict):
-        module.fail_json(changed=changed, msg="EC2 returned an invalid VPN connection")
-
-    return connection
-
-
 def find_connection(client, module, connection_id=None, changed=False):
     """Describe the connection; changed reports whether it was already modified, for failure results."""
     connection_id = connection_id or module.params["vpn_connection_id"]
@@ -1009,7 +1002,7 @@ def find_connection(client, module, connection_id=None, changed=False):
         if item.get("State") == "deleted":
             continue
 
-        matches.append(validate_connection(module, item, changed=changed))
+        matches.append(item)
 
     if not connection_id and module.params["name"]:
         # The filter value is escaped; still keep only the exact name.
@@ -1018,6 +1011,10 @@ def find_connection(client, module, connection_id=None, changed=False):
             for match in matches
             if boto3_tag_list_to_ansible_dict(match.get("Tags") or []).get("Name") == module.params["name"]
         ]
+        # A deleting connection keeps its name until it is deleted; a replacement with the same name is the match.
+        active = [match for match in matches if match.get("State") != "deleting"]
+        if active:
+            matches = active
 
     if len(matches) > 1:
         module.fail_json(changed=changed, msg="Multiple VPN connections matched; select a unique name, ID, or filters")
@@ -1118,9 +1115,6 @@ def storage_targets(module, connection):
         return [None]
 
     current = connection["Options"].get("TunnelOptions") or []
-    if not current:
-        module.fail_json(msg="EC2 did not return the requested tunnels")
-
     targets = []
     for tunnel in current:
         # Live: EC2 returns a tunnel's key only while the VPN service stores it, never from Secrets Manager.
@@ -1162,20 +1156,14 @@ def tunnel_deltas(module, connection):
         return [(outside_ip, request) for outside_ip, request in requests if request]
 
     sorted_current = []
-    if len(desired_tunnels) > 1 and not any(explicit) and current:
-        try:
-            sorted_current = sorted(current, key=lambda tunnel: int(ipaddress.ip_address(tunnel["OutsideIpAddress"])))
-        except (KeyError, ValueError):
-            module.fail_json(msg="EC2 returned an invalid tunnel outside IP address")
+    if len(desired_tunnels) > 1 and not any(explicit):
+        sorted_current = sorted(current, key=lambda tunnel: int(ipaddress.ip_address(tunnel["OutsideIpAddress"])))
 
     requests = []
     for index, desired in enumerate(desired_tunnels):
         if desired.get("outside_ip_address"):
             requests.append(desired)
             continue
-
-        if not current:
-            module.fail_json(msg="EC2 did not return the requested tunnels")
 
         targets = current
         if len(desired_tunnels) > 1:
@@ -1474,10 +1462,11 @@ def validate_configuration(module, connection=None, changed=False):
         transit_gateway = module.params["transit_gateway_id"] or module.params["vpn_concentrator_id"]
         family = module.params["tunnel_inside_ip_version"] or "ipv4"
 
+    # Live, EC2 also adds static routes to a static connection attached to no gateway.
     if module.params["routes"] and (not static_only or transit_gateway):
         module.fail_json(
             changed=changed,
-            msg="Static routes require static_only=true and a virtual private gateway connection",
+            msg="Static routes require static_only=true and no transit gateway or VPN concentrator",
         )
 
     # Live, EC2 accepts 100 static routes on a virtual private gateway connection and rejects the next one with
@@ -1599,7 +1588,7 @@ def create_connection(client, module):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to create VPN connection {module.params['name']}")
 
-    connection = validate_connection(module, response["VpnConnection"], changed=True)
+    connection = response["VpnConnection"]
     wait_for_connection(client, module, connection["VpnConnectionId"], changed=True)
 
     return read_connection(client, module, connection["VpnConnectionId"], changed=True)

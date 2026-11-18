@@ -1844,7 +1844,26 @@ def test_deletable_waiter_handles_every_prefix_list_state():
     shapes = Loader().load_service_model("ec2", "service-2")["shapes"]
     acceptors = plugin.EC2_WAITER_MODEL_DATA["managed_prefix_list_deletable"]["acceptors"]
 
-    assert {acceptor["expected"] for acceptor in acceptors} == set(shapes["PrefixListState"]["enum"])
+    assert {acceptor["expected"] for acceptor in acceptors} == set(shapes["PrefixListState"]["enum"]) | {
+        "InvalidPrefixListID.NotFound"
+    }
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"PrefixLists": [{"State": "delete-in-progress"}]},
+        {"PrefixLists": [{"State": "delete-complete"}]},
+        {"Error": {"Code": "InvalidPrefixListID.NotFound", "Message": "The prefix list does not exist."}},
+    ],
+)
+def test_deletable_waiter_ends_when_another_actor_deletes_the_prefix_list(response):
+    name = "managed_prefix_list_deletable"
+    config = WaiterModel({"version": 2, "waiters": plugin.EC2_WAITER_MODEL_DATA}).get_waiter(name)
+    operation = Mock(return_value=response)
+    Waiter(name, config, operation).wait(PrefixListIds=["pl-1"], WaiterConfig={"Delay": 0, "MaxAttempts": 1})
+
+    operation.assert_called_once()
 
 
 def test_name_with_backslash_is_found_by_its_escaped_filter_and_not_recreated():

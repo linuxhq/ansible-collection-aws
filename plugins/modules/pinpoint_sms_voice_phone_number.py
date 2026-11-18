@@ -48,6 +48,7 @@ options:
       - When omitted while requesting a number, AWS disables deletion protection.
       - When omitted for an existing number, the current setting is left unchanged.
       - This cannot be changed on an existing number that is associated with a pool.
+      - With O(state=absent), the module disables deletion protection on a protected number before releasing it.
     type: bool
   international_sending_enabled:
     description:

@@ -118,7 +118,7 @@ def valid_resolver_name(name):
 
 def resolver_resource_with_tags(client, module, resource, resource_type, changed=False):
     """Add listed tags; changed reports whether the resource was already modified, for failure results."""
-    if not resource or not resource.get("Arn"):
+    if not resource:
         return resource
 
     resource = dict(resource)

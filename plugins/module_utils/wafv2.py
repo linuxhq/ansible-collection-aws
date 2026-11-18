@@ -61,15 +61,6 @@ def get_resources_with_tags(client, module, summaries, method, result_key, descr
     return resources
 
 
-def require_lookup_params(module):
-    """Validate the id and name options shared by WAFv2 info modules before any AWS call."""
-    if module.params["id"] == "":
-        module.fail_json(msg="id must not be empty")
-
-    if module.params["name"] == "":
-        module.fail_json(msg="name must not be empty")
-
-
 def list_resource_summaries(client, module, method, result_key, description, scope):
     """Return the WAFv2 resource summaries matching the id and name options; both together skip the listing."""
     target_id = module.params["id"]

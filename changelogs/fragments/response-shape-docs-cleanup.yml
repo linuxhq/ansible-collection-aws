@@ -1,0 +1,6 @@
+---
+trivial:
+  - glue_connection_info, service_quota, and wafv2_web_acl_info - test for the presence of optional response fields
+    instead of their types.
+  - ec2_pricing_info, pinpoint_sms_voice_phone_number, and pinpoint_sms_voice_phone_pool - documentation fixes.
+...

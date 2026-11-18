@@ -276,11 +276,7 @@ def main():
         tags = []
         # AWS-owned rules, such as the Internet Resolver rule, cannot be tagged, and only the account that created a
         # rule can see its tags.
-        if (
-            rule.get("Arn")
-            and rule.get("OwnerId") != AWS_OWNED_RULE_OWNER
-            and rule.get("ShareStatus") != "SHARED_WITH_ME"
-        ):
+        if rule.get("OwnerId") != AWS_OWNED_RULE_OWNER and rule.get("ShareStatus") != "SHARED_WITH_ME":
             try:
                 response = paginated_query_with_retries(
                     client,

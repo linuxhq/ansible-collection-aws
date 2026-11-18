@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - a lookup by O(name) now ignores a C(deleting) connection when a connection with the same name that
+    is not deleting exists, instead of failing with multiple matches. A deleting connection that is the only match
+    still fails.
+trivial:
+  - ec2_vpc_vpn - rely on the EC2 response shape instead of checking connection options and tunnel outside IP
+    addresses that EC2 always returns for an available connection, and document that static routes also work on a
+    static connection attached to no gateway.
+...

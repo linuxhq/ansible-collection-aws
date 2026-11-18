@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - global_accelerator_info - an empty O(arn) is now treated as omitted and lists every accelerator instead of
+    failing.
+  - wafv2_ip_set_info - an empty O(id) or O(name) is now treated as omitted instead of failing.
+  - wafv2_web_acl_info - an empty O(id) or O(name) is now treated as omitted instead of failing.
+...

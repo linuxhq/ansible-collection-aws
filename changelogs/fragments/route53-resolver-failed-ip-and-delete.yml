@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - route53_resolver - when replacing IP addresses, an added address that fails (for example C(FAILED_CREATION)) now
+    stops the run with C(changed=true), the address status, and its status message before later changes remove
+    working addresses. Failed addresses that the run replaces are still repaired.
+  - route53_resolver - with O(wait=true), a delete that Route 53 Resolver does not complete, leaving the endpoint
+    C(OPERATIONAL) or C(ACTION_NEEDED), now fails with the endpoint status and status message instead of waiting until
+    O(wait_timeout).
+  - route53_resolver_rule - with O(wait=true), a delete that leaves the rule C(FAILED) now fails with the rule status
+    message instead of waiting until O(wait_timeout).
+trivial:
+  - route53_resolver, route53_resolver_info, and route53_resolver_rule_info - rely on Route 53 Resolver returning
+    the ARN of every endpoint and rule instead of checking for it before listing tags.
+...

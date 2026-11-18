@@ -101,19 +101,13 @@ def lookup_params(**overrides):
 
 
 @pytest.mark.parametrize("option", ["id", "name"])
-def test_require_lookup_params_rejects_empty_identifiers(option):
-    with pytest.raises(ModuleFail) as raised:
-        wafv2.require_lookup_params(FakeModule(lookup_params(**{option: ""})))
-
-    assert raised.value.values["msg"] == f"{option} must not be empty"
-
-
-@pytest.mark.parametrize("region", ["us-east-1", "us-west-2"])
-def test_require_lookup_params_accepts_valid_params(region):
-    # AWS WAFv2, not the module, rejects the CLOUDFRONT scope outside us-east-1.
-    module = FakeModule(lookup_params(id="id-1", scope="cloudfront"), region=region)
-
-    assert wafv2.require_lookup_params(module) is None
+def test_list_resource_summaries_treats_an_empty_identifier_as_omitted(option):
+    summaries = [{"Id": "id-1", "Name": "main"}, {"Id": "id-2", "Name": "other"}]
+    module = FakeModule(lookup_params(**{option: ""}))
+    with patch.object(wafv2, "query_list", return_value=summaries):
+        assert wafv2.list_resource_summaries(Mock(), module, "list_ip_sets", "IPSets", "IP sets", "REGIONAL") == (
+            summaries
+        )
 
 
 def test_list_resource_summaries_with_id_and_name_skips_the_listing():

@@ -81,7 +81,7 @@ def test_associations_are_grouped_by_rule_and_expose_vpc_ids():
             side_effect=[
                 [
                     {"Arn": "arn:rule-1", "Id": "rule-1"},
-                    {"Id": "rule-2"},
+                    {"Arn": "arn:rule-2", "Id": "rule-2"},
                 ],
                 [
                     {"ResolverRuleId": "rule-1", "Status": "COMPLETE", "VPCId": "vpc-1"},
@@ -113,7 +113,8 @@ def test_detail_methods_are_checked_only_when_rules_exist():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "query_list", side_effect=[[{"Id": "rule-1"}], []]),
+        patch.object(plugin, "query_list", side_effect=[[{"Arn": "arn:rule-1", "Id": "rule-1"}], []]),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"Tags": []}),
         pytest.raises(ModuleExit),
     ):
         plugin.main()

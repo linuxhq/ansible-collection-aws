@@ -439,7 +439,7 @@ def validate_current_quota(module, quota, service_code, quota_code):
         msg = f"AWS service quota {service_code}/{quota_code} did not return a valid value"
         # ErrorReason explains why Service Quotas could not read the value from the owning service.
         error_reason = quota.get("ErrorReason")
-        if isinstance(error_reason, dict):
+        if error_reason:
             details = [
                 str(error_reason[key]) for key in ("ErrorCode", "ErrorMessage") if error_reason.get(key) is not None
             ]
@@ -563,7 +563,7 @@ def main():
     smaller_requests = [
         request["DesiredValue"]
         for request in pending_requests
-        if isinstance(request.get("DesiredValue"), (int, float)) and request["DesiredValue"] < desired_value
+        if request.get("DesiredValue") is not None and request["DesiredValue"] < desired_value
     ]
     if desired_value > current_value and smaller_requests:
         module.warn(

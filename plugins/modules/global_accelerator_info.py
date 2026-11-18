@@ -17,7 +17,7 @@ options:
   arn:
     description:
       - ARN of the accelerator to gather information about.
-      - When omitted, all accelerators are returned.
+      - When omitted or empty, all accelerators are returned.
       - An accelerator that does not exist results in an empty list.
     aliases:
       - accelerator_arn
@@ -331,7 +331,7 @@ def main():
 
     accelerators = []
 
-    if arn is None:
+    if not arn:
         require_client_methods(
             module,
             client,

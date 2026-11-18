@@ -48,6 +48,27 @@ def test_empty_name_requires_list_clusters():
     )
 
 
+def test_include_is_deduplicated_forwarded_and_required():
+    client = Mock()
+    module = FakeModule({"include": ["all", "all"], "name": None}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require_methods,
+        patch.object(plugin, "query_list", return_value=[]) as query_list,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    require_methods.assert_called_once_with(
+        module,
+        client,
+        "EKS",
+        {"list_clusters": ("include", "maxResults", "nextToken")},
+    )
+    assert query_list.call_args.args[2] == "list_clusters"
+    assert query_list.call_args.kwargs == {"include": ["all"]}
+
+
 def test_named_missing_cluster_returns_an_empty_list():
     client = Mock()
     client.describe_cluster.side_effect = plugin.ClientError(

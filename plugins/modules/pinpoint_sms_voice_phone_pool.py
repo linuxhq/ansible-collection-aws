@@ -29,6 +29,7 @@ options:
       - Whether deletion protection is enabled for the pool.
       - When omitted while creating a pool, AWS disables deletion protection.
       - When omitted for an existing pool, the current setting is left unchanged.
+      - With O(state=absent), the module disables deletion protection on a protected pool before deleting it.
     type: bool
   iso_country_code:
     description:

@@ -17,7 +17,7 @@ options:
   id:
     description:
       - WAFv2 web ACL ID used to limit the result set.
-      - This must not be empty when specified.
+      - An empty value is treated as omitted.
       - The module lists web ACL summaries for the selected O(scope), filters
         by ID, and then gathers each full web ACL definition.
       - When both O(id) and O(name) are specified, the module gets the web ACL
@@ -27,7 +27,7 @@ options:
   name:
     description:
       - WAFv2 web ACL name used to limit the result set.
-      - This must not be empty when specified.
+      - An empty value is treated as omitted.
       - The module lists web ACL summaries for the selected O(scope), filters
         by name, and then gathers each full web ACL definition.
       - When both O(id) and O(name) are specified, the module gets the web ACL
@@ -773,7 +773,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_cli
 from ansible_collections.linuxhq.aws.plugins.module_utils.wafv2 import (
     get_resources_with_tags,
     list_resource_summaries,
-    require_lookup_params,
 )
 
 # AssociationConfig members keyed by associated resource types, which are AWS values rather than field names.
@@ -794,7 +793,7 @@ def association_config(config):
     result = camel_dict_to_snake_dict({key: value for key, value in config.items() if key not in RESOURCE_TYPE_MAPS})
     for key, name in RESOURCE_TYPE_MAPS.items():
         resource_types = config.get(key)
-        if isinstance(resource_types, dict):
+        if resource_types is not None:
             result[name] = {
                 resource_type: camel_dict_to_snake_dict(settings) for resource_type, settings in resource_types.items()
             }
@@ -814,7 +813,6 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
-    require_lookup_params(module)
 
     client = module.client("wafv2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(

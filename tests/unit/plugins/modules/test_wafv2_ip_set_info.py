@@ -64,10 +64,11 @@ def test_cloudfront_scope_is_uppercase_for_aws():
 
 
 @pytest.mark.parametrize("option", ["id", "name"])
-def test_rejects_empty_filters(option):
-    result, _require, _query = run(FakeModule(params(**{option: ""})))
+def test_empty_filters_are_treated_as_omitted(option):
+    result, _require, _query = run(FakeModule(params(**{option: ""}), client=ip_set_client()), [IP_SET])
 
-    assert result.values["msg"] == f"{option} must not be empty"
+    assert result.values["changed"] is False
+    assert [ip_set["id"] for ip_set in result.values["ip_sets"]] == ["wanted"]
 
 
 def test_missing_name_returns_empty_list():

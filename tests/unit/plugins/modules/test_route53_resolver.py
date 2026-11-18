@@ -1271,11 +1271,46 @@ def test_waiting_for_a_usable_endpoint_stops_when_it_is_deleting():
         "UPDATING": "retry",
         "AUTO_RECOVERING": "retry",
     }
-    # Waiting for deletion still waits through DELETING until the endpoint is gone.
+    # Waiting for deletion still waits through DELETING until the endpoint is gone; a failed delete stops the wait,
+    # which then reports the endpoint's status message.
     assert acceptor_states("resolver_endpoint_deleted") == {
         "ResourceNotFoundException": "success",
         "DELETING": "retry",
+        "OPERATIONAL": "success",
+        "ACTION_NEEDED": "success",
     }
+
+
+@pytest.mark.parametrize("status", ["OPERATIONAL", "ACTION_NEEDED"])
+def test_a_failed_delete_reports_the_endpoint_status_message(status):
+    endpoint = existing_endpoint(Status=status, StatusMessage="Delete failed")
+    with (
+        patch.object(plugin, "custom_waiter"),
+        patch.object(plugin, "run_waiter"),
+        patch.object(plugin, "get_resolver_endpoint", return_value=endpoint),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.wait_for_resolver_endpoint_status(
+            Mock(), FakeModule(endpoint_params()), "rslvr-1", "deleted", changed=True
+        )
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["msg"] == (
+        f"AWS Route53 Resolver endpoint main was not deleted; it is {status}: Delete failed"
+    )
+    assert raised.value.values["resolver_endpoint"]["status"] == status
+
+
+def test_a_completed_delete_returns_no_endpoint():
+    with (
+        patch.object(plugin, "custom_waiter"),
+        patch.object(plugin, "run_waiter"),
+        patch.object(plugin, "get_resolver_endpoint", return_value=None),
+    ):
+        assert (
+            plugin.wait_for_resolver_endpoint_status(Mock(), FakeModule(endpoint_params()), "rslvr-1", "deleted")
+            is None
+        )
 
 
 def test_wait_failure_message_does_not_claim_a_timeout():
@@ -1314,6 +1349,76 @@ def test_failed_addresses_are_replaced_and_departing_addresses_are_ignored():
         aws_retry=True,
     )
     wait.assert_called_once_with(client, module, "rslvr-1", "settled", changed=True, deadline=ANY)
+
+
+def test_failed_added_address_stops_before_removing_a_working_address():
+    client = ip_change_client()
+    module = FakeModule(endpoint_params(name="main"))
+    endpoint = existing_endpoint()
+    desired = {
+        "name": "main",
+        "ip_addresses": [{"ip": "192.0.2.1", "subnet_id": "subnet-1"}, {"subnet_id": "subnet-3"}],
+    }
+    listed = [
+        {"Ip": "192.0.2.1", "IpId": "rni-1", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+        {"Ip": "192.0.2.2", "IpId": "rni-2", "SubnetId": "subnet-2", "Status": "ATTACHED"},
+        {
+            "IpId": "rni-3",
+            "SubnetId": "subnet-3",
+            "Status": "FAILED_CREATION",
+            "StatusMessage": "Insufficient free addresses",
+        },
+    ]
+    with (
+        patch.object(
+            plugin, "wait_for_resolver_endpoint_status", return_value=existing_endpoint(Status="ACTION_NEEDED")
+        ),
+        patch.object(
+            plugin,
+            "resolver_endpoint_with_ip_addresses",
+            side_effect=lambda client, module, endpoint, changed=False: dict(endpoint, IpAddresses=listed),
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired)
+
+    client.associate_resolver_endpoint_ip_address.assert_called_once()
+    client.disassociate_resolver_endpoint_ip_address.assert_not_called()
+    assert raised.value.values["changed"] is True
+    assert "rni-3 in subnet subnet-3 is FAILED_CREATION: Insufficient free addresses" in raised.value.values["msg"]
+    assert raised.value.values["resolver_endpoint"]["status"] == "ACTION_NEEDED"
+
+
+def test_replacing_a_failed_address_continues_while_it_keeps_the_endpoint_action_needed():
+    client = ip_change_client()
+    module = FakeModule(endpoint_params())
+    endpoint = existing_endpoint(
+        IpAddresses=[
+            {"Ip": "192.0.2.1", "IpId": "rni-1", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+            {"Ip": "192.0.2.2", "IpId": "rni-2", "SubnetId": "subnet-2", "Status": "FAILED_RESOURCE_GONE"},
+        ]
+    )
+    desired = {"name": "main", "ip_addresses": plugin.comparable_ip_addresses(endpoint_params()["ip_addresses"])}
+    listed = endpoint["IpAddresses"] + [
+        {"Ip": "192.0.2.2", "IpId": "rni-3", "SubnetId": "subnet-2", "Status": "ATTACHED"}
+    ]
+    with (
+        patch.object(
+            plugin, "wait_for_resolver_endpoint_status", return_value=existing_endpoint(Status="ACTION_NEEDED")
+        ),
+        patch.object(
+            plugin,
+            "resolver_endpoint_with_ip_addresses",
+            side_effect=lambda client, module, endpoint, changed=False: dict(endpoint, IpAddresses=listed),
+        ),
+    ):
+        plugin.reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired)
+
+    client.disassociate_resolver_endpoint_ip_address.assert_called_once_with(
+        IpAddress={"Ip": "192.0.2.2", "IpId": "rni-2", "SubnetId": "subnet-2"},
+        ResolverEndpointId="rslvr-1",
+        aws_retry=True,
+    )
 
 
 def test_failed_address_makes_an_existing_endpoint_differ():
@@ -2087,6 +2192,7 @@ def test_waits_after_a_re_run_share_one_wait_timeout_budget():
             "get_resolver_endpoint_by_name",
             return_value={"Id": "rslvr-1", "Name": "main", "Status": "DELETING"},
         ),
+        patch.object(plugin, "get_resolver_endpoint", return_value=None),
         patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 700]),
         pytest.raises(ModuleFail),
@@ -2104,6 +2210,7 @@ def test_an_exhausted_wait_timeout_budget_fails_with_the_timeout_message():
             "get_resolver_endpoint_by_name",
             return_value={"Id": "rslvr-1", "Name": "main", "Status": "DELETING"},
         ),
+        patch.object(plugin, "get_resolver_endpoint", return_value=None),
         patch.object(plugin, "custom_waiter", return_value=waiter),
         patch.object(wait_utils.time, "monotonic", side_effect=[100, 100, 1901]),
         pytest.raises(ModuleFail) as raised,

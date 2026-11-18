@@ -160,12 +160,19 @@ def test_resolver_resource_with_tags_adds_tags_and_keeps_the_message(resource_ty
     }
 
 
-def test_resolver_resource_with_tags_skips_resources_without_an_arn():
+def test_resolver_resource_with_tags_skips_a_missing_resource():
     with patch.object(route53_resolver_utils, "query_list") as query:
-        assert resolver_resource_with_tags(Mock(), FakeModule({}), {"Id": "rslvr-1"}, "rule") == {"Id": "rslvr-1"}
         assert resolver_resource_with_tags(Mock(), FakeModule({}), None, "rule") is None
 
     query.assert_not_called()
+
+
+def test_resolver_resource_with_tags_lists_tags_by_arn():
+    with patch.object(route53_resolver_utils, "query_list", return_value=[{"Key": "a", "Value": "b"}]) as query:
+        resource = resolver_resource_with_tags(Mock(), FakeModule({}), {"Arn": "arn:rule", "Id": "rslvr-1"}, "rule")
+
+    assert resource == {"Arn": "arn:rule", "Id": "rslvr-1", "Tags": [{"Key": "a", "Value": "b"}]}
+    assert query.call_args.kwargs["ResourceArn"] == "arn:rule"
 
 
 def test_validate_resolver_rule_accepts_the_aws_owned_rule():
