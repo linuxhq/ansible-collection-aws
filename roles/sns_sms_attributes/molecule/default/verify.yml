@@ -12,4 +12,9 @@
           - _sns_sms_attributes_info_dict.default_sender_id is not defined
           - _sns_sms_attributes_info_dict.default_sms_type == 'Transactional'
           - _sns_sms_attributes_info_dict.delivery_status_success_sampling_rate == '0'
+
+    - name: Ensure aws simple notification service sms attributes are reset
+      linuxhq.aws.sns_sms_attributes:
+        default_sms_type: Promotional
+        validate_certs: true
 ...
