@@ -34,7 +34,7 @@
           - _ec2_eip_info_dict['molecule-eip-04'].public_ip is defined
           - _ec2_eip_info_dict['molecule-eip-05'].public_ip is defined
 
-    # Leave molecule-eip-02 detached but still listed with its device_id.
+    # Leave molecule-eip-02 detached but still listed with its device_id for cleanup to release.
     - name: Ensure aws elastic ip address is disassociated outside the role
       amazon.aws.ec2_eip:
         device_id: "{{ _ec2_eni_molecule_dict['molecule-eip-02'] }}"
@@ -44,54 +44,16 @@
         state: absent
         validate_certs: true
 
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_eip_list:
-          "{{ ec2_eip_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_igw_list:
-          "{{ ec2_vpc_igw_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_net_list:
-          "{{ ec2_vpc_net_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_subnet_list:
-          "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure aws elastic ip addresses are released
-      ansible.builtin.include_role:
-        name: ec2_eip
-
-    - name: Ensure information about remaining aws elastic ips is gathered
+    - name: Ensure information about the disassociated aws elastic ip is gathered
       amazon.aws.ec2_eip_info:
         filters:
-          tag:Name: molecule-eip-*
+          tag:Name: molecule-eip-02
         validate_certs: true
-      register: _ec2_eip_molecule_remaining
+      register: _ec2_eip_molecule_disassociated
 
-    - name: Ensure every aws elastic ip address is released
+    - name: Ensure disassociation is verified
       ansible.builtin.assert:
         that:
-          - _ec2_eip_molecule_remaining.addresses | length == 0
-
-    - name: Ensure aws elastic network interfaces are absent
-      amazon.aws.ec2_eni:
-        eni_id: "{{ _eni }}"
-        state: absent
-        validate_certs: true
-      loop: "{{ _ec2_eni_molecule_dict.values() | list }}"
-      loop_control:
-        loop_var: _eni
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - ec2_vpc_subnet
-        - ec2_vpc_igw
-        - ec2_vpc_net
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
+          - _ec2_eip_molecule_disassociated.addresses | length == 1
+          - _ec2_eip_molecule_disassociated.addresses.0.association_id is not defined
 ...

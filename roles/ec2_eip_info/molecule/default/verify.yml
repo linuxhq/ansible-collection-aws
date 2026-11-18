@@ -14,19 +14,4 @@
           - _ec2_eip_info_dict['molecule-eip-03'].public_ip is defined
           - _ec2_eip_info_dict['molecule-eip-04'].public_ip is defined
           - _ec2_eip_info_dict['molecule-eip-05'].public_ip is defined
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_eip_list:
-          "{{ ec2_eip_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - ec2_eip
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...
