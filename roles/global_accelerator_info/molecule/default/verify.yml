@@ -134,7 +134,7 @@
                       - endpoint_id:
                           "{{ _elb_application_lb_info_dict[
                                 'molecule-http-80'
-                              ].load_balancer_arn }}"
+                              ].load_balancer_arn | d(none) }}"
                         weight: 200
           - name: molecule-global-accelerator-info-01
             enabled: false

@@ -81,7 +81,7 @@
                       - endpoint_id:
                           "{{ _elb_application_lb_info_dict[
                                 'molecule-http-80'
-                              ].load_balancer_arn }}"
+                              ].load_balancer_arn | d(none) }}"
                         weight: 200
               - protocol: TCP
                 port_ranges:

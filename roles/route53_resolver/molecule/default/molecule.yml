@@ -31,7 +31,7 @@ provisioner:
     group_vars:
       all:
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             security_groups:
               - name: molecule-route53resolver
                 rules:
@@ -53,7 +53,7 @@ provisioner:
             cidr_block: 192.168.0.0/24
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
             subnets:
               - name: molecule-a
                 az:
@@ -76,28 +76,28 @@ provisioner:
               molecule: route53_resolver
             direction: OUTBOUND
             ip_addresses:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(none) }}"
                 ip: 192.168.0.123
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(none) }}"
                 ip: 192.168.0.251
             protocols:
               - Do53
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id | d(omit) }}"
 
           - name: molecule-google
             tags:
               molecule: route53_resolver
             direction: OUTBOUND
             ip_addresses:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(none) }}"
                 ip: 192.168.0.124
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id }}"
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(none) }}"
                 ip: 192.168.0.252
             protocols:
               - Do53
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id }}"
+              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id | d(omit) }}"
 
 scenario:
   test_sequence:

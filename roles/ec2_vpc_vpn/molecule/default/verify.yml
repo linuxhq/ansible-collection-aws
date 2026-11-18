@@ -65,9 +65,9 @@
         ec2_vpc_vpn_list:
           - name: molecule-00
             customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id }}"
+              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id | d(omit) }}"
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
             pre_shared_key_storage: SecretsManager
             skip_tunnel_replacement: true
             wait_timeout: 1200
@@ -79,11 +79,11 @@
                   cloud_watch_log_options:
                     bgp_log_enabled: true
                     bgp_log_group_arn:
-                      "{{ _cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn }}"
+                      "{{ _cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn | d(omit) }}"
                     bgp_log_output_format: text
                     log_enabled: true
                     log_group_arn:
-                      "{{ _cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn }}"
+                      "{{ _cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn | d(omit) }}"
                     log_output_format: text
                 phase1_lifetime_seconds: 27000
                 phase2_lifetime_seconds: 3000
@@ -94,9 +94,9 @@
 
           - name: molecule-01
             customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id }}"
+              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id | d(omit) }}"
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id | d(omit) }}"
             local_ipv4_network_cidr: 10.20.0.0/16
             wait_timeout: 1200
             tunnel_options:

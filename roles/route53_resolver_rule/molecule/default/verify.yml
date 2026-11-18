@@ -44,7 +44,7 @@
             tags:
               molecule: route53_resolver_rule
             domain_name: cloudflare.com
-            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id }}"
+            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-cloudflare'].id | d(omit) }}"
             rule_type: FORWARD
             target_ips:
               - ip: 1.1.1.3
@@ -56,7 +56,7 @@
             tags:
               molecule: route53_resolver_rule
             domain_name: google.com
-            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].id }}"
+            resolver_endpoint_id: "{{ _route53_resolver_info_dict['molecule-google'].id | d(omit) }}"
             rule_type: FORWARD
             target_ips:
               - ip: 8.8.8.9
