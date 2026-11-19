@@ -30,6 +30,7 @@ provisioner:
   inventory:
     group_vars:
       all:
+        aws_credentials_info_profile: molecule
 scenario:
   test_sequence:
     - dependency
