@@ -18,10 +18,11 @@
               rds_instance_list.0.db_instance_class
           - _rds_instance_info_dict['mariadb106'].db_subnet_group.db_subnet_group_name ==
               rds_instance_list.0.db_subnet_group_name
-          - _rds_instance_info_dict['mariadb106'].db_subnet_group.subnets.0.subnet_identifier ==
-              rds_subnet_group_list.0.subnets.0
-          - _rds_instance_info_dict['mariadb106'].db_subnet_group.subnets.1.subnet_identifier ==
-              rds_subnet_group_list.0.subnets.1
+          - _rds_instance_info_dict['mariadb106'].db_subnet_group.subnets |
+            map(attribute='subnet_identifier') |
+            sort ==
+            rds_subnet_group_list.0.subnets |
+            sort
           - _rds_instance_info_dict['mariadb106'].endpoint.address is defined
           - _rds_instance_info_dict['mariadb106'].endpoint.port is defined
           - _rds_instance_info_dict['mariadb106'].engine ==
@@ -48,10 +49,11 @@
               rds_instance_list.1.db_parameter_group_name
           - _rds_instance_info_dict['mariadb118'].db_subnet_group.db_subnet_group_name ==
               rds_instance_list.1.db_subnet_group_name
-          - _rds_instance_info_dict['mariadb118'].db_subnet_group.subnets.0.subnet_identifier ==
-              rds_subnet_group_list.0.subnets.0
-          - _rds_instance_info_dict['mariadb118'].db_subnet_group.subnets.1.subnet_identifier ==
-              rds_subnet_group_list.0.subnets.1
+          - _rds_instance_info_dict['mariadb118'].db_subnet_group.subnets |
+            map(attribute='subnet_identifier') |
+            sort ==
+            rds_subnet_group_list.0.subnets |
+            sort
           - _rds_instance_info_dict['mariadb118'].enabled_cloudwatch_logs_exports ==
               rds_instance_list.1.enable_cloudwatch_logs_exports
           - _rds_instance_info_dict['mariadb118'].endpoint.address is defined
