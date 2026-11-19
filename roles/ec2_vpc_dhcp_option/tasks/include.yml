@@ -44,4 +44,9 @@
     - _jid.ansible_job_id is defined
   until:
     - __ec2_vpc_dhcp_option_status.finished | bool
+  # The module fails to delete an option set that does not exist.
+  failed_when:
+    - __ec2_vpc_dhcp_option_status.failed | d(false)
+    - _jid._dopt.state | d('present') != 'absent' or
+      __ec2_vpc_dhcp_option_status.msg | d('') is not search('dhcp option id None')
 ...

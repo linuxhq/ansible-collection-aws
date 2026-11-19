@@ -54,4 +54,8 @@
     - _jid.ansible_job_id is defined
   until:
     - __s3_lifecycle_status.finished | bool
+  failed_when:
+    - __s3_lifecycle_status.failed | d(false)
+    - _jid._lifecycle.1.state | d('present') != 'absent' or
+      __s3_lifecycle_status.error.code | d('') != 'NoSuchBucket'
 ...

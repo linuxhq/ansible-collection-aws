@@ -28,7 +28,10 @@
     stickiness_type: "{{ _tg.stickiness_type | d(omit) }}"
     successful_response_codes: "{{ _tg.successful_response_codes | d(omit) }}"
     tags: "{{ _tg.tags | d({}) | combine({'Name': _tg.name}) }}"
-    target_type: "{{ _tg.target_type | d('instance') }}"
+    # The module requires protocol, port and vpc_id for this type, even to delete.
+    target_type:
+      "{{ omit if _tg.state | d('present') == 'absent' else
+          _tg.target_type | d('instance') }}"
     targets: "{{ _tg.targets | d(omit) }}"
     unhealthy_threshold_count: "{{ _tg.unhealthy_threshold_count | d(omit) }}"
     validate_certs: true
