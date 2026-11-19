@@ -33,11 +33,23 @@
           "{{ global_accelerator_list |
               map('combine', {'state': 'absent'}) }}"
 
+    - name: Ensure global accelerator role is included
+      ansible.builtin.include_role:
+        name: global_accelerator
+
+    - name: Ensure global accelerator network interfaces are deleted
+      amazon.aws.ec2_eni_info:
+        filters:
+          description: GlobalAccelerator configured ENI
+      register: _eni_query
+      delay: 10
+      retries: 60
+      until: _eni_query.network_interfaces | length == 0
+
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _cleanup }}"
       loop:
-        - global_accelerator
         - elb_application_lb
         - elb_target_group
         - ec2_security_group
