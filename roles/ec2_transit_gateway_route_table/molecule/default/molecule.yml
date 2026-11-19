@@ -51,7 +51,6 @@ provisioner:
                       d(omit) }}"
 
           - name: molecule-rtb
-            purge_routes: true
             transit_gateway_id:
               "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
                   d(omit) }}"
@@ -59,9 +58,9 @@ provisioner:
               - destination_cidr_block: 10.10.0.0/16
                 blackhole: true
               - destination_cidr_block: 10.20.0.0/16
-                transit_gateway_attachment_id:
-                  "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id |
-                      d(omit) }}"
+                blackhole: true
+              - destination_cidr_block: 10.30.0.0/16
+                blackhole: true
 
         ec2_transit_gateway_vpc_attachment_info_filters:
           state:

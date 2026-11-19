@@ -7,9 +7,5 @@
       tags:
         - molecule-idempotence-notest
 
-    - role: iam_oidc_provider
-      tags:
-        - molecule-idempotence-notest
-
     - iam_oidc_provider
 ...

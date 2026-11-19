@@ -30,6 +30,10 @@ provisioner:
   inventory:
     group_vars:
       all:
+        sns_sms_attributes_default_sender_id: Molecule
+        sns_sms_attributes_default_sms_type: Transactional
+        sns_sms_attributes_delivery_status_success_sampling_rate: 0
+
 scenario:
   test_sequence:
     - dependency

@@ -1,15 +1,30 @@
 ---
 - name: Verify
   hosts: all
-  roles:
-    - sns_sms_attributes_info
-
   tasks:
+    - name: Ensure aws simple notification service sms attributes are gathered
+      ansible.builtin.include_role:
+        name: sns_sms_attributes_info
+
     - name: Ensure aws simple notification service sms attributes are verified
       ansible.builtin.assert:
         that:
-          - _sns_sms_attributes_info_dict is mapping
-          - _sns_sms_attributes_info_dict.default_sender_id is not defined
+          - _sns_sms_attributes_info_dict.default_sender_id == 'Molecule'
           - _sns_sms_attributes_info_dict.default_sms_type == 'Transactional'
           - _sns_sms_attributes_info_dict.delivery_status_success_sampling_rate == '0'
+
+    - name: Ensure aws simple notification service sms default sender id is cleared
+      ansible.builtin.include_role:
+        name: sns_sms_attributes
+      vars:
+        sns_sms_attributes_default_sender_id: ""
+
+    - name: Ensure aws simple notification service sms attributes are gathered again
+      ansible.builtin.include_role:
+        name: sns_sms_attributes_info
+
+    - name: Ensure aws simple notification service sms default sender id is verified
+      ansible.builtin.assert:
+        that:
+          - _sns_sms_attributes_info_dict.default_sender_id is not defined
 ...

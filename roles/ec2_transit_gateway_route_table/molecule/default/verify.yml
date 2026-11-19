@@ -18,7 +18,45 @@
           transit-gateway-id: "{{ __molecule_transit_gateway_id }}"
       register: __molecule_rtb_query
 
+    - name: Ensure molecule-rtb routes are verified
+      ansible.builtin.assert:
+        that:
+          - __molecule_rtb_query.transit_gateway_route_tables | length == 1
+          - _rtb.state == 'available'
+          - _static |
+            map(attribute='destination_cidr_block') |
+            sort == ['10.10.0.0/16', '10.20.0.0/16', '10.30.0.0/16']
+          - _static |
+            map(attribute='state') |
+            unique == ['blackhole']
+      vars:
+        _rtb: "{{ __molecule_rtb_query.transit_gateway_route_tables.0 }}"
+        _static: "{{ _rtb.routes |
+                     selectattr('type', 'eq', 'static') |
+                     list }}"
+
     - name: Ensure molecule-rtb routes are replaced and purged
+      ansible.builtin.include_role:
+        name: ec2_transit_gateway_route_table
+      vars:
+        ec2_transit_gateway_route_table_list:
+          - name: molecule-rtb
+            purge_routes: true
+            transit_gateway_id: "{{ __molecule_transit_gateway_id }}"
+            routes:
+              - destination_cidr_block: 10.10.0.0/16
+                blackhole: true
+              - destination_cidr_block: 10.20.0.0/16
+                transit_gateway_attachment_id: "{{ __molecule_transit_gateway_attachment_id }}"
+
+    - name: Ensure molecule-rtb route table is queried again
+      linuxhq.aws.ec2_transit_gateway_route_table_info:
+        filters:
+          "tag:Name": molecule-rtb
+          transit-gateway-id: "{{ __molecule_transit_gateway_id }}"
+      register: __molecule_rtb_query
+
+    - name: Ensure molecule-rtb replaced and purged routes are verified
       ansible.builtin.assert:
         that:
           - __molecule_rtb_query.transit_gateway_route_tables | length == 1
