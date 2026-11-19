@@ -38,7 +38,7 @@ provisioner:
           - name: molecule
 
         ec2_transit_gateway_route_table_list:
-          - name: molecule
+          - name: molecule-00
             transit_gateway_id:
               "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
                   d(omit) }}"

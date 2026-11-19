@@ -42,7 +42,7 @@ provisioner:
             - available
 
         ec2_transit_gateway_route_table_list:
-          - name: molecule
+          - name: molecule-00
             tags:
               molecule: ec2_transit_gateway_route_table_info
             transit_gateway_id:
