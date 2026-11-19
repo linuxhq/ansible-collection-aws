@@ -9,6 +9,7 @@
       ansible.builtin.command:
         cmd:
           aws sts get-caller-identity
+            --profile molecule
             --output text
             --query Account
       register: __profile_account
