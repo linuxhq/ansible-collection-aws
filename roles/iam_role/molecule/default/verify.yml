@@ -16,7 +16,7 @@
       ansible.builtin.assert:
         that:
           - _query.iam_roles | length == 1
-          - _query.iam_roles.0.attached_policies |
+          - _query.iam_roles.0.managed_policies |
             map(attribute='policy_name') |
             sort ==
             _query._role.managed_policies | sort
