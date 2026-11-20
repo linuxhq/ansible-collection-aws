@@ -3,15 +3,8 @@
   hosts: all
 
   roles:
-    - role: iam_role
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - role: iam_instance_profile
       iam_instance_profile_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - iam_instance_profile
 ...

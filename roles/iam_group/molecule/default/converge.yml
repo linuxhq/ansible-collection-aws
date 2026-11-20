@@ -3,14 +3,8 @@
   hosts: all
 
   roles:
-    - role: iam_user
-      tags:
-        - molecule-idempotence-notest
-
     - role: iam_group
       iam_group_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - iam_group
 ...
