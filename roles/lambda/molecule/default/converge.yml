@@ -5,25 +5,8 @@
   roles:
     - aws_caller_info
 
-    - role: iam_role
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - role: lambda
       lambda_list: []
-      tags:
-        - molecule-idempotence-notest
 
-  post_tasks:
-    - name: Ensure iam role is propagated to lambda
-      ansible.builtin.pause:
-        seconds: 30
-      when:
-        - not ansible_check_mode
-
-    - name: Ensure roles are delegated
-      ansible.builtin.import_role:
-        name: lambda
-      delegate_to: localhost
+    - lambda
 ...
