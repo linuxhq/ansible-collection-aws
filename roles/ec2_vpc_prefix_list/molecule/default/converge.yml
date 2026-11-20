@@ -5,8 +5,6 @@
   roles:
     - role: ec2_vpc_prefix_list
       ec2_vpc_prefix_list_entries: []
-      tags:
-        - molecule-idempotence-notest
 
     - ec2_vpc_prefix_list
 ...

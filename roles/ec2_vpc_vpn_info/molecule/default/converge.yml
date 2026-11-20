@@ -3,20 +3,8 @@
   hosts: all
 
   roles:
-    - role: ec2_customer_gateway
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ec2_transit_gateway
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ec2_vpc_vpn
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
+    - role: ec2_vpc_vpn_info
+      ec2_vpc_vpn_info_filters: {}
 
     - ec2_vpc_vpn_info
 ...

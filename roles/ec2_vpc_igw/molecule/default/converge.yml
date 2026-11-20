@@ -3,15 +3,8 @@
   hosts: all
 
   roles:
-    - role: ec2_vpc_net
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - role: ec2_vpc_igw
       ec2_vpc_igw_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - ec2_vpc_igw
 ...

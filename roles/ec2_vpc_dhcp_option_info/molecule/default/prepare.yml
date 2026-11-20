@@ -1,0 +1,7 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - ec2_vpc_dhcp_option
+...
