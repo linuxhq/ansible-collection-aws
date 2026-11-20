@@ -4,33 +4,33 @@ provisioner:
     group_vars:
       all:
         ec2_vpc_net_list:
-          - name: molecule
+          - name: molecule-route53-record-info
             cidr_block: 192.168.0.0/24
 
         route53_record_list:
-          - zone: pub.molecule.org
+          - zone: pub.molecule-route53-record-info.org
             records:
-              - record: molecule-1.pub.molecule.org
+              - record: molecule-1.pub.molecule-route53-record-info.org
                 type: A
                 value: 127.0.0.1
-              - record: molecule-2.pub.molecule.org
+              - record: molecule-2.pub.molecule-route53-record-info.org
                 type: A
                 value: 127.0.0.2
 
-          - zone: pvt.molecule.org
+          - zone: pvt.molecule-route53-record-info.org
             private_zone: true
             records:
-              - record: molecule-1.pvt.molecule.org
+              - record: molecule-1.pvt.molecule-route53-record-info.org
                 type: A
                 value: 127.0.0.1
-              - record: molecule-2.pvt.molecule.org
+              - record: molecule-2.pvt.molecule-route53-record-info.org
                 type: A
                 value: 127.0.0.2
 
         route53_zone_list:
-          - zone: pub.molecule.org
-          - zone: pvt.molecule.org
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - zone: pub.molecule-route53-record-info.org
+          - zone: pvt.molecule-route53-record-info.org
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-route53-record-info'].id | d(omit) }}"
             vpc_region:
               "{{ lookup('ansible.builtin.ini',
                          'region',

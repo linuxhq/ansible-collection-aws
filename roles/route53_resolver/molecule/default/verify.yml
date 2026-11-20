@@ -40,39 +40,39 @@
         name: route53_resolver
       vars:
         route53_resolver_list:
-          - name: molecule-cloudflare
+          - name: molecule-route53-resolver-cloudflare
             tags:
               molecule: route53_resolver
             direction: OUTBOUND
             ip_addresses:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id |
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-route53-resolver-a'].id |
                                d(none) }}"
                 ip: 192.168.0.125
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id |
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-route53-resolver-c'].id |
                                d(none) }}"
                 ip: 192.168.0.253
             protocols:
               - Do53
               - DoH
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id |
+              - "{{ _ec2_security_group_info_dict['molecule-route53-resolver'].group_id |
                     d(omit) }}"
-          - name: molecule-google
+          - name: molecule-route53-resolver-google
             tags:
               molecule: route53_resolver
             direction: OUTBOUND
             ip_addresses:
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id |
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-route53-resolver-a'].id |
                                d(none) }}"
                 ip: 192.168.0.126
-              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id |
+              - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-route53-resolver-c'].id |
                                d(none) }}"
                 ip: 192.168.0.254
             protocols:
               - Do53
               - DoH
             security_group_ids:
-              - "{{ _ec2_security_group_info_dict['molecule-route53resolver'].group_id |
+              - "{{ _ec2_security_group_info_dict['molecule-route53-resolver'].group_id |
                     d(omit) }}"
 
     - name: Ensure route53_resolver_info facts are gathered after the change
@@ -82,14 +82,14 @@
     - name: Ensure changed endpoints are verified
       ansible.builtin.assert:
         that:
-          - _route53_resolver_info_dict['molecule-cloudflare'].protocols |
+          - _route53_resolver_info_dict['molecule-route53-resolver-cloudflare'].protocols |
             sort == ['Do53', 'DoH']
-          - _route53_resolver_info_dict['molecule-cloudflare'].status == 'OPERATIONAL'
-          - (_route53_resolver_info_dict['molecule-cloudflare'].ip_addresses | map(attribute='ip') | sort) ==
+          - _route53_resolver_info_dict['molecule-route53-resolver-cloudflare'].status == 'OPERATIONAL'
+          - (_route53_resolver_info_dict['molecule-route53-resolver-cloudflare'].ip_addresses | map(attribute='ip') | sort) ==
               ['192.168.0.125', '192.168.0.253']
-          - _route53_resolver_info_dict['molecule-google'].protocols |
+          - _route53_resolver_info_dict['molecule-route53-resolver-google'].protocols |
             sort == ['Do53', 'DoH']
-          - _route53_resolver_info_dict['molecule-google'].status == 'OPERATIONAL'
-          - (_route53_resolver_info_dict['molecule-google'].ip_addresses | map(attribute='ip') | sort) ==
+          - _route53_resolver_info_dict['molecule-route53-resolver-google'].status == 'OPERATIONAL'
+          - (_route53_resolver_info_dict['molecule-route53-resolver-google'].ip_addresses | map(attribute='ip') | sort) ==
               ['192.168.0.126', '192.168.0.254']
 ...
