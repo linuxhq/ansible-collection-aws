@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_instance_type_info
+      ec2_instance_type_info_instance_types: []
+
     - ec2_instance_type_info
 ...

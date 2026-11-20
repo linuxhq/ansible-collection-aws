@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_launch_template_info
+      ec2_launch_template_info_filters: {}
+
     - ec2_launch_template_info
 ...

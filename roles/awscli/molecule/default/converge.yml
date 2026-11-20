@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: awscli
+
     - awscli
 ...

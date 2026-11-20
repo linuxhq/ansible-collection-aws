@@ -3,6 +3,12 @@ provisioner:
   inventory:
     group_vars:
       all:
+        ec2_vpc_dhcp_option_info_filters:
+          tag:Name:
+            "{{ ec2_vpc_dhcp_option_list |
+                d([]) |
+                map(attribute='name') }}"
+
         ec2_vpc_dhcp_option_list:
           - name: molecule-ec2-vpc-dhcp-option-info-00
             tags:

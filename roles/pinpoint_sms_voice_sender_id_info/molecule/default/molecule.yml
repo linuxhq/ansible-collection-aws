@@ -3,6 +3,11 @@ provisioner:
   inventory:
     group_vars:
       all:
+        pinpoint_sms_voice_sender_id_info_filters:
+          sender-id:
+            "{{ pinpoint_sms_voice_sender_id_list |
+                map(attribute='sender_id') }}"
+
         pinpoint_sms_voice_sender_id_list:
           - sender_id: MOLECULEINF
             iso_country_code: DE

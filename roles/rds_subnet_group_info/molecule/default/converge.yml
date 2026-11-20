@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: rds_subnet_group_info
+      rds_subnet_group_info_name: null
+
     - rds_subnet_group_info
 ...

@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: global_accelerator_info
+
     - global_accelerator_info
 ...

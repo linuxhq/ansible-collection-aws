@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ses_identity_info
+      ses_identity_info_name: null
+
     - ses_identity_info
 ...

@@ -3,5 +3,9 @@
   hosts: all
 
   roles:
+    - role: profile
+      profile_list: []
+      tags: molecule-idempotence-notest
+
     - profile
 ...

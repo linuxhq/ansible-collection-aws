@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_customer_gateway_info
+      ec2_customer_gateway_info_filters: {}
+
     - ec2_customer_gateway_info
 ...

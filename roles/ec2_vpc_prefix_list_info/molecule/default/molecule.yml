@@ -30,4 +30,10 @@ provisioner:
                 description: private-4
               - cidr: 192.168.5.0/24
                 description: private-5
+
+        ec2_vpc_prefix_list_info_filters:
+          prefix-list-name:
+            "{{ ec2_vpc_prefix_list_entries |
+                d([]) |
+                map(attribute='name') }}"
 ...

@@ -6,6 +6,8 @@
     - name: Ensure role is included without filters
       ansible.builtin.include_role:
         name: ssm_association_info
+      vars:
+        ssm_association_info_filters: {}
 
     - name: Ensure info is verified
       ansible.builtin.assert:

@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: sqs_queue_info
+      sqs_queue_info_name: null
+
     - sqs_queue_info
 ...

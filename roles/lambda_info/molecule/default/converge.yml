@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: lambda_info
+      lambda_info_function_name: null
+
     - lambda_info
 ...

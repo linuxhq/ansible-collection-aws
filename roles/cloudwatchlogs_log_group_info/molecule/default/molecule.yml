@@ -3,6 +3,8 @@ provisioner:
   inventory:
     group_vars:
       all:
+        cloudwatchlogs_log_group_info_log_group_name: molecule-cloudwatchlogs-log-group-info-
+
         cloudwatchlogs_log_group_list:
           - name: molecule-cloudwatchlogs-log-group-info-00
             retention: 30

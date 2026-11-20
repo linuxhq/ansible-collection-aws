@@ -3,6 +3,14 @@ provisioner:
   inventory:
     group_vars:
       all:
+        ec2_placement_group_info_filters:
+          group-name:
+            "{{ ec2_placement_group_list |
+                d([]) |
+                map(attribute='placement_groups') |
+                flatten |
+                map(attribute='name') }}"
+
         ec2_placement_group_list:
           - strategy: cluster
             placement_groups:

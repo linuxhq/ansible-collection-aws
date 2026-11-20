@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_flow_log_info
+      ec2_flow_log_info_filters: {}
+
     - ec2_flow_log_info
 ...

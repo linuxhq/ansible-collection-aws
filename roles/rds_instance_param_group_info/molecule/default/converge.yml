@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: rds_instance_param_group_info
+
     - rds_instance_param_group_info
 ...

@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: glue_connection_info
+      glue_connection_info_name: null
+
     - glue_connection_info
 ...

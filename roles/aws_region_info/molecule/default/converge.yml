@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: aws_region_info
+      aws_region_info_filters: {}
+
     - aws_region_info
 ...

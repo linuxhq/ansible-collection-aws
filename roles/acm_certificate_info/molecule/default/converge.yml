@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: acm_certificate_info
+
     - acm_certificate_info
 ...

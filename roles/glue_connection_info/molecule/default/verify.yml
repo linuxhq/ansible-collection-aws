@@ -10,6 +10,8 @@
     - name: Ensure role is included without filters or name
       ansible.builtin.include_role:
         name: glue_connection_info
+      vars:
+        glue_connection_info_name: null
 
     - name: Ensure info is verified
       ansible.builtin.assert:
@@ -49,6 +51,7 @@
       vars:
         glue_connection_info_filters:
           ConnectionType: "{{ glue_connection_list.0.connection_type }}"
+        glue_connection_info_name: null
 
     - name: Ensure info with filters is verified
       ansible.builtin.assert:

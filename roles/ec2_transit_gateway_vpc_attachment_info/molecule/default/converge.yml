@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_transit_gateway_vpc_attachment_info
+      ec2_transit_gateway_vpc_attachment_info_filters: {}
+
     - ec2_transit_gateway_vpc_attachment_info
 ...

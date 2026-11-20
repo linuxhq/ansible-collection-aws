@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: sns_topic_info
+
     - sns_topic_info
 ...

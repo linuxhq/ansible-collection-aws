@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: aws_account_info
+
     - aws_account_info
 ...

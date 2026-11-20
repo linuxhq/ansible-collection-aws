@@ -28,6 +28,8 @@
     - name: Ensure role is included without filters
       ansible.builtin.include_role:
         name: ecs_ecr_info
+      vars:
+        ecs_ecr_info_repository_names: []
 
     - name: Ensure info without filters is verified
       ansible.builtin.assert:

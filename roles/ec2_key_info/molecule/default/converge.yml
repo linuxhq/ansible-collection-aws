@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_key_info
+      ec2_key_info_names: []
+
     - ec2_key_info
 ...

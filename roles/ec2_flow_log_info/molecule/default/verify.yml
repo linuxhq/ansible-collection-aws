@@ -10,11 +10,11 @@
     - ec2_vpc_subnet_info
 
   post_tasks:
-    - name: Ensure role is included without filters
+    - name: Ensure role is included
       ansible.builtin.include_role:
         name: ec2_flow_log_info
 
-    - name: Ensure info without filters is verified
+    - name: Ensure info is verified
       ansible.builtin.assert:
         that:
           - _ec2_flow_log_info_dict['molecule-ec2-flow-log-info-vpc'].flow_log_id is defined

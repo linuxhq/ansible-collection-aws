@@ -3,6 +3,8 @@ provisioner:
   inventory:
     group_vars:
       all:
+        iam_oidc_provider_info_url: "{{ iam_oidc_provider_list.0.url }}"
+
         iam_oidc_provider_list:
           - name: molecule-iam-oidc-provider-info
             tags:

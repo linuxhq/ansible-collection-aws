@@ -1,3 +1,12 @@
 ---
-{}
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        aws_region_info_filters:
+          region-name:
+            - us-east-1
+            - us-east-2
+            - us-west-1
+            - us-west-2
 ...

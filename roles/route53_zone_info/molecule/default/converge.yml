@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: route53_zone_info
+
     - route53_zone_info
 ...

@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - rds_option_group_info role - pass ``rds_option_group_info_major_engine_version`` to the module as
+    ``major_engine_version``. Before, the role passed it as ``engine_version``, which
+    ``amazon.aws.rds_option_group_info`` rejects as an unsupported parameter.
+...

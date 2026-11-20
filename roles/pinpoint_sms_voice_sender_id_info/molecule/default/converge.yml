@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: pinpoint_sms_voice_sender_id_info
+      pinpoint_sms_voice_sender_id_info_filters: {}
+
     - pinpoint_sms_voice_sender_id_info
 ...

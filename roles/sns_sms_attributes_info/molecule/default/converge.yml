@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: sns_sms_attributes_info
+
     - sns_sms_attributes_info
 ...

@@ -6,6 +6,8 @@
     - name: Ensure role is included without filters
       ansible.builtin.include_role:
         name: ec2_pricing_info
+      vars:
+        ec2_pricing_info_filters: []
 
     - name: Ensure empty filters return empty products
       ansible.builtin.assert:
@@ -16,18 +18,6 @@
     - name: Ensure role is included with default pricing endpoint
       ansible.builtin.include_role:
         name: ec2_pricing_info
-      vars:
-        ec2_pricing_info_filters:
-          - field: instanceType
-            value: t3.micro
-          - field: regionCode
-            value: us-east-1
-          - field: operatingSystem
-            value: Linux
-          - field: tenancy
-            value: Shared
-          - field: preInstalledSw
-            value: NA
 
     - name: Ensure default endpoint info is verified
       ansible.builtin.assert:

@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: ssm_instance_info
+
     - ssm_instance_info
 ...

@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: notifications_contacts_info
+
     - notifications_contacts_info
 ...

@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_eip_info
+      ec2_eip_info_filters: {}
+
     - ec2_eip_info
 ...

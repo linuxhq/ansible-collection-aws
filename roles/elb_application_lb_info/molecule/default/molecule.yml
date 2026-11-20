@@ -41,6 +41,11 @@ provisioner:
                 az: us-east-1c
                 cidr: 192.168.0.128/25
 
+        elb_application_lb_info_names:
+          "{{ elb_application_lb_list |
+              d([]) |
+              map(attribute='name') }}"
+
         elb_application_lb_list:
           - name: molecule-alb-info-80
             listeners:

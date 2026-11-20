@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: efs_info
+      efs_info_tags: {}
+
     - efs_info
 ...
