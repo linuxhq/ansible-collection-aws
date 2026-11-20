@@ -11,6 +11,11 @@ provisioner:
               - SMS
             number_type: SIMULATOR
 
+        pinpoint_sms_voice_phone_pool_info_filters:
+          message-type:
+            "{{ pinpoint_sms_voice_phone_pool_list |
+                map(attribute='message_type') }}"
+
         pinpoint_sms_voice_phone_pool_list:
           - name: molecule-pinpoint-sms-voice-phone-pool-info
             tags:

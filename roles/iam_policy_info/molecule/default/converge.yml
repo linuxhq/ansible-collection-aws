@@ -3,5 +3,10 @@
   hosts: all
 
   roles:
+    - role: iam_policy_info
+      iam_policy_info_group_name: null
+      iam_policy_info_role_name: null
+      iam_policy_info_user_name: null
+
     - iam_policy_info
 ...

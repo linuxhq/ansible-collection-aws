@@ -27,6 +27,8 @@
       vars:
         iam_policy_info_group_name: molecule-iam-policy-info-rds
         iam_policy_info_policy_name: MoleculeRdsFullAccess
+        iam_policy_info_role_name: null
+        iam_policy_info_user_name: null
 
     - name: Ensure info with group and policy names is verified
       ansible.builtin.assert:
@@ -42,8 +44,10 @@
       ansible.builtin.include_role:
         name: iam_policy_info
       vars:
+        iam_policy_info_group_name: null
         iam_policy_info_policy_name: MoleculeS3FullAccess
         iam_policy_info_role_name: molecule-iam-policy-info-s3
+        iam_policy_info_user_name: null
 
     - name: Ensure info with role and policy names is verified
       ansible.builtin.assert:
@@ -59,7 +63,9 @@
       ansible.builtin.include_role:
         name: iam_policy_info
       vars:
+        iam_policy_info_group_name: null
         iam_policy_info_policy_name: MoleculeEc2FullAccess
+        iam_policy_info_role_name: null
         iam_policy_info_user_name: molecule-iam-policy-info-ec2
 
     - name: Ensure info with user and policy names is verified
@@ -89,7 +95,9 @@
       ansible.builtin.include_role:
         name: iam_policy_info
       vars:
+        iam_policy_info_group_name: null
         iam_policy_info_role_name: molecule-iam-policy-info-missing
+        iam_policy_info_user_name: null
 
     - name: Ensure info with a nonexistent role name is verified
       ansible.builtin.assert:

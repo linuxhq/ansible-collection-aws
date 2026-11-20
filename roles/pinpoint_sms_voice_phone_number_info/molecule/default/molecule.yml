@@ -3,6 +3,11 @@ provisioner:
   inventory:
     group_vars:
       all:
+        pinpoint_sms_voice_phone_number_info_filters:
+          number-type:
+            "{{ pinpoint_sms_voice_phone_number_list |
+                map(attribute='number_type') }}"
+
         pinpoint_sms_voice_phone_number_list:
           - name: molecule-pinpoint-sms-voice-phone-number-info-simulator
             tags:

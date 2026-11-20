@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: iam_user_info
+
     - iam_user_info
 ...

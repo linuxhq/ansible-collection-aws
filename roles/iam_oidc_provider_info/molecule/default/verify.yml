@@ -25,6 +25,7 @@
         name: iam_oidc_provider_info
       vars:
         iam_oidc_provider_info_arn: "{{ iam_oidc_provider_info_arn_filter }}"
+        iam_oidc_provider_info_url: null
 
     - name: Ensure info with arn is verified
       ansible.builtin.assert:
@@ -52,6 +53,7 @@
         iam_oidc_provider_info_arn:
           "{{ iam_oidc_provider_info_arn_filter |
               replace('oidc.molecule-iam-oidc-provider-info.org', 'oidc.missing.example.com') }}"
+        iam_oidc_provider_info_url: null
 
     - name: Ensure info with an unknown arn is verified
       ansible.builtin.assert:

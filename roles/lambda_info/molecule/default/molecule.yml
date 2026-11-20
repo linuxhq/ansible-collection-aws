@@ -18,6 +18,8 @@ provisioner:
             managed_policies:
               - ReadOnlyAccess
 
+        lambda_info_function_name: "{{ lambda_list.0.name }}"
+
         lambda_list:
           - name: molecule-lambda-info-pass
             architecture: x86_64

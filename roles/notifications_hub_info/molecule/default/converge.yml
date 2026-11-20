@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: notifications_hub_info
+
     - notifications_hub_info
 ...

@@ -53,6 +53,11 @@ provisioner:
             managed_policies:
               - AmazonRDSEnhancedMonitoringRole
 
+        rds_instance_info_filters:
+          db-instance-id:
+            "{{ rds_instance_list |
+                map(attribute='db_instance_identifier') }}"
+
         rds_instance_list:
           - allocated_storage: 20
             db_instance_class: db.t3.medium
