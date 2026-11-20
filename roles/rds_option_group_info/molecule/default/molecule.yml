@@ -6,7 +6,7 @@ provisioner:
         rds_option_group_list:
           - engine_name: mariadb
             major_engine_version: 10.6
-            option_group_name: mariadb106
+            option_group_name: molecule-rds-option-group-info-mariadb106
             options:
               - option_name: MARIADB_AUDIT_PLUGIN
                 option_settings:
@@ -19,7 +19,7 @@ provisioner:
 
           - engine_name: mariadb
             major_engine_version: 11.4
-            option_group_name: mariadb114
+            option_group_name: molecule-rds-option-group-info-mariadb114
             options:
               - option_name: MARIADB_AUDIT_PLUGIN
                 option_settings:
@@ -32,7 +32,7 @@ provisioner:
 
           - engine_name: mariadb
             major_engine_version: 11.8
-            option_group_name: mariadb118
+            option_group_name: molecule-rds-option-group-info-mariadb118
             options:
               - option_name: MARIADB_AUDIT_PLUGIN
                 option_settings:

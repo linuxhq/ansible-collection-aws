@@ -13,74 +13,74 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _rds_instance_info_dict['mariadb106'].allocated_storage ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].allocated_storage ==
               rds_instance_list.0.allocated_storage
-          - _rds_instance_info_dict['mariadb106'].db_instance_class ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].db_instance_class ==
               rds_instance_list.0.db_instance_class
-          - _rds_instance_info_dict['mariadb106'].db_subnet_group.db_subnet_group_name ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].db_subnet_group.db_subnet_group_name ==
               rds_instance_list.0.db_subnet_group_name
-          - _rds_instance_info_dict['mariadb106'].db_subnet_group.subnets |
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].db_subnet_group.subnets |
             map(attribute='subnet_identifier') |
             sort ==
             rds_subnet_group_list.0.subnets |
             sort
-          - _rds_instance_info_dict['mariadb106'].endpoint.address is defined
-          - _rds_instance_info_dict['mariadb106'].endpoint.port is defined
-          - _rds_instance_info_dict['mariadb106'].engine ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].endpoint.address is defined
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].endpoint.port is defined
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].engine ==
               rds_instance_list.0.engine
-          - _rds_instance_info_dict['mariadb106'].engine_version ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].engine_version ==
               rds_instance_list.0.engine_version
-          - _rds_instance_info_dict['mariadb106'].iam_database_authentication_enabled == false
-          - _rds_instance_info_dict['mariadb106'].master_username ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].iam_database_authentication_enabled == false
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].master_username ==
               rds_instance_list.0.master_username
-          - _rds_instance_info_dict['mariadb106'].multi_az == false
-          - _rds_instance_info_dict['mariadb106'].publicly_accessible ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].multi_az == false
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].publicly_accessible ==
               rds_instance_list.0.publicly_accessible
-          - _rds_instance_info_dict['mariadb118'].allocated_storage ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].allocated_storage ==
               rds_instance_list.1.allocated_storage
-          - _rds_instance_info_dict['mariadb118'].auto_minor_version_upgrade ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].auto_minor_version_upgrade ==
               rds_instance_list.1.auto_minor_version_upgrade
-          - _rds_instance_info_dict['mariadb118'].ca_certificate_identifier ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].ca_certificate_identifier ==
               rds_instance_list.1.ca_certificate_identifier
-          - _rds_instance_info_dict['mariadb118'].copy_tags_to_snapshot ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].copy_tags_to_snapshot ==
               rds_instance_list.1.copy_tags_to_snapshot
-          - _rds_instance_info_dict['mariadb118'].db_instance_class ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].db_instance_class ==
               rds_instance_list.1.db_instance_class
-          - _rds_instance_info_dict['mariadb118'].db_parameter_groups.0.db_parameter_group_name ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].db_parameter_groups.0.db_parameter_group_name ==
               rds_instance_list.1.db_parameter_group_name
-          - _rds_instance_info_dict['mariadb118'].db_subnet_group.db_subnet_group_name ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].db_subnet_group.db_subnet_group_name ==
               rds_instance_list.1.db_subnet_group_name
-          - _rds_instance_info_dict['mariadb118'].db_subnet_group.subnets |
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].db_subnet_group.subnets |
             map(attribute='subnet_identifier') |
             sort ==
             rds_subnet_group_list.0.subnets |
             sort
-          - _rds_instance_info_dict['mariadb118'].enabled_cloudwatch_logs_exports ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].enabled_cloudwatch_logs_exports ==
               rds_instance_list.1.enable_cloudwatch_logs_exports
-          - _rds_instance_info_dict['mariadb118'].endpoint.address is defined
-          - _rds_instance_info_dict['mariadb118'].endpoint.port is defined
-          - _rds_instance_info_dict['mariadb118'].engine ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].endpoint.address is defined
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].endpoint.port is defined
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].engine ==
               rds_instance_list.1.engine
-          - _rds_instance_info_dict['mariadb118'].engine_version ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].engine_version ==
               rds_instance_list.1.engine_version
-          - _rds_instance_info_dict['mariadb118'].iam_database_authentication_enabled ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].iam_database_authentication_enabled ==
               rds_instance_list.1.enable_iam_database_authentication
-          - _rds_instance_info_dict['mariadb118'].master_username ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].master_username ==
               rds_instance_list.1.master_username
-          - _rds_instance_info_dict['mariadb118'].max_allocated_storage ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].max_allocated_storage ==
               rds_instance_list.1.max_allocated_storage
-          - _rds_instance_info_dict['mariadb118'].monitoring_interval ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].monitoring_interval ==
               rds_instance_list.1.monitoring_interval
-          - _rds_instance_info_dict['mariadb118'].monitoring_role_arn ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].monitoring_role_arn ==
               rds_instance_list.1.monitoring_role_arn
-          - _rds_instance_info_dict['mariadb118'].multi_az ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].multi_az ==
               rds_instance_list.1.multi_az
-          - _rds_instance_info_dict['mariadb118'].option_group_memberships.0.option_group_name ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].option_group_memberships.0.option_group_name ==
               rds_instance_list.1.option_group_name
-          - _rds_instance_info_dict['mariadb118'].publicly_accessible ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].publicly_accessible ==
               rds_instance_list.1.publicly_accessible
-          - _rds_instance_info_dict['mariadb118'].storage_encrypted ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].storage_encrypted ==
               rds_instance_list.1.storage_encrypted
-          - _rds_instance_info_dict['mariadb118'].storage_type ==
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].storage_type ==
               rds_instance_list.1.storage_type
 ...

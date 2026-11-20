@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         rds_instance_param_group_list:
-          - name: mariadb106
+          - name: molecule-rds-instance-param-group-info-mariadb106
             engine: mariadb10.5
             immediate: true
             params:
@@ -19,7 +19,7 @@ provisioner:
               log_warnings: 2
               max_allowed_packet: 33554432
 
-          - name: mariadb114
+          - name: molecule-rds-instance-param-group-info-mariadb114
             engine: mariadb11.4
             immediate: true
             params:
@@ -34,7 +34,7 @@ provisioner:
               log_warnings: 2
               max_allowed_packet: 33554432
 
-          - name: mariadb118
+          - name: molecule-rds-instance-param-group-info-mariadb118
             engine: mariadb11.8
             immediate: true
             params:

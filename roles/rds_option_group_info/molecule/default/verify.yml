@@ -9,25 +9,25 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _rds_option_group_info_dict['mariadb106'].engine_name is defined
-          - _rds_option_group_info_dict['mariadb106'].major_engine_version is defined
-          - _rds_option_group_info_dict['mariadb106'].option_group_arn is defined
-          - _rds_option_group_info_dict['mariadb106'].option_group_description is defined
-          - _rds_option_group_info_dict['mariadb106'].option_group_name is defined
-          - _rds_option_group_info_dict['mariadb106'].options is defined
-          - _rds_option_group_info_dict['mariadb106'].options | length > 0
-          - _rds_option_group_info_dict['mariadb114'].engine_name is defined
-          - _rds_option_group_info_dict['mariadb114'].major_engine_version is defined
-          - _rds_option_group_info_dict['mariadb114'].option_group_arn is defined
-          - _rds_option_group_info_dict['mariadb114'].option_group_description is defined
-          - _rds_option_group_info_dict['mariadb114'].option_group_name is defined
-          - _rds_option_group_info_dict['mariadb114'].options is defined
-          - _rds_option_group_info_dict['mariadb114'].options | length > 0
-          - _rds_option_group_info_dict['mariadb118'].engine_name is defined
-          - _rds_option_group_info_dict['mariadb118'].major_engine_version is defined
-          - _rds_option_group_info_dict['mariadb118'].option_group_arn is defined
-          - _rds_option_group_info_dict['mariadb118'].option_group_description is defined
-          - _rds_option_group_info_dict['mariadb118'].option_group_name is defined
-          - _rds_option_group_info_dict['mariadb118'].options is defined
-          - _rds_option_group_info_dict['mariadb118'].options | length > 0
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb106'].engine_name is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb106'].major_engine_version is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb106'].option_group_arn is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb106'].option_group_description is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb106'].option_group_name is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb106'].options is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb106'].options | length > 0
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb114'].engine_name is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb114'].major_engine_version is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb114'].option_group_arn is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb114'].option_group_description is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb114'].option_group_name is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb114'].options is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb114'].options | length > 0
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb118'].engine_name is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb118'].major_engine_version is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb118'].option_group_arn is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb118'].option_group_description is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb118'].option_group_name is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb118'].options is defined
+          - _rds_option_group_info_dict['molecule-rds-option-group-info-mariadb118'].options | length > 0
 ...

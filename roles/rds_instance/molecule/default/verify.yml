@@ -9,12 +9,12 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _rds_instance_info_dict['mariadb106'].db_instance_class ==
+          - _rds_instance_info_dict['molecule-rds-instance-mariadb106'].db_instance_class ==
               rds_instance_list.0.db_instance_class
-          - _rds_instance_info_dict['mariadb106'].engine_version ==
+          - _rds_instance_info_dict['molecule-rds-instance-mariadb106'].engine_version ==
               rds_instance_list.0.engine_version
-          - _rds_instance_info_dict['mariadb118'].db_instance_class ==
+          - _rds_instance_info_dict['molecule-rds-instance-mariadb118'].db_instance_class ==
               rds_instance_list.1.db_instance_class
-          - _rds_instance_info_dict['mariadb118'].engine_version ==
+          - _rds_instance_info_dict['molecule-rds-instance-mariadb118'].engine_version ==
               rds_instance_list.1.engine_version
 ...
