@@ -3,32 +3,5 @@
   hosts: all
 
   roles:
-    - aws_caller_info
-
-    - role: iam_role
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ec2_vpc_net
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ec2_vpc_subnet
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ec2_security_group
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: eks_cluster
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - eks_cluster_info
 ...

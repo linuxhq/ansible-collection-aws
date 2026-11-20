@@ -3,12 +3,5 @@
   hosts: all
 
   roles:
-    - role: ecs_ecr
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ecs_ecr_info
-      ecs_ecr_info_repository_names:
-        - molecule-ecs-ecr-info-00
+    - ecs_ecr_info
 ...
