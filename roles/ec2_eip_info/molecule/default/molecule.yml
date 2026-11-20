@@ -3,6 +3,12 @@ provisioner:
   inventory:
     group_vars:
       all:
+        ec2_eip_info_filters:
+          tag:Name:
+            "{{ ec2_eip_list |
+                d([]) |
+                map(attribute='name') }}"
+
         ec2_eip_list:
           - name: molecule-ec2-eip-info-01
             tags:

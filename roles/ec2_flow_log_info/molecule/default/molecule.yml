@@ -8,6 +8,12 @@ provisioner:
         ec2_flow_log_bucket_resource:
           "arn:aws:s3:::{{ ec2_flow_log_bucket_name }}"
 
+        ec2_flow_log_info_filters:
+          tag:Name:
+            "{{ ec2_flow_log_list |
+                d([]) |
+                map(attribute='name') }}"
+
         ec2_flow_log_list:
           - name: molecule-ec2-flow-log-info-vpc
             tags:

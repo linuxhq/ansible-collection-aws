@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: aws_az_info
+      aws_az_info_filters: {}
+
     - aws_az_info
 ...

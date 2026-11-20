@@ -3,6 +3,11 @@ provisioner:
   inventory:
     group_vars:
       all:
+        ec2_key_info_names:
+          "{{ ec2_key_list |
+              d([]) |
+              map(attribute='name') }}"
+
         ec2_key_list:
           - name: molecule-ec2-key-info-00
             key_material: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBwCfEABKtScVJMqT8kH0rdaisRopPeLqAUnRz4BKM7S

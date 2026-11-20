@@ -3,6 +3,12 @@ provisioner:
   inventory:
     group_vars:
       all:
+        ec2_customer_gateway_info_filters:
+          tag:Name:
+            "{{ ec2_customer_gateway_list |
+                d([]) |
+                map(attribute='name') }}"
+
         ec2_customer_gateway_list:
           - name: molecule-ec2-customer-gateway-info-00
             ip_address: 1.1.1.30

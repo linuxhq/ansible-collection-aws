@@ -1,3 +1,9 @@
 ---
-{}
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        aws_az_info_filters:
+          state:
+            - available
 ...

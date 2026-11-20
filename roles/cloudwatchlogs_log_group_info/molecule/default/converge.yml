@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: cloudwatchlogs_log_group_info
+      cloudwatchlogs_log_group_info_log_group_name: null
+
     - cloudwatchlogs_log_group_info
 ...
