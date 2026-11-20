@@ -6,6 +6,8 @@
     - name: Ensure role is included without filters
       ansible.builtin.include_role:
         name: wafv2_ip_set_info
+      vars:
+        wafv2_ip_set_info_name: null
 
     - name: Ensure info is verified
       ansible.builtin.assert:
@@ -32,6 +34,7 @@
         name: wafv2_ip_set_info
       vars:
         wafv2_ip_set_info_id: "{{ wafv2_ip_set_info_id_filter }}"
+        wafv2_ip_set_info_name: null
 
     - name: Ensure info with ip set id is verified
       ansible.builtin.assert:

@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ssm_association_info
+      ssm_association_info_filters: {}
+
     - ssm_association_info
 ...

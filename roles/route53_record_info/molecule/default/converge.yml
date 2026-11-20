@@ -3,5 +3,7 @@
   hosts: all
 
   roles:
+    - role: route53_record_info
+
     - route53_record_info
 ...

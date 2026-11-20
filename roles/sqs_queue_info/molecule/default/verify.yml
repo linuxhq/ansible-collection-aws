@@ -86,6 +86,7 @@
       ansible.builtin.include_role:
         name: sqs_queue_info
       vars:
+        sqs_queue_info_name: null
         sqs_queue_info_queue_name_prefix: molecule-sqs-queue-info-
 
     - name: Ensure info with queue name prefix is verified

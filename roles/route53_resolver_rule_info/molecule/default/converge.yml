@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: route53_resolver_rule_info
+      route53_resolver_rule_info_filters: {}
+
     - route53_resolver_rule_info
 ...

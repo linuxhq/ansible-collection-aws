@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: wafv2_web_acl_info
+      wafv2_web_acl_info_name: null
+
     - wafv2_web_acl_info
 ...

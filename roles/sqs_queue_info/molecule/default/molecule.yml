@@ -3,6 +3,8 @@ provisioner:
   inventory:
     group_vars:
       all:
+        sqs_queue_info_name: "{{ sqs_queue_list.0.name }}"
+
         sqs_queue_list:
           - name: molecule-sqs-queue-info-bounce
             policy:

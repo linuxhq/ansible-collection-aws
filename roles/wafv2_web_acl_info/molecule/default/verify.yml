@@ -6,6 +6,8 @@
     - name: Ensure role is included without filters
       ansible.builtin.include_role:
         name: wafv2_web_acl_info
+      vars:
+        wafv2_web_acl_info_name: null
 
     - name: Ensure info is verified
       ansible.builtin.assert:
@@ -61,6 +63,7 @@
         name: wafv2_web_acl_info
       vars:
         wafv2_web_acl_info_id: "{{ wafv2_web_acl_info_id_filter }}"
+        wafv2_web_acl_info_name: null
 
     - name: Ensure info with web acl id is verified
       ansible.builtin.assert:

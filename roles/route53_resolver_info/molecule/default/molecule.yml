@@ -45,6 +45,12 @@ provisioner:
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(25,1) }}"
 
+        route53_resolver_info_filters:
+          Name:
+            "{{ route53_resolver_list |
+                d([]) |
+                map(attribute='name') }}"
+
         route53_resolver_list:
           - name: molecule-route53-resolver-info-cloudflare
             tags:

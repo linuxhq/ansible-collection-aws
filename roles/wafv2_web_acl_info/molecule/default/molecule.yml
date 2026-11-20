@@ -3,6 +3,8 @@ provisioner:
   inventory:
     group_vars:
       all:
+        wafv2_web_acl_info_name: "{{ wafv2_web_acl_list.0.name }}"
+
         wafv2_web_acl_list:
           - name: molecule-wafv2-web-acl-info-amazonipreputationlist
             scope: regional
