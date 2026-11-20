@@ -1448,9 +1448,13 @@ def test_in_progress_updates_are_awaited_before_the_first_update():
 def test_unchanged_cluster_does_not_wait_for_updates():
     stored = dict(UNENCRYPTED_CLUSTER, encryptionConfig=STORED_ENCRYPTION)
     wait_for_updates = Mock()
-    _, result = run_present(FakeModule(eks_params(**ENCRYPTION_PARAMS)), [stored], wait_for_updates=wait_for_updates)
+    client, result = run_present(
+        FakeModule(eks_params(**ENCRYPTION_PARAMS)), [stored], wait_for_updates=wait_for_updates
+    )
 
     wait_for_updates.assert_not_called()
+    client.associate_encryption_config.assert_not_called()
+    client.update_cluster_config.assert_not_called()
     assert result["changed"] is False
 
 
