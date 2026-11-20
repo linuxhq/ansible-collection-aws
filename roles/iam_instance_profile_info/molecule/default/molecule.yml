@@ -4,13 +4,13 @@ provisioner:
     group_vars:
       all:
         iam_instance_profile_list:
-          - name: molecule-instance-profile-ec2
-            role: molecule-role-ec2
-          - name: molecule-instance-profile-vpc
-            role: molecule-role-vpc
+          - name: molecule-iam-instance-profile-info-instance-profile-ec2
+            role: molecule-iam-instance-profile-info-role-ec2
+          - name: molecule-iam-instance-profile-info-instance-profile-vpc
+            role: molecule-iam-instance-profile-info-role-vpc
 
         iam_role_list:
-          - name: molecule-role-ec2
+          - name: molecule-iam-instance-profile-info-role-ec2
             assume_role_policy_document:
               Version: '2012-10-17'
               Statement:
@@ -22,7 +22,7 @@ provisioner:
             create_instance_profile: false
             managed_policies:
               - AmazonEC2ReadOnlyAccess
-          - name: molecule-role-vpc
+          - name: molecule-iam-instance-profile-info-role-vpc
             assume_role_policy_document:
               Version: '2012-10-17'
               Statement:

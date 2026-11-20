@@ -14,33 +14,33 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _glue_connection_info_dict['molecule'].connection_properties.KAFKA_SSL_ENABLED ==
+          - _glue_connection_info_dict['molecule-glue-connection-info'].connection_properties.KAFKA_SSL_ENABLED ==
               glue_connection_list.0.connection_properties.KAFKA_SSL_ENABLED
-          - _glue_connection_info_dict['molecule'].connection_type ==
+          - _glue_connection_info_dict['molecule-glue-connection-info'].connection_type ==
               glue_connection_list.0.connection_type
-          - _glue_connection_info_dict['molecule'].description ==
+          - _glue_connection_info_dict['molecule-glue-connection-info'].description ==
               glue_connection_list.0.name
-          - _glue_connection_info_dict['molecule'].name ==
+          - _glue_connection_info_dict['molecule-glue-connection-info'].name ==
               glue_connection_list.0.name
-          - _glue_connection_info_dict['molecule'].physical_connection_requirements.availability_zone ==
+          - _glue_connection_info_dict['molecule-glue-connection-info'].physical_connection_requirements.availability_zone ==
               glue_connection_list.0.availability_zone
-          - _glue_connection_info_dict['molecule'].physical_connection_requirements.security_group_id_list ==
+          - _glue_connection_info_dict['molecule-glue-connection-info'].physical_connection_requirements.security_group_id_list ==
               glue_connection_list.0.security_groups
-          - _glue_connection_info_dict['molecule'].physical_connection_requirements.subnet_id ==
+          - _glue_connection_info_dict['molecule-glue-connection-info'].physical_connection_requirements.subnet_id ==
               glue_connection_list.0.subnet_id
 
     - name: Ensure role is included with name
       ansible.builtin.include_role:
         name: glue_connection_info
       vars:
-        glue_connection_info_name: molecule
+        glue_connection_info_name: molecule-glue-connection-info
 
     - name: Ensure info with name is verified
       ansible.builtin.assert:
         that:
           - _glue_connection_info_list | length == 1
-          - _glue_connection_info_dict.keys() | list == ['molecule']
-          - _glue_connection_info_dict['molecule'].connection_type ==
+          - _glue_connection_info_dict.keys() | list == ['molecule-glue-connection-info']
+          - _glue_connection_info_dict['molecule-glue-connection-info'].connection_type ==
               glue_connection_list.0.connection_type
 
     - name: Ensure role is included with filters
@@ -53,13 +53,13 @@
     - name: Ensure info with filters is verified
       ansible.builtin.assert:
         that:
-          - _glue_connection_info_dict['molecule'].name == glue_connection_list.0.name
+          - _glue_connection_info_dict['molecule-glue-connection-info'].name == glue_connection_list.0.name
 
     - name: Ensure role is included with a missing name
       ansible.builtin.include_role:
         name: glue_connection_info
       vars:
-        glue_connection_info_name: molecule-missing
+        glue_connection_info_name: molecule-glue-connection-info-missing
 
     - name: Ensure info with a missing name is verified
       ansible.builtin.assert:

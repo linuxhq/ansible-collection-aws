@@ -4,33 +4,33 @@ provisioner:
     group_vars:
       all:
         iam_group_list:
-          - name: molecule-admin
+          - name: molecule-iam-group-admin
             managed_policies:
               - AdministratorAccess
             purge_policies: true
             users:
-              - molecule-admin
+              - molecule-iam-group-admin
 
-          - name: molecule-kopia
+          - name: molecule-iam-group-kopia
             managed_policies:
               - AmazonS3FullAccess
             purge_policies: true
             users:
-              - molecule-kopia
+              - molecule-iam-group-kopia
 
-          - name: molecule-molecule
+          - name: molecule-iam-group-molecule
             managed_policies:
               - AmazonEC2FullAccess
               - AmazonVPCReadOnlyAccess
             purge_policies: true
             users:
-              - molecule-molecule
+              - molecule-iam-group-molecule
 
         iam_user_list:
-          - name: molecule-admin
+          - name: molecule-iam-group-admin
             purge_policies: true
-          - name: molecule-kopia
+          - name: molecule-iam-group-kopia
             purge_policies: true
-          - name: molecule-molecule
+          - name: molecule-iam-group-molecule
             purge_policies: true
 ...

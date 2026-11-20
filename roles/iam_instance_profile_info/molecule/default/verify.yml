@@ -9,12 +9,12 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _iam_instance_profile_info_dict['molecule-instance-profile-ec2'].instance_profile_id is defined
-          - _iam_instance_profile_info_dict['molecule-instance-profile-ec2'].instance_profile_name is defined
-          - _iam_instance_profile_info_dict['molecule-instance-profile-ec2'].roles.0.role_name ==
+          - _iam_instance_profile_info_dict['molecule-iam-instance-profile-info-instance-profile-ec2'].instance_profile_id is defined
+          - _iam_instance_profile_info_dict['molecule-iam-instance-profile-info-instance-profile-ec2'].instance_profile_name is defined
+          - _iam_instance_profile_info_dict['molecule-iam-instance-profile-info-instance-profile-ec2'].roles.0.role_name ==
               iam_instance_profile_list.0.role
-          - _iam_instance_profile_info_dict['molecule-instance-profile-vpc'].instance_profile_id is defined
-          - _iam_instance_profile_info_dict['molecule-instance-profile-vpc'].instance_profile_name is defined
-          - _iam_instance_profile_info_dict['molecule-instance-profile-vpc'].roles.0.role_name ==
+          - _iam_instance_profile_info_dict['molecule-iam-instance-profile-info-instance-profile-vpc'].instance_profile_id is defined
+          - _iam_instance_profile_info_dict['molecule-iam-instance-profile-info-instance-profile-vpc'].instance_profile_name is defined
+          - _iam_instance_profile_info_dict['molecule-iam-instance-profile-info-instance-profile-vpc'].roles.0.role_name ==
               iam_instance_profile_list.1.role
 ...
