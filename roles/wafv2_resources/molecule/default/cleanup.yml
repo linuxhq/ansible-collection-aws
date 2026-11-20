@@ -44,6 +44,23 @@
         - wafv2_resources
         - wafv2_web_acl
         - elb_application_lb
+      loop_control:
+        label: "{{ _cleanup }}"
+        loop_var: _cleanup
+
+    - name: Ensure application load balancer network interfaces are deleted
+      amazon.aws.ec2_eni_info:
+        filters:
+          description: ELB app/molecule-wafv2-resources/*
+      register: _eni_query
+      delay: 10
+      retries: 60
+      until: _eni_query.network_interfaces | length == 0
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _cleanup }}"
+      loop:
         - elb_target_group
         - ec2_security_group
         - ec2_vpc_subnet

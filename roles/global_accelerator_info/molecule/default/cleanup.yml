@@ -34,14 +34,22 @@
           "{{ global_accelerator_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure global accelerator role is included
+    - name: Ensure roles are included
       ansible.builtin.include_role:
-        name: global_accelerator
+        name: "{{ _cleanup }}"
+      loop:
+        - global_accelerator
+        - elb_application_lb
+      loop_control:
+        label: "{{ _cleanup }}"
+        loop_var: _cleanup
 
-    - name: Ensure global accelerator network interfaces are deleted
+    - name: Ensure network interfaces are deleted
       amazon.aws.ec2_eni_info:
         filters:
-          description: GlobalAccelerator configured ENI
+          description:
+            - GlobalAccelerator configured ENI
+            - ELB app/molecule-ga-info-*
           vpc-id: "{{ _ec2_vpc_net_info_dict['molecule-global-accelerator-info'].id | d('none') }}"
       register: _eni_query
       delay: 10
@@ -52,7 +60,6 @@
       ansible.builtin.include_role:
         name: "{{ _cleanup }}"
       loop:
-        - elb_application_lb
         - elb_target_group
         - ec2_security_group
         - ec2_vpc_subnet

@@ -30,11 +30,23 @@
           "{{ elb_target_group_list |
               map('combine', {'state': 'absent'}) }}"
 
+    - name: Ensure application load balancer role is included
+      ansible.builtin.include_role:
+        name: elb_application_lb
+
+    - name: Ensure application load balancer network interfaces are deleted
+      amazon.aws.ec2_eni_info:
+        filters:
+          description: ELB app/molecule-alb-info-*
+      register: _eni_query
+      delay: 10
+      retries: 60
+      until: _eni_query.network_interfaces | length == 0
+
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _cleanup }}"
       loop:
-        - elb_application_lb
         - ec2_security_group
         - elb_target_group
         - ec2_vpc_subnet
