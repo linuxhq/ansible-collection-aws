@@ -3,25 +3,5 @@
   hosts: all
 
   roles:
-    - role: iam_group
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: iam_user
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: iam_role
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: iam_policy
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - iam_policy_info
 ...

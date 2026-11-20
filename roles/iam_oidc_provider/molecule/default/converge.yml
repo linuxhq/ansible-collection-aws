@@ -5,8 +5,6 @@
   roles:
     - role: iam_oidc_provider
       iam_oidc_provider_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - iam_oidc_provider
 ...

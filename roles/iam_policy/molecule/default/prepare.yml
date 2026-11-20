@@ -1,0 +1,8 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - iam_group
+    - iam_user
+...

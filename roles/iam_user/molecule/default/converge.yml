@@ -5,8 +5,6 @@
   roles:
     - role: iam_user
       iam_user_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - iam_user
 ...

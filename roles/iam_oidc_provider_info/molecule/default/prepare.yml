@@ -1,0 +1,7 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - iam_oidc_provider
+...

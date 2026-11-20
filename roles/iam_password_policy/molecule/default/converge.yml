@@ -13,8 +13,6 @@
       iam_password_policy_require_numbers: false
       iam_password_policy_require_symbols: false
       iam_password_policy_require_uppercase: false
-      tags:
-        - molecule-idempotence-notest
 
     - iam_password_policy
 ...

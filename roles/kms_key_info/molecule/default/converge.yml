@@ -3,18 +3,5 @@
   hosts: all
 
   roles:
-    - role: aws_caller_info
-      check_mode: false
-
-    - role: iam_role
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: kms_key
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - kms_key_info
 ...

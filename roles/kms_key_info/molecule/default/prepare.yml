@@ -1,0 +1,9 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - aws_caller_info
+    - iam_role
+    - kms_key
+...
