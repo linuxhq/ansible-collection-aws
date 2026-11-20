@@ -4,14 +4,7 @@
 
   roles:
     - role: ssm_document_info
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ssm_document
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
+      ssm_document_info_name: null
 
     - ssm_document_info
 ...

@@ -1,0 +1,30 @@
+---
+- name: Prepare
+  hosts: all
+
+  pre_tasks:
+    - name: Ensure aws session manager proxy package is present
+      become: true
+      ansible.builtin.dnf:
+        disable_gpg_check: true
+        name: "{{ __ssm_proxy_baseurl }}/{{ __ssm_proxy_arch[ansible_facts.architecture] }}/session-manager-plugin.rpm"
+        state: present
+      when: ansible_facts.system == 'Linux'
+      vars:
+        __ssm_proxy_baseurl: https://s3.amazonaws.com/session-manager-downloads/plugin/latest
+        __ssm_proxy_arch:
+          aarch64: linux_arm64
+          x86_64: linux_64bit
+
+  roles:
+    - ssm_session
+    - iam_role
+    - iam_instance_profile
+    - ec2_vpc_net
+    - ec2_vpc_igw
+    - ec2_vpc_subnet
+    - ec2_vpc_nat_gateway
+    - ec2_vpc_route_table
+    - ec2_security_group
+    - ec2_instance
+...

@@ -5,8 +5,6 @@
   roles:
     - role: ssm_document
       ssm_document_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - ssm_document
 ...

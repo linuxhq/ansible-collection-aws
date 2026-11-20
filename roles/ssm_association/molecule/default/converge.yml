@@ -5,8 +5,6 @@
   roles:
     - role: ssm_association
       ssm_association_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - ssm_association
 ...
