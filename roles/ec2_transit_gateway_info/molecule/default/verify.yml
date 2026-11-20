@@ -10,7 +10,8 @@
       ansible.builtin.assert:
         that:
           - _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-info-00'].transit_gateway_id is defined
-          - _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-info-00'].tags.molecule == 'ec2_transit_gateway_info'
+          - _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-info-00'].tags.molecule ==
+              'ec2_transit_gateway_info'
           - _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-info-01'].transit_gateway_id is defined
           - _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-info-02'].transit_gateway_id is defined
           - _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-info-03'].transit_gateway_id is defined

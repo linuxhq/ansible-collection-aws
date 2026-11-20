@@ -10,7 +10,8 @@
       ansible.builtin.assert:
         that:
           - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ftp'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ftp'].tags.molecule == 'ec2_security_group_info'
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ftp'].tags.molecule ==
+              'ec2_security_group_info'
           - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ssh'].group_id is defined
           - _ec2_security_group_info_dict['molecule-ec2-security-group-info-telnet'].group_id is defined
           - _ec2_security_group_info_dict['molecule-ec2-security-group-info-smtp'].group_id is defined

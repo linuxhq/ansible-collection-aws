@@ -12,7 +12,8 @@
         that:
           - _lambda_info_dict['molecule-lambda-info-pass'].architectures.0 == lambda_list.0.architecture
           - _lambda_info_dict['molecule-lambda-info-pass'].description == lambda_list.0.name
-          - _lambda_info_dict['molecule-lambda-info-pass'].environment.variables.MOLECULE == lambda_list.0.environment_variables.MOLECULE
+          - _lambda_info_dict['molecule-lambda-info-pass'].environment.variables.MOLECULE ==
+              lambda_list.0.environment_variables.MOLECULE
           - _lambda_info_dict['molecule-lambda-info-pass'].function_arn is defined
           - _lambda_info_dict['molecule-lambda-info-pass'].function_name == lambda_list.0.name
           - _lambda_info_dict['molecule-lambda-info-pass'].memory_size == lambda_list.0.memory_size

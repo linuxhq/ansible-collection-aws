@@ -13,9 +13,9 @@
       ansible.builtin.assert:
         that:
           - _s3_bucket_info_dict[s3_lifecycle_list.0.name].bucket_lifecycle_configuration.Rules |
-              map(attribute='ID') |
-              sort ==
-            s3_lifecycle_list.0.lifecycle_rules |
+            map(attribute='ID') |
+            sort ==
+              s3_lifecycle_list.0.lifecycle_rules |
               map(attribute='rule_id') |
               sort
 ...

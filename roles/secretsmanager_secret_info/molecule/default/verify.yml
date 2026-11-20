@@ -9,10 +9,13 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - (_secretsmanager_secret_info_dict['molecule-secretsmanager-secret-info-1'].value | from_json)['molecule-key-1'] ==
+          - (_secretsmanager_secret_info_dict['molecule-secretsmanager-secret-info-1'].value |
+            from_json)['molecule-key-1'] ==
               secretsmanager_secret_list.0.secret.0.value
-          - (_secretsmanager_secret_info_dict['molecule-secretsmanager-secret-info-2'].value | from_json)['molecule-key-1'] ==
+          - (_secretsmanager_secret_info_dict['molecule-secretsmanager-secret-info-2'].value |
+            from_json)['molecule-key-1'] ==
               secretsmanager_secret_list.1.secret.0.value
-          - (_secretsmanager_secret_info_dict['molecule-secretsmanager-secret-info-2'].value | from_json)['molecule-key-2'] ==
+          - (_secretsmanager_secret_info_dict['molecule-secretsmanager-secret-info-2'].value |
+            from_json)['molecule-key-2'] ==
               secretsmanager_secret_list.1.secret.1.value
 ...

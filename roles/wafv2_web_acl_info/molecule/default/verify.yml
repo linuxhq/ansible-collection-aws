@@ -69,7 +69,8 @@
       ansible.builtin.assert:
         that:
           - _wafv2_web_acl_info_list | length == 1
-          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-amazonipreputationlist'].id == wafv2_web_acl_info_id_filter
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-amazonipreputationlist'].id ==
+              wafv2_web_acl_info_id_filter
 
     - name: Ensure role is included with web acl name
       ansible.builtin.include_role:

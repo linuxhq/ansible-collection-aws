@@ -14,7 +14,8 @@
         that:
           - _ssm_document_info_dict['molecule-ssm-document-info-command-shell'].document_type == 'Command'
           - _ssm_document_info_dict['molecule-ssm-document-info-command-shell'].tags.molecule == 'ssm_document_info'
-          - _ssm_document_info_dict['molecule-ssm-document-info-command-shell'].content.mainSteps.0.name == 'runShellScript'
+          - _ssm_document_info_dict['molecule-ssm-document-info-command-shell'].content.mainSteps.0.name ==
+              'runShellScript'
 
     - name: Ensure role is included with command env name
       ansible.builtin.include_role:
@@ -26,7 +27,8 @@
       ansible.builtin.assert:
         that:
           - _ssm_document_info_dict['molecule-ssm-document-info-command-env'].document_type == 'Command'
-          - _ssm_document_info_dict['molecule-ssm-document-info-command-env'].content.mainSteps.0.name == 'printEnvironment'
+          - _ssm_document_info_dict['molecule-ssm-document-info-command-env'].content.mainSteps.0.name ==
+              'printEnvironment'
 
     - name: Ensure role is included with session shell name
       ansible.builtin.include_role:
@@ -53,5 +55,6 @@
         that:
           - _ssm_document_info_list | length == 1
           - _ssm_document_info_dict['molecule-ssm-document-info-command-shell'].document_type == 'Command'
-          - _ssm_document_info_dict['molecule-ssm-document-info-command-shell'].content.mainSteps.0.name == 'runShellScript'
+          - _ssm_document_info_dict['molecule-ssm-document-info-command-shell'].content.mainSteps.0.name ==
+              'runShellScript'
 ...

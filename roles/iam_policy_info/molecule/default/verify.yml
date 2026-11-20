@@ -11,13 +11,16 @@
       ansible.builtin.assert:
         that:
           - _iam_policy_info_group_dict['molecule-iam-policy-info-rds'].all_policy_names is defined
-          - _iam_policy_info_group_dict['molecule-iam-policy-info-rds'].policies.0.policy_document == iam_policy_list.1.policy_json
+          - _iam_policy_info_group_dict['molecule-iam-policy-info-rds'].policies.0.policy_document ==
+              iam_policy_list.1.policy_json
           - _iam_policy_info_group_dict['molecule-iam-policy-info-rds'].policy_names is defined
           - _iam_policy_info_group_dict['molecule-iam-policy-info-rds'].policy_names.0 == iam_policy_list.1.policy_name
-          - _iam_policy_info_role_dict['molecule-iam-policy-info-s3'].policies.0.policy_document == iam_policy_list.2.policy_json
+          - _iam_policy_info_role_dict['molecule-iam-policy-info-s3'].policies.0.policy_document ==
+              iam_policy_list.2.policy_json
           - _iam_policy_info_role_dict['molecule-iam-policy-info-s3'].policy_names.0 == iam_policy_list.2.policy_name
           - _iam_policy_info_user_dict['molecule-iam-policy-info-ec2'].all_policy_names is defined
-          - _iam_policy_info_user_dict['molecule-iam-policy-info-ec2'].policies.0.policy_document == iam_policy_list.0.policy_json
+          - _iam_policy_info_user_dict['molecule-iam-policy-info-ec2'].policies.0.policy_document ==
+              iam_policy_list.0.policy_json
           - _iam_policy_info_user_dict['molecule-iam-policy-info-ec2'].policy_names is defined
           - _iam_policy_info_user_dict['molecule-iam-policy-info-ec2'].policy_names.0 == iam_policy_list.0.policy_name
 

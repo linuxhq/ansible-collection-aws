@@ -35,7 +35,9 @@ provisioner:
 
           - name: molecule-ec2-flow-log-tgw-attachment
             resource_ids:
-              - "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-flow-log'].transit_gateway_attachment_id |
+              - "{{ _ec2_transit_gateway_vpc_attachment_info_dict[
+                      'molecule-ec2-flow-log'
+                    ].transit_gateway_attachment_id |
                     d(omit) }}"
             resource_type: TransitGatewayAttachment
             log_destination_type: s3

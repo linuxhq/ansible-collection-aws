@@ -24,10 +24,12 @@
               glue_connection_list.0.name
           - _glue_connection_info_dict['molecule-glue-connection-info'].name ==
               glue_connection_list.0.name
-          - _glue_connection_info_dict['molecule-glue-connection-info'].physical_connection_requirements.availability_zone ==
-              glue_connection_list.0.availability_zone
-          - _glue_connection_info_dict['molecule-glue-connection-info'].physical_connection_requirements.security_group_id_list ==
-              glue_connection_list.0.security_groups
+          - _glue_connection_info_dict[
+              'molecule-glue-connection-info'
+            ].physical_connection_requirements.availability_zone == glue_connection_list.0.availability_zone
+          - _glue_connection_info_dict[
+              'molecule-glue-connection-info'
+            ].physical_connection_requirements.security_group_id_list == glue_connection_list.0.security_groups
           - _glue_connection_info_dict['molecule-glue-connection-info'].physical_connection_requirements.subnet_id ==
               glue_connection_list.0.subnet_id
 

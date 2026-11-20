@@ -19,7 +19,9 @@
     - name: Ensure logging configurations are queried
       linuxhq.aws.wafv2_web_acl_logging:
         log_destination_configs:
-          - "{{ (_log.log_groups | selectattr('log_group_name', 'equalto', 'aws-waf-logs-' ~ _log._webacl.name) | first).arn }}"
+          - "{{ (_log.log_groups |
+                selectattr('log_group_name', 'equalto', 'aws-waf-logs-' ~ _log._webacl.name) |
+                first).arn }}"
         resource_arn: "{{ _wafv2_web_acl_info_dict[_log._webacl.name].arn }}"
       check_mode: true
       register: __wafv2_web_acl_logging

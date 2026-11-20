@@ -78,8 +78,8 @@
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
             length == 2
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
-              selectattr('endpoint_groups', 'defined') |
-              list == []
+            selectattr('endpoint_groups', 'defined') |
+            list == []
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners |
             length == 1
 
@@ -95,8 +95,8 @@
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
             length == 2
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
-              json_query('[].protocol') |
-              unique == ['TCP']
+            json_query('[].protocol') |
+            unique == ['TCP']
           - __global_accelerator_info_listener_80.endpoint_groups |
             d([]) |
             length == 0

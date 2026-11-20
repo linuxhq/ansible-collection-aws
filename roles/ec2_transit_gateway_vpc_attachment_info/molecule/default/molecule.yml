@@ -18,8 +18,11 @@ provisioner:
               molecule: ec2_transit_gateway_vpc_attachment_info
             subnets:
               - "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].id | d(omit) }}"
-            transit_gateway: "{{ _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].transit_gateway_id |
-                                 d(omit) }}"
+            transit_gateway:
+              "{{ _ec2_transit_gateway_info_dict[
+                    'molecule-ec2-transit-gateway-vpc-attachment-info'
+                  ].transit_gateway_id |
+                  d(omit) }}"
 
         ec2_vpc_net_list:
           - name: molecule-ec2-transit-gateway-vpc-attachment-info

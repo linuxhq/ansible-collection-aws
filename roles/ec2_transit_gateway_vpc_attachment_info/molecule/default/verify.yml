@@ -12,14 +12,20 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].state == 'available'
-          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].tags.molecule ==
-              'ec2_transit_gateway_vpc_attachment_info'
-          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].subnet_ids.0 ==
-              ec2_transit_gateway_vpc_attachment_list.0.subnets.0
-          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].transit_gateway_attachment_id is defined
-          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].transit_gateway_id ==
-              ec2_transit_gateway_vpc_attachment_list.0.transit_gateway
+          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].state ==
+              'available'
+          - _ec2_transit_gateway_vpc_attachment_info_dict[
+              'molecule-ec2-transit-gateway-vpc-attachment-info'
+            ].tags.molecule == 'ec2_transit_gateway_vpc_attachment_info'
+          - _ec2_transit_gateway_vpc_attachment_info_dict[
+              'molecule-ec2-transit-gateway-vpc-attachment-info'
+            ].subnet_ids.0 == ec2_transit_gateway_vpc_attachment_list.0.subnets.0
+          - _ec2_transit_gateway_vpc_attachment_info_dict[
+              'molecule-ec2-transit-gateway-vpc-attachment-info'
+            ].transit_gateway_attachment_id is defined
+          - _ec2_transit_gateway_vpc_attachment_info_dict[
+              'molecule-ec2-transit-gateway-vpc-attachment-info'
+            ].transit_gateway_id == ec2_transit_gateway_vpc_attachment_list.0.transit_gateway
           - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].vpc_id ==
               ec2_vpc_subnet_list.0.vpc_id
 
@@ -33,8 +39,11 @@
       ansible.builtin.assert:
         that:
           - _ec2_transit_gateway_vpc_attachment_info_list | length == 1
-          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].state == 'available'
-          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].transit_gateway_attachment_id is defined
+          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].state ==
+              'available'
+          - _ec2_transit_gateway_vpc_attachment_info_dict[
+              'molecule-ec2-transit-gateway-vpc-attachment-info'
+            ].transit_gateway_attachment_id is defined
 
     - name: Ensure role is included with id
       ansible.builtin.include_role:
@@ -42,13 +51,18 @@
       vars:
         ec2_transit_gateway_vpc_attachment_info_filters: {}
         ec2_transit_gateway_vpc_attachment_info_id:
-          "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].transit_gateway_attachment_id }}"
+          "{{ _ec2_transit_gateway_vpc_attachment_info_dict[
+                'molecule-ec2-transit-gateway-vpc-attachment-info'
+              ].transit_gateway_attachment_id }}"
         ec2_transit_gateway_vpc_attachment_info_include_deleted: true
 
     - name: Ensure info with id is verified
       ansible.builtin.assert:
         that:
           - _ec2_transit_gateway_vpc_attachment_info_list | length == 1
-          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].state == 'available'
-          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].transit_gateway_attachment_id is defined
+          - _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].state ==
+              'available'
+          - _ec2_transit_gateway_vpc_attachment_info_dict[
+              'molecule-ec2-transit-gateway-vpc-attachment-info'
+            ].transit_gateway_attachment_id is defined
 ...

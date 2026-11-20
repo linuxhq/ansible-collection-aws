@@ -16,18 +16,27 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-bounce"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-sqs-queue-bounce' }}"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-bounce"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-sqs-queue-bounce' }}"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-bounce"
+                        "{{ 'arn:aws:sns:' ~
+                            _aws_az_info_list_l.0[:-1] ~ ':' ~
+                            _aws_caller_info_account ~
+                            ':molecule-sqs-queue-bounce' }}"
 
           - name: molecule-sqs-queue-complaint
             delay_seconds: 0
@@ -41,18 +50,27 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-complaint"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-sqs-queue-complaint' }}"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-complaint"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-sqs-queue-complaint' }}"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-complaint"
+                        "{{ 'arn:aws:sns:' ~
+                            _aws_az_info_list_l.0[:-1] ~ ':' ~
+                            _aws_caller_info_account ~
+                            ':molecule-sqs-queue-complaint' }}"
 
           - name: molecule-sqs-queue-delivery
             delay_seconds: 0
@@ -66,16 +84,25 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-delivery"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-sqs-queue-delivery' }}"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-delivery"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-sqs-queue-delivery' }}"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-delivery"
+                        "{{ 'arn:aws:sns:' ~
+                            _aws_az_info_list_l.0[:-1] ~ ':' ~
+                            _aws_caller_info_account ~
+                            ':molecule-sqs-queue-delivery' }}"
 ...

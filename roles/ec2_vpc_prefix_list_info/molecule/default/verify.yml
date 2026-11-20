@@ -20,7 +20,8 @@
             first ==
               'localhost-1'
           - _ec2_vpc_prefix_list_info_dict['molecule-ec2-vpc-prefix-list-info-localhost'].prefix_list_id is defined
-          - _ec2_vpc_prefix_list_info_dict['molecule-ec2-vpc-prefix-list-info-localhost'].prefix_list_name == 'molecule-ec2-vpc-prefix-list-info-localhost'
+          - _ec2_vpc_prefix_list_info_dict['molecule-ec2-vpc-prefix-list-info-localhost'].prefix_list_name ==
+              'molecule-ec2-vpc-prefix-list-info-localhost'
           - _ec2_vpc_prefix_list_info_dict['molecule-ec2-vpc-prefix-list-info-localhost'].tags.molecule ==
               'ec2_vpc_prefix_list_info'
           - _ec2_vpc_prefix_list_info_dict['molecule-ec2-vpc-prefix-list-info-private'].entries |
@@ -31,7 +32,8 @@
             first ==
               'private-1'
           - _ec2_vpc_prefix_list_info_dict['molecule-ec2-vpc-prefix-list-info-private'].prefix_list_id is defined
-          - _ec2_vpc_prefix_list_info_dict['molecule-ec2-vpc-prefix-list-info-private'].prefix_list_name == 'molecule-ec2-vpc-prefix-list-info-private'
+          - _ec2_vpc_prefix_list_info_dict['molecule-ec2-vpc-prefix-list-info-private'].prefix_list_name ==
+              'molecule-ec2-vpc-prefix-list-info-private'
 
     - name: Ensure role is included with name
       ansible.builtin.include_role:

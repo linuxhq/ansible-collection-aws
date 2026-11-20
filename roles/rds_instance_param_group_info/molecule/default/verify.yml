@@ -9,13 +9,31 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _rds_instance_param_group_info_dict['molecule-rds-instance-param-group-info-mariadb106'].db_parameter_group_arn is defined
-          - _rds_instance_param_group_info_dict['molecule-rds-instance-param-group-info-mariadb106'].db_parameter_group_family is defined
-          - _rds_instance_param_group_info_dict['molecule-rds-instance-param-group-info-mariadb106'].db_parameter_group_name is defined
-          - _rds_instance_param_group_info_dict['molecule-rds-instance-param-group-info-mariadb114'].db_parameter_group_arn is defined
-          - _rds_instance_param_group_info_dict['molecule-rds-instance-param-group-info-mariadb114'].db_parameter_group_family is defined
-          - _rds_instance_param_group_info_dict['molecule-rds-instance-param-group-info-mariadb114'].db_parameter_group_name is defined
-          - _rds_instance_param_group_info_dict['molecule-rds-instance-param-group-info-mariadb118'].db_parameter_group_arn is defined
-          - _rds_instance_param_group_info_dict['molecule-rds-instance-param-group-info-mariadb118'].db_parameter_group_family is defined
-          - _rds_instance_param_group_info_dict['molecule-rds-instance-param-group-info-mariadb118'].db_parameter_group_name is defined
+          - _rds_instance_param_group_info_dict[
+              'molecule-rds-instance-param-group-info-mariadb106'
+            ].db_parameter_group_arn is defined
+          - _rds_instance_param_group_info_dict[
+              'molecule-rds-instance-param-group-info-mariadb106'
+            ].db_parameter_group_family is defined
+          - _rds_instance_param_group_info_dict[
+              'molecule-rds-instance-param-group-info-mariadb106'
+            ].db_parameter_group_name is defined
+          - _rds_instance_param_group_info_dict[
+              'molecule-rds-instance-param-group-info-mariadb114'
+            ].db_parameter_group_arn is defined
+          - _rds_instance_param_group_info_dict[
+              'molecule-rds-instance-param-group-info-mariadb114'
+            ].db_parameter_group_family is defined
+          - _rds_instance_param_group_info_dict[
+              'molecule-rds-instance-param-group-info-mariadb114'
+            ].db_parameter_group_name is defined
+          - _rds_instance_param_group_info_dict[
+              'molecule-rds-instance-param-group-info-mariadb118'
+            ].db_parameter_group_arn is defined
+          - _rds_instance_param_group_info_dict[
+              'molecule-rds-instance-param-group-info-mariadb118'
+            ].db_parameter_group_family is defined
+          - _rds_instance_param_group_info_dict[
+              'molecule-rds-instance-param-group-info-mariadb118'
+            ].db_parameter_group_name is defined
 ...

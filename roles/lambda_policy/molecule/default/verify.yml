@@ -17,7 +17,7 @@
           - _lambda_info_dict[lambda_list.0.name].policy.statement |
             map(attribute='sid') |
             sort ==
-            lambda_policy_list |
-            map(attribute='statement_id') |
-            sort
+              lambda_policy_list |
+              map(attribute='statement_id') |
+              sort
 ...

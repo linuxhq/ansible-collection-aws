@@ -12,7 +12,8 @@
         that:
           - _ec2_vpc_igw_info_dict['molecule-ec2-vpc-igw-info'].attachments is defined
           - _ec2_vpc_igw_info_dict['molecule-ec2-vpc-igw-info'].attachments.0.state == 'available'
-          - _ec2_vpc_igw_info_dict['molecule-ec2-vpc-igw-info'].attachments.0.vpc_id == _ec2_vpc_net_info_dict['molecule-ec2-vpc-igw-info'].id
+          - _ec2_vpc_igw_info_dict['molecule-ec2-vpc-igw-info'].attachments.0.vpc_id ==
+              _ec2_vpc_net_info_dict['molecule-ec2-vpc-igw-info'].id
           - _ec2_vpc_igw_info_dict['molecule-ec2-vpc-igw-info'].internet_gateway_id is defined
           - _ec2_vpc_igw_info_dict['molecule-ec2-vpc-igw-info'].tags.molecule == 'ec2_vpc_igw_info'
 ...

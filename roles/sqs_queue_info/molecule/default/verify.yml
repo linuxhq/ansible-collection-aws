@@ -17,8 +17,8 @@
       until:
         - __sqs_queue_info_verify.queues | length == 3
         - __sqs_queue_info_verify.queues |
-            selectattr('queue_arn', 'defined') |
-            length == 3
+          selectattr('queue_arn', 'defined') |
+          length == 3
 
     - name: Ensure aws simple queue service queues are listed without name
       linuxhq.aws.sqs_queue_info:
@@ -28,9 +28,9 @@
       delay: 1
       until:
         - __sqs_queue_info_verify_unfiltered.queues |
-            selectattr('name', 'match', 'molecule-sqs-queue-info-') |
-            selectattr('queue_arn', 'defined') |
-            length == 3
+          selectattr('name', 'match', 'molecule-sqs-queue-info-') |
+          selectattr('queue_arn', 'defined') |
+          length == 3
 
     - name: Ensure role is included without name
       ansible.builtin.include_role:
@@ -94,5 +94,7 @@
         that:
           - _sqs_queue_info_list | length == 3
           - _sqs_queue_info_dict.keys() | sort ==
-              ['molecule-sqs-queue-info-bounce', 'molecule-sqs-queue-info-complaint', 'molecule-sqs-queue-info-delivery']
+              ['molecule-sqs-queue-info-bounce',
+               'molecule-sqs-queue-info-complaint',
+               'molecule-sqs-queue-info-delivery']
 ...

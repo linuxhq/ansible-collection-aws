@@ -20,7 +20,7 @@
           - _query.iam_roles.0.managed_policies |
             map(attribute='policy_name') |
             sort ==
-            _query._role.managed_policies | sort
+              _query._role.managed_policies | sort
       loop: "{{ __molecule_iam_role_query.results }}"
       loop_control:
         label: "{{ _query._role.name }}"

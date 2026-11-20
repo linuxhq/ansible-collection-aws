@@ -22,15 +22,16 @@
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].db_subnet_group.subnets |
             map(attribute='subnet_identifier') |
             sort ==
-            rds_subnet_group_list.0.subnets |
-            sort
+              rds_subnet_group_list.0.subnets |
+              sort
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].endpoint.address is defined
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].endpoint.port is defined
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].engine ==
               rds_instance_list.0.engine
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].engine_version ==
               rds_instance_list.0.engine_version
-          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].iam_database_authentication_enabled == false
+          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].iam_database_authentication_enabled ==
+              false
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].master_username ==
               rds_instance_list.0.master_username
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].multi_az == false
@@ -46,15 +47,16 @@
               rds_instance_list.1.copy_tags_to_snapshot
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].db_instance_class ==
               rds_instance_list.1.db_instance_class
-          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].db_parameter_groups.0.db_parameter_group_name ==
-              rds_instance_list.1.db_parameter_group_name
+          - _rds_instance_info_dict[
+              'molecule-rds-instance-info-mariadb118'
+            ].db_parameter_groups.0.db_parameter_group_name == rds_instance_list.1.db_parameter_group_name
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].db_subnet_group.db_subnet_group_name ==
               rds_instance_list.1.db_subnet_group_name
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].db_subnet_group.subnets |
             map(attribute='subnet_identifier') |
             sort ==
-            rds_subnet_group_list.0.subnets |
-            sort
+              rds_subnet_group_list.0.subnets |
+              sort
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].enabled_cloudwatch_logs_exports ==
               rds_instance_list.1.enable_cloudwatch_logs_exports
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].endpoint.address is defined
@@ -75,8 +77,9 @@
               rds_instance_list.1.monitoring_role_arn
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].multi_az ==
               rds_instance_list.1.multi_az
-          - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].option_group_memberships.0.option_group_name ==
-              rds_instance_list.1.option_group_name
+          - _rds_instance_info_dict[
+              'molecule-rds-instance-info-mariadb118'
+            ].option_group_memberships.0.option_group_name == rds_instance_list.1.option_group_name
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].publicly_accessible ==
               rds_instance_list.1.publicly_accessible
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].storage_encrypted ==
