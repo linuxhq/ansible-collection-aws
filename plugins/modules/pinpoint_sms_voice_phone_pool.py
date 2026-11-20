@@ -11,7 +11,7 @@ description:
   - Manages AWS End User Messaging SMS phone pools.
   - This module maps to the Pinpoint SMS Voice V2 C(CreatePool) API,
     the API behind C(aws pinpoint-sms-voice-v2 create-pool).
-  - Without O(pool_id), O(state=present) requires botocore 1.35.26 or later.
+  - Without O(pool_id), the module requires botocore 1.35.26 or later.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -57,8 +57,10 @@ options:
   name:
     description:
       - Name of the phone pool.
-      - This is used as the C(Name) tag.
-      - This is required when O(state=present).
+      - This is used as the C(Name) tag and overrides any C(Name) entry in O(tags).
+      - Without O(pool_id) and with O(state=absent), the module deletes the pool whose C(Name) tag
+        equals this, and fails without changes when more than one pool has that tag.
+    required: true
     type: str
   origination_identity:
     description:
@@ -84,7 +86,7 @@ options:
   pool_id:
     description:
       - The pool ID or ARN.
-      - This is required when O(state=absent).
+      - When set with O(state=absent), this pool is deleted instead of the one found by O(name).
       - When set with O(state=present), this pool is managed directly instead
         of searching by O(origination_identity).
       - When set with O(state=present), the pool must already exist.
@@ -157,6 +159,12 @@ EXAMPLES = r"""
 
 - name: Ensure a phone pool is absent
   linuxhq.aws.pinpoint_sms_voice_phone_pool:
+    name: molecule-pool
+    state: absent
+
+- name: Ensure a specific phone pool is absent
+  linuxhq.aws.pinpoint_sms_voice_phone_pool:
+    name: molecule-pool
     pool_id: pool-0123456789abcdef0123456789abcdef
     state: absent
 """
@@ -460,6 +468,34 @@ def wait_for_pool_active(client, module, pool_id, changed=False):
     )
 
 
+def single_named_pool(module, pools):
+    """Return the only pool whose Name tag equals name, or None; fail when several pools have it."""
+    if len(pools) > 1:
+        module.fail_json(
+            msg=(
+                f"Multiple Pinpoint SMS Voice V2 pools matched name "
+                f"{module.params['name']}: " + ", ".join(sorted(pool.get("PoolId", "") for pool in pools))
+            )
+        )
+
+    return pools[0] if pools else None
+
+
+def find_pool_by_name(client, module):
+    """Return the pool whose Name tag equals name, as DescribePools returns it."""
+    matches = []
+    for pool in describe_pools(client, module, Owner="SELF"):
+        if pool.get("Status") == "DELETING":
+            continue
+
+        # Another actor can delete a pool between DescribePools and ListTagsForResource; a deleted pool is skipped.
+        tagged = pool_with_tags(client, module, pool, missing_ok=True)
+        if tagged is not None and boto3_tag_list_to_ansible_dict(tagged["Tags"]).get("Name") == module.params["name"]:
+            matches.append(pool)
+
+    return single_named_pool(module, matches)
+
+
 def find_pool(client, module, listed=None):
     """Return the matching pool; when listed is a set, add the ID of every pool described while matching."""
     if module.params["pool_id"] is not None:
@@ -508,14 +544,6 @@ def find_pool(client, module, listed=None):
         if any(is_phone_number_identity(origination) for origination in holding):
             conflicts.append(pool)
 
-    if len(matches) > 1:
-        module.fail_json(
-            msg=(
-                f"Multiple Pinpoint SMS Voice V2 pools matched name "
-                f"{module.params['name']}: " + ", ".join(sorted(pool.get("PoolId", "") for pool in matches))
-            )
-        )
-
     if not matches and conflicts:
         module.fail_json(
             msg=(
@@ -526,7 +554,7 @@ def find_pool(client, module, listed=None):
             )
         )
 
-    return matches[0] if matches else None
+    return single_named_pool(module, matches)
 
 
 def exit_result(module, changed, pool):
@@ -585,8 +613,12 @@ def require_no_notify_configurations(client, module, pool):
 
 def ensure_absent(client, module):
     pool_id = module.params["pool_id"]
-    pools = describe_pools(client, module, PoolIds=[pool_id])
-    current = select_pool_by_id(module, pools, pool_id)
+    if pool_id is not None:
+        current = select_pool_by_id(module, describe_pools(client, module, PoolIds=[pool_id]), pool_id)
+    else:
+        current = find_pool_by_name(client, module)
+        if current is not None:
+            pool_id = current["PoolId"]
 
     if current is not None and current.get("Status") == "DELETING":
         current = None
@@ -883,7 +915,7 @@ def main():
             "choices": ["PROMOTIONAL", "TRANSACTIONAL"],
             "type": "str",
         },
-        "name": {"type": "str"},
+        "name": {"required": True, "type": "str"},
         "origination_identity": {"type": "str"},
         "pool_id": {"type": "str"},
         "purge_tags": {"default": True, "type": "bool"},
@@ -901,10 +933,9 @@ def main():
     module = AnsibleAWSModule(
         argument_spec=argument_spec,
         required_if=[
-            ("state", "present", ["message_type", "name"]),
-            ("state", "absent", ["pool_id"]),
+            ("state", "present", ["message_type"]),
+            ("state", "present", ["origination_identity", "pool_id"], True),
         ],
-        required_one_of=[("origination_identity", "pool_id")],
         supports_check_mode=True,
     )
     state = module.params["state"]
@@ -917,7 +948,7 @@ def main():
         require_valid_tags(module, tags, 200, restricted_characters=True)
 
         # AWS rejects an empty origination identity, which check mode would otherwise predict as a new pool.
-        # required_one_of accepts an explicit null, so a null identity is rejected the same way.
+        # required_if accepts an explicit null, so a null identity is rejected the same way.
         if module.params["pool_id"] is None:
             require_non_blank(module, module.params["origination_identity"] or "", "origination_identity")
 
@@ -926,7 +957,7 @@ def main():
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
     # Waits and re-reads describe by PoolIds on every path.
     describe_parameters = ("PoolIds", "MaxResults", "NextToken")
-    if state == "present" and module.params["pool_id"] is None:
+    if module.params["pool_id"] is None:
         describe_parameters += ("Owner",)
 
     methods = {"describe_pools": describe_parameters}
@@ -962,6 +993,8 @@ def main():
     if state == "absent":
         methods["delete_pool"] = ("PoolId",)
         methods["update_pool"] = ("DeletionProtectionEnabled", "PoolId")
+        if module.params["pool_id"] is None:
+            methods["list_tags_for_resource"] = ("ResourceArn",)
 
     require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)
 

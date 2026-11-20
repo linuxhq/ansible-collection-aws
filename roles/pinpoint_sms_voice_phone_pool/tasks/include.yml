@@ -13,7 +13,7 @@
     pool_id: "{{ _pool.pool_id | d(omit) }}"
     purge_tags: "{{ _pool.purge_tags | d(true) }}"
     state: "{{ _pool.state | d('present') }}"
-    tags: "{{ _pool.tags | d({}) | combine({'Name': _pool.name}) }}"
+    tags: "{{ _pool.tags | d({}) }}"
     validate_certs: true
     wait: "{{ _pool.wait | d(omit) }}"
     wait_delay: "{{ _pool.wait_delay | d(omit) }}"

@@ -17,11 +17,12 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 
 def test_module_contract():
     options = assert_module_contract(plugin)
+    assert options["argument_spec"]["name"] == {"required": True, "type": "str"}
     assert options["required_if"] == [
-        ("state", "present", ["message_type", "name"]),
-        ("state", "absent", ["pool_id"]),
+        ("state", "present", ["message_type"]),
+        ("state", "present", ["origination_identity", "pool_id"], True),
     ]
-    assert options["required_one_of"] == [("origination_identity", "pool_id")]
+    assert "required_one_of" not in options
 
 
 @pytest.mark.parametrize("shape_name", ["PoolInformation", "CreatePoolResult", "UpdatePoolResult", "DeletePoolResult"])
@@ -1802,3 +1803,193 @@ def test_notify_configuration_lookup_failure_names_the_pool():
     )
     assert raised.value.values.get("changed", False) is False
     client.update_pool.assert_not_called()
+
+
+def described_pool(pool_id, **overrides):
+    """A DescribePools item, which has neither tags nor origination identities."""
+    return dict(
+        {
+            "DeletionProtectionEnabled": False,
+            "MessageType": "TRANSACTIONAL",
+            "PoolArn": f"arn:{pool_id}",
+            "PoolId": pool_id,
+            "Status": "ACTIVE",
+        },
+        **overrides,
+    )
+
+
+def named_pools_client(names):
+    """Return a client whose ListTagsForResource gives each pool ARN its Name tag, or not found for None."""
+    client = Mock()
+
+    def list_tags(ResourceArn, aws_retry):
+        if names[ResourceArn] is None:
+            raise not_found()
+
+        return {"Tags": [{"Key": "Name", "Value": names[ResourceArn]}]}
+
+    client.list_tags_for_resource.side_effect = list_tags
+    return client
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_without_pool_id_deletes_the_pool_with_the_name_tag(check_mode):
+    client = named_pools_client({"arn:pool-1": "other", "arn:pool-2": "main"})
+    client.update_pool.return_value = described_pool("pool-2", Status="UPDATING")
+    client.delete_pool.return_value = described_pool("pool-2", Status="DELETING")
+    module = FakeModule(main_params(state="absent"), check_mode=check_mode)
+    pools = [described_pool("pool-1"), described_pool("pool-2", DeletionProtectionEnabled=True)]
+    with (
+        patch.object(plugin, "describe_pools", return_value=pools) as describe,
+        patch.object(plugin, "require_no_notify_configurations") as require_no_notify_configurations,
+        patch.object(plugin, "wait_for_pool_active", return_value=described_pool("pool-2")) as wait,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert describe.call_args_list == [call(client, module, Owner="SELF")]
+    assert require_no_notify_configurations.call_args.args[2]["PoolId"] == "pool-2"
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["pool_id"] == "pool-2"
+    # DeletePool does not return tags, so neither does the prediction.
+    assert "tags" not in raised.value.values["pool"]
+    if check_mode:
+        client.update_pool.assert_not_called()
+        client.delete_pool.assert_not_called()
+    else:
+        client.update_pool.assert_called_once_with(PoolId="pool-2", DeletionProtectionEnabled=False, aws_retry=True)
+        wait.assert_called_once_with(client, module, "pool-2", changed=True)
+        client.delete_pool.assert_called_once_with(PoolId="pool-2", aws_retry=True)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_without_a_pool_named_name_changes_nothing(check_mode):
+    client = named_pools_client({"arn:pool-1": "other"})
+    module = FakeModule(main_params(state="absent"), check_mode=check_mode)
+    with (
+        patch.object(plugin, "describe_pools", return_value=[described_pool("pool-1")]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values == {"changed": False, "state": "absent"}
+    client.update_pool.assert_not_called()
+    client.delete_pool.assert_not_called()
+
+
+def test_absent_fails_when_several_pools_have_the_name_tag():
+    client = named_pools_client({"arn:pool-1": "main", "arn:pool-2": "main"})
+    module = FakeModule(main_params(state="absent"))
+    with (
+        patch.object(plugin, "describe_pools", return_value=[described_pool("pool-2"), described_pool("pool-1")]),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["msg"] == "Multiple Pinpoint SMS Voice V2 pools matched name main: pool-1, pool-2"
+    client.update_pool.assert_not_called()
+    client.delete_pool.assert_not_called()
+
+
+def test_absent_by_name_skips_deleting_pools_and_pools_deleted_before_their_tags_are_listed():
+    client = named_pools_client({"arn:pool-1": "main", "arn:pool-3": None})
+    client.delete_pool.return_value = described_pool("pool-1", Status="DELETING")
+    module = FakeModule(main_params(state="absent"))
+    pools = [described_pool("pool-1"), described_pool("pool-2", Status="DELETING"), described_pool("pool-3")]
+    with (
+        patch.object(plugin, "describe_pools", return_value=pools),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert [kwargs["ResourceArn"] for args, kwargs in client.list_tags_for_resource.call_args_list] == [
+        "arn:pool-1",
+        "arn:pool-3",
+    ]
+    client.delete_pool.assert_called_once_with(PoolId="pool-1", aws_retry=True)
+    assert raised.value.values["changed"] is True
+
+
+def test_absent_with_pool_id_does_not_look_up_the_name():
+    client = Mock()
+    client.delete_pool.return_value = described_pool("pool-1", Status="DELETING")
+    module = FakeModule(main_params(pool_id="pool-1", state="absent"))
+    with (
+        patch.object(plugin, "describe_pools", return_value=[described_pool("pool-1")]) as describe,
+        patch.object(plugin, "find_pool_by_name") as find_pool_by_name,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert describe.call_args_list == [call(client, module, PoolIds=["pool-1"])]
+    find_pool_by_name.assert_not_called()
+    client.list_tags_for_resource.assert_not_called()
+    client.delete_pool.assert_called_once_with(PoolId="pool-1", aws_retry=True)
+    assert raised.value.values["changed"] is True
+
+
+@pytest.mark.parametrize("pool_id", [None, "pool-1"])
+def test_absent_checks_the_sdk_methods_of_its_lookup(pool_id):
+    client = Mock()
+    module = FakeModule(main_params(origination_identity=None, pool_id=pool_id, state="absent"), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(plugin, "ensure_absent") as ensure_absent,
+    ):
+        plugin.main()
+
+    expected = {
+        "delete_pool": ("PoolId",),
+        "describe_pools": ("PoolIds", "MaxResults", "NextToken"),
+        "update_pool": ("DeletionProtectionEnabled", "PoolId"),
+    }
+    if pool_id is None:
+        expected["describe_pools"] += ("Owner",)
+        expected["list_tags_for_resource"] = ("ResourceArn",)
+
+    assert require.call_args.args[3] == expected
+    ensure_absent.assert_called_once_with(client, module)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_name_overrides_a_name_entry_in_tags_when_creating(check_mode):
+    client = Mock()
+    client.create_pool.return_value = described_pool("pool-1", Status="CREATING")
+    module = FakeModule(main_params(name="real", tags={"Env": "test", "Name": "other"}), check_mode=check_mode)
+    with (
+        patch.object(plugin, "find_pool", return_value=None),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["pool"]["tags"] == {"Env": "test", "Name": "real"}
+    if not check_mode:
+        assert client.create_pool.call_args.kwargs["Tags"] == [
+            {"Key": "Env", "Value": "test"},
+            {"Key": "Name", "Value": "real"},
+        ]
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_name_overrides_a_name_entry_in_tags_when_updating(check_mode):
+    client = Mock()
+    module = FakeModule(
+        present_params(name="real", pool_id="pool-1", tags={"Env": "test", "Name": "other"}), check_mode=check_mode
+    )
+    with (
+        patch.object(plugin, "find_pool", return_value=active_pool()),
+        patch.object(plugin, "reconcile_arn_tags") as reconcile,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["pool"]["tags"] == {"Env": "test", "Name": "real"}
+    if check_mode:
+        reconcile.assert_not_called()
+    else:
+        reconcile.assert_called_once_with(
+            module, client, "arn:pool", {"Env": "test", "Name": "real"}, [], "Pinpoint SMS Voice V2 pool", changed=False
+        )
