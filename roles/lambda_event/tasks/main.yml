@@ -13,4 +13,30 @@
   loop_control:
     label: "{{ __lambda_event_list | length }}"
     loop_var: __lambda_event_list
+
+- name: Ensure aws lambda event source mappings are settled
+  tags:
+    - lambda_event
+  amazon.aws.lambda_info:
+    function_name: "{{ _function }}"
+    query: mappings
+    validate_certs: true
+  register: __lambda_event_mappings
+  loop:
+    "{{ lambda_event_list |
+        selectattr('lambda_function_arn', 'defined') |
+        map(attribute='lambda_function_arn') |
+        unique }}"
+  loop_control:
+    label: "{{ _function }}"
+    loop_var: _function
+  delay: "{{ lambda_event_delay }}"
+  retries: "{{ lambda_event_retries }}"
+  until:
+    - __lambda_event_mappings.functions |
+      map(attribute='mappings') |
+      flatten |
+      map(attribute='state') |
+      select('in', ['Creating', 'Deleting', 'Disabling', 'Enabling', 'Updating']) |
+      length == 0
 ...
