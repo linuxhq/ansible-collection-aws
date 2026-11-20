@@ -21,4 +21,19 @@ provisioner:
       all:
         rds_ca_bundle_list:
           - url: https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+
+scenario:
+  test_sequence:
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - check
+    - converge
+    - check
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
 ...
