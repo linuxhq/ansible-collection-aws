@@ -40,6 +40,7 @@
       ansible.builtin.include_role:
         name: ec2_transit_gateway_vpc_attachment_info
       vars:
+        ec2_transit_gateway_vpc_attachment_info_filters: {}
         ec2_transit_gateway_vpc_attachment_info_id:
           "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-vpc-attachment-info'].transit_gateway_attachment_id }}"
         ec2_transit_gateway_vpc_attachment_info_include_deleted: true
