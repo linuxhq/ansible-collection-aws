@@ -5,8 +5,6 @@
   roles:
     - role: rds_ca_bundle
       rds_ca_bundle_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - rds_ca_bundle
 ...

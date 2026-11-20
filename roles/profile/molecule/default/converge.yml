@@ -2,18 +2,8 @@
 - name: Converge
   hosts: all
 
-  environment:
-    PATH: '/opt/awscli/bin'
-
   roles:
-    - role: awscli
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: profile
-      tags:
-        - molecule-idempotence-notest
+    - profile
 
     - role: profile
       profile_list:

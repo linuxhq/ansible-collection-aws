@@ -1,0 +1,7 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - rds_instance_param_group
+...
