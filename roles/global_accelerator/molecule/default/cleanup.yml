@@ -42,6 +42,7 @@
       amazon.aws.ec2_eni_info:
         filters:
           description: GlobalAccelerator configured ENI
+          vpc-id: "{{ _ec2_vpc_net_info_dict['molecule-global-accelerator'].id | d('none') }}"
       register: _eni_query
       delay: 10
       retries: 60

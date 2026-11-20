@@ -10,20 +10,20 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _elb_target_group_info_dict['molecule-http-8080'].port ==
+          - _elb_target_group_info_dict['molecule-tg-info-8080'].port ==
               elb_target_group_list.0.port
-          - _elb_target_group_info_dict['molecule-http-8080'].target_group_arn is defined
-          - _elb_target_group_info_dict['molecule-http-8080'].target_group_name is defined
-          - _elb_target_group_info_dict['molecule-http-8080'].target_type ==
+          - _elb_target_group_info_dict['molecule-tg-info-8080'].target_group_arn is defined
+          - _elb_target_group_info_dict['molecule-tg-info-8080'].target_group_name is defined
+          - _elb_target_group_info_dict['molecule-tg-info-8080'].target_type ==
               elb_target_group_list.0.target_type
-          - _elb_target_group_info_dict['molecule-http-8080'].vpc_id ==
+          - _elb_target_group_info_dict['molecule-tg-info-8080'].vpc_id ==
               elb_target_group_list.0.vpc_id
-          - _elb_target_group_info_dict['molecule-http-8081'].port ==
+          - _elb_target_group_info_dict['molecule-tg-info-8081'].port ==
               elb_target_group_list.1.port
-          - _elb_target_group_info_dict['molecule-http-8081'].target_group_arn is defined
-          - _elb_target_group_info_dict['molecule-http-8081'].target_group_name is defined
-          - _elb_target_group_info_dict['molecule-http-8081'].target_type ==
+          - _elb_target_group_info_dict['molecule-tg-info-8081'].target_group_arn is defined
+          - _elb_target_group_info_dict['molecule-tg-info-8081'].target_group_name is defined
+          - _elb_target_group_info_dict['molecule-tg-info-8081'].target_type ==
               elb_target_group_list.1.target_type
-          - _elb_target_group_info_dict['molecule-http-8081'].vpc_id ==
+          - _elb_target_group_info_dict['molecule-tg-info-8081'].vpc_id ==
               elb_target_group_list.1.vpc_id
 ...

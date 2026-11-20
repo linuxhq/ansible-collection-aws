@@ -106,7 +106,7 @@
           - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions |
             length == 1
           - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
-              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+              _elb_application_lb_info_dict['molecule-ga-info-80'].load_balancer_arn
           - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners |
             length == 1
@@ -145,7 +145,7 @@
                     endpoint_configurations:
                       - endpoint_id:
                           "{{ _elb_application_lb_info_dict[
-                                'molecule-http-80'
+                                'molecule-ga-info-80'
                               ].load_balancer_arn | d(none) }}"
                         weight: 200
           - name: molecule-global-accelerator-info-01
@@ -176,7 +176,7 @@
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions |
             length == 1
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
-              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+              _elb_application_lb_info_dict['molecule-ga-info-80'].load_balancer_arn
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions.0.weight == 200
           - not (_global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled | bool)
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].status == 'DEPLOYED'

@@ -12,35 +12,35 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _elb_application_lb_info_dict['molecule-http-80'].availability_zones |
+          - _elb_application_lb_info_dict['molecule-alb-info-80'].availability_zones |
             map(attribute='subnet_id') |
             sort |
             list ==
               elb_application_lb_list.0.subnets |
               sort |
               list
-          - _elb_application_lb_info_dict['molecule-http-80'].dns_name is defined
-          - _elb_application_lb_info_dict['molecule-http-80'].ip_address_type == 'ipv4'
-          - _elb_application_lb_info_dict['molecule-http-80'].listeners.0.port ==
+          - _elb_application_lb_info_dict['molecule-alb-info-80'].dns_name is defined
+          - _elb_application_lb_info_dict['molecule-alb-info-80'].ip_address_type == 'ipv4'
+          - _elb_application_lb_info_dict['molecule-alb-info-80'].listeners.0.port ==
               elb_application_lb_list.0.listeners.0.Port
-          - _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn is defined
-          - _elb_application_lb_info_dict['molecule-http-80'].load_balancer_name is defined
-          - _elb_application_lb_info_dict['molecule-http-80'].vpc_id ==
-              _ec2_vpc_net_info_dict['molecule'].id
+          - _elb_application_lb_info_dict['molecule-alb-info-80'].load_balancer_arn is defined
+          - _elb_application_lb_info_dict['molecule-alb-info-80'].load_balancer_name is defined
+          - _elb_application_lb_info_dict['molecule-alb-info-80'].vpc_id ==
+              _ec2_vpc_net_info_dict['molecule-elb-application-lb-info'].id
 
-          - _elb_application_lb_info_dict['molecule-http-81'].availability_zones |
+          - _elb_application_lb_info_dict['molecule-alb-info-81'].availability_zones |
             map(attribute='subnet_id') |
             sort |
             list ==
               elb_application_lb_list.1.subnets |
               sort |
               list
-          - _elb_application_lb_info_dict['molecule-http-81'].dns_name is defined
-          - _elb_application_lb_info_dict['molecule-http-81'].ip_address_type == 'ipv4'
-          - _elb_application_lb_info_dict['molecule-http-81'].listeners.0.port ==
+          - _elb_application_lb_info_dict['molecule-alb-info-81'].dns_name is defined
+          - _elb_application_lb_info_dict['molecule-alb-info-81'].ip_address_type == 'ipv4'
+          - _elb_application_lb_info_dict['molecule-alb-info-81'].listeners.0.port ==
               elb_application_lb_list.1.listeners.0.Port
-          - _elb_application_lb_info_dict['molecule-http-81'].load_balancer_arn is defined
-          - _elb_application_lb_info_dict['molecule-http-81'].load_balancer_name is defined
-          - _elb_application_lb_info_dict['molecule-http-81'].vpc_id ==
-              _ec2_vpc_net_info_dict['molecule'].id
+          - _elb_application_lb_info_dict['molecule-alb-info-81'].load_balancer_arn is defined
+          - _elb_application_lb_info_dict['molecule-alb-info-81'].load_balancer_name is defined
+          - _elb_application_lb_info_dict['molecule-alb-info-81'].vpc_id ==
+              _ec2_vpc_net_info_dict['molecule-elb-application-lb-info'].id
 ...

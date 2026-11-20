@@ -4,16 +4,16 @@ provisioner:
     group_vars:
       all:
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-elb-application-lb'].id | d(omit) }}"
             security_groups:
-              - name: molecule-http-80
+              - name: molecule-elb-application-lb-80
                 rules:
                   - cidr_ip: 0.0.0.0/0
                     ports:
                       - 80
                       - 443
                     proto: tcp
-              - name: molecule-http-81
+              - name: molecule-elb-application-lb-81
                 rules:
                   - cidr_ip: 0.0.0.0/0
                     ports:
@@ -24,54 +24,54 @@ provisioner:
                     proto: -1
 
         ec2_vpc_igw_list:
-          - name: molecule
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - name: molecule-elb-application-lb
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-elb-application-lb'].id | d(omit) }}"
 
         ec2_vpc_net_list:
-          - name: molecule
+          - name: molecule-elb-application-lb
             cidr_block: 192.168.0.0/24
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-elb-application-lb'].id | d(omit) }}"
             subnets:
-              - name: molecule-a
+              - name: molecule-elb-application-lb-a
                 az: us-east-1a
                 cidr: 192.168.0.0/25
-              - name: molecule-c
+              - name: molecule-elb-application-lb-c
                 az: us-east-1c
                 cidr: 192.168.0.128/25
 
         elb_application_lb_list:
-          - name: molecule-http-80
+          - name: molecule-elb-application-lb-80
             listeners:
               - Protocol: HTTP
                 Port: 80
                 DefaultActions:
                   - Type: forward
-                    TargetGroupName: molecule-http-8080
+                    TargetGroupName: molecule-elb-application-lb-8080
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id |
+              - "{{ _ec2_security_group_info_dict['molecule-elb-application-lb-80'].group_id |
                     d(omit) }}"
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-elb-application-lb-a'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-elb-application-lb-c'].id | d(omit) }}"
 
-          - name: molecule-http-81
+          - name: molecule-elb-application-lb-81
             listeners:
               - Protocol: HTTP
                 Port: 81
                 DefaultActions:
                   - Type: forward
-                    TargetGroupName: molecule-http-8081
+                    TargetGroupName: molecule-elb-application-lb-8081
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule-http-81'].group_id |
+              - "{{ _ec2_security_group_info_dict['molecule-elb-application-lb-81'].group_id |
                     d(omit) }}"
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-elb-application-lb-a'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-elb-application-lb-c'].id | d(omit) }}"
 
         elb_target_group_list:
-          - name: molecule-http-8080
+          - name: molecule-elb-application-lb-8080
             health_check_interval: 10
             health_check_path: /healthcheck
             health_check_port: 8080
@@ -83,9 +83,9 @@ provisioner:
             stickiness_enabled: true
             target_type: instance
             unhealthy_threshold_count: 3
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-elb-application-lb'].id | d(omit) }}"
 
-          - name: molecule-http-8081
+          - name: molecule-elb-application-lb-8081
             health_check_interval: 10
             health_check_path: /admin
             health_check_port: 8081
@@ -97,5 +97,5 @@ provisioner:
             stickiness_enabled: true
             target_type: instance
             unhealthy_threshold_count: 3
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-elb-application-lb'].id | d(omit) }}"
 ...

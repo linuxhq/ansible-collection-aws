@@ -4,9 +4,9 @@ provisioner:
     group_vars:
       all:
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-global-accelerator'].id | d(omit) }}"
             security_groups:
-              - name: molecule-http-80
+              - name: molecule-global-accelerator-80
                 rules:
                   - cidr_ip: 0.0.0.0/0
                     ports:
@@ -14,41 +14,41 @@ provisioner:
                     proto: tcp
 
         ec2_vpc_igw_list:
-          - name: molecule
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - name: molecule-global-accelerator
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-global-accelerator'].id | d(omit) }}"
 
         ec2_vpc_net_list:
-          - name: molecule
+          - name: molecule-global-accelerator
             cidr_block: 192.168.0.0/24
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-global-accelerator'].id | d(omit) }}"
             subnets:
-              - name: molecule-a
+              - name: molecule-global-accelerator-a
                 az: us-east-1a
                 cidr: 192.168.0.0/25
-              - name: molecule-c
+              - name: molecule-global-accelerator-c
                 az: us-east-1c
                 cidr: 192.168.0.128/25
 
         elb_application_lb_list:
-          - name: molecule-http-80
+          - name: molecule-global-accelerator-80
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule-http-80'].group_id |
+              - "{{ _ec2_security_group_info_dict['molecule-global-accelerator-80'].group_id |
                     d(omit) }}"
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-global-accelerator-a'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-global-accelerator-c'].id | d(omit) }}"
             listeners:
               - Protocol: HTTP
                 Port: 80
                 DefaultActions:
                   - Type: forward
-                    TargetGroupName: molecule-http-8080
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+                    TargetGroupName: molecule-global-accelerator-8080
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-global-accelerator'].id | d(omit) }}"
 
         elb_target_group_list:
-          - name: molecule-http-8080
+          - name: molecule-global-accelerator-8080
             health_check_interval: 10
             health_check_path: /healthcheck
             health_check_port: 8080
@@ -60,7 +60,7 @@ provisioner:
             stickiness_enabled: true
             target_type: instance
             unhealthy_threshold_count: 3
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-global-accelerator'].id | d(omit) }}"
 
         global_accelerator_list:
           - name: molecule-global-accelerator-00
@@ -78,7 +78,7 @@ provisioner:
                     endpoint_configurations:
                       - endpoint_id:
                           "{{ _elb_application_lb_info_dict[
-                                'molecule-http-80'
+                                'molecule-global-accelerator-80'
                               ].load_balancer_arn | d(none) }}"
                         weight: 64
               - protocol: TCP
@@ -91,7 +91,7 @@ provisioner:
                     endpoint_configurations:
                       - endpoint_id:
                           "{{ _elb_application_lb_info_dict[
-                                'molecule-http-80'
+                                'molecule-global-accelerator-80'
                               ].load_balancer_arn | d(none) }}"
           - name: molecule-global-accelerator-01
             enabled: true

@@ -24,7 +24,7 @@
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions |
             length == 1
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
-              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+              _elb_application_lb_info_dict['molecule-global-accelerator-80'].load_balancer_arn
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.weight == 64
           - __global_accelerator_listener_443.port_ranges | length == 1
           - __global_accelerator_listener_443.port_ranges.0.to_port == 443
@@ -34,7 +34,7 @@
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions |
             length == 1
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
-              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+              _elb_application_lb_info_dict['molecule-global-accelerator-80'].load_balancer_arn
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
       vars:
         __global_accelerator_listeners:
@@ -85,7 +85,7 @@
                     endpoint_configurations:
                       - endpoint_id:
                           "{{ _elb_application_lb_info_dict[
-                                'molecule-http-80'
+                                'molecule-global-accelerator-80'
                               ].load_balancer_arn | d(none) }}"
                         weight: 200
               - protocol: TCP
@@ -116,7 +116,7 @@
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions |
             length == 1
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
-              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+              _elb_application_lb_info_dict['molecule-global-accelerator-80'].load_balancer_arn
           - __global_accelerator_listener_80.endpoint_groups.0.endpoint_descriptions.0.weight == 200
           - __global_accelerator_listener_443.port_ranges | length == 1
           - __global_accelerator_listener_443.port_ranges.0.to_port == 444
@@ -126,7 +126,7 @@
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions |
             length == 1
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
-              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+              _elb_application_lb_info_dict['molecule-global-accelerator-80'].load_balancer_arn
           - __global_accelerator_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
       vars:
         __global_accelerator_listeners:

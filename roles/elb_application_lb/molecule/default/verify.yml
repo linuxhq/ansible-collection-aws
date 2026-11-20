@@ -16,7 +16,7 @@
           - _elb_application_lb_info_dict[_loadbalancer.name].listeners.0.port ==
               _loadbalancer.listeners.0.Port
           - _elb_application_lb_info_dict[_loadbalancer.name].vpc_id ==
-              _ec2_vpc_net_info_dict['molecule'].id
+              _ec2_vpc_net_info_dict['molecule-elb-application-lb'].id
       loop: "{{ elb_application_lb_list }}"
       loop_control:
         label: "{{ _loadbalancer.name }}"
