@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         pinpoint_sms_voice_phone_number_list:
-          - name: molecule-pinpoint-simulator
+          - name: molecule-pinpoint-sms-voice-phone-number-simulator
             tags:
               molecule: pinpoint_sms_voice_phone_number
             iso_country_code: US

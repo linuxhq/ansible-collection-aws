@@ -13,19 +13,19 @@
           "{{ pinpoint_sms_voice_phone_number_list |
               map('combine',
                   {'phone_number_id':
-                   _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'].phone_number_id,
+                   _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-sms-voice-phone-pool-info-simulator'].phone_number_id,
                    'state':
                    'absent'})
-              if 'molecule-pinpoint-simulator' in _pinpoint_sms_voice_phone_number_info_dict
+              if 'molecule-pinpoint-sms-voice-phone-pool-info-simulator' in _pinpoint_sms_voice_phone_number_info_dict
               else [] }}"
         pinpoint_sms_voice_phone_pool_list:
           "{{ pinpoint_sms_voice_phone_pool_list |
               map('combine',
                   {'pool_id':
-                   _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id,
+                   _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].pool_id,
                    'state':
                    'absent'})
-              if 'molecule-pinpoint-pool' in _pinpoint_sms_voice_phone_pool_info_dict
+              if 'molecule-pinpoint-sms-voice-phone-pool-info' in _pinpoint_sms_voice_phone_pool_info_dict
               else [] }}"
 
     - name: Ensure roles are included

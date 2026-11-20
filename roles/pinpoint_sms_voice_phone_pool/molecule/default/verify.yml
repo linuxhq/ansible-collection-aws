@@ -10,9 +10,9 @@
     - name: Ensure fixtures are selected
       ansible.builtin.set_fact:
         __pinpoint_sms_voice_phone_number_verify:
-          "{{ _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'] }}"
+          "{{ _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-sms-voice-phone-pool-simulator'] }}"
         __pinpoint_sms_voice_phone_pool_verify:
-          "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'] }}"
+          "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool'] }}"
 
     - name: Ensure created pool is verified
       ansible.builtin.assert:
@@ -26,7 +26,7 @@
           - __pinpoint_sms_voice_phone_pool_verify.tags |
             dict2items |
             length == 2
-          - __pinpoint_sms_voice_phone_pool_verify.tags.Name == 'molecule-pinpoint-pool'
+          - __pinpoint_sms_voice_phone_pool_verify.tags.Name == 'molecule-pinpoint-sms-voice-phone-pool'
           - __pinpoint_sms_voice_phone_pool_verify.tags.molecule == 'pinpoint_sms_voice_phone_pool'
           - __pinpoint_sms_voice_phone_number_verify.pool_id == __pinpoint_sms_voice_phone_pool_verify.pool_id
 ...

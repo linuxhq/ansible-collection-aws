@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         pinpoint_sms_voice_phone_number_list:
-          - name: molecule-pinpoint-simulator
+          - name: molecule-pinpoint-sms-voice-phone-pool-info-simulator
             iso_country_code: US
             message_type: TRANSACTIONAL
             number_capabilities:
@@ -12,12 +12,12 @@ provisioner:
             number_type: SIMULATOR
 
         pinpoint_sms_voice_phone_pool_list:
-          - name: molecule-pinpoint-pool
+          - name: molecule-pinpoint-sms-voice-phone-pool-info
             tags:
               molecule: pinpoint_sms_voice_phone_pool_info
             origination_identity:
               "{{ _pinpoint_sms_voice_phone_number_info_dict[
-                    'molecule-pinpoint-simulator'
+                    'molecule-pinpoint-sms-voice-phone-pool-info-simulator'
                   ].phone_number_id }}"
             iso_country_code: US
             message_type: TRANSACTIONAL

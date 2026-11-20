@@ -13,20 +13,20 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].message_type ==
+          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].message_type ==
               'TRANSACTIONAL'
-          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].origination_identities |
+          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].origination_identities |
               length == 1
-          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_arn is defined
-          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id is defined
-          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].status == 'ACTIVE'
-          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].tags.molecule ==
+          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].pool_arn is defined
+          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].pool_id is defined
+          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].status == 'ACTIVE'
+          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].tags.molecule ==
               'pinpoint_sms_voice_phone_pool_info'
 
     - name: Ensure pool id filter target is generated
       ansible.builtin.set_fact:
         pinpoint_sms_voice_phone_pool_info_id_filter:
-          "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id }}"
+          "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].pool_id }}"
 
     - name: Ensure role is included with pool id
       ansible.builtin.include_role:
@@ -66,5 +66,5 @@
     - name: Ensure info with filters is verified
       ansible.builtin.assert:
         that:
-          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-pool'].pool_id is defined
+          - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].pool_id is defined
 ...

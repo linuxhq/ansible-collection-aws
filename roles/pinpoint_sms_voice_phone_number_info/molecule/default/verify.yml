@@ -10,7 +10,7 @@
     - name: Ensure requested phone number is selected
       ansible.builtin.set_fact:
         __pinpoint_sms_voice_phone_number_verify:
-          "{{ _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'] }}"
+          "{{ _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-sms-voice-phone-number-info-simulator'] }}"
 
     - name: Ensure info is verified
       ansible.builtin.assert:
@@ -72,5 +72,5 @@
     - name: Ensure info with filters is verified
       ansible.builtin.assert:
         that:
-          - _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'].phone_number_id is defined
+          - _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-sms-voice-phone-number-info-simulator'].phone_number_id is defined
 ...
