@@ -4,10 +4,10 @@ provisioner:
     group_vars:
       all:
         iam_group_list:
-          - name: molecule-rds
+          - name: molecule-iam-policy-rds
 
         iam_policy_list:
-          - iam_name: molecule-ec2
+          - iam_name: molecule-iam-policy-ec2
             iam_type: user
             policy_json:
               Version: '2012-10-17'
@@ -19,7 +19,7 @@ provisioner:
                     - '*'
             policy_name: MoleculeEc2FullAccess
 
-          - iam_name: molecule-rds
+          - iam_name: molecule-iam-policy-rds
             iam_type: group
             policy_json:
               Version: '2012-10-17'
@@ -32,5 +32,5 @@ provisioner:
             policy_name: MoleculeRdsFullAccess
 
         iam_user_list:
-          - name: molecule-ec2
+          - name: molecule-iam-policy-ec2
 ...

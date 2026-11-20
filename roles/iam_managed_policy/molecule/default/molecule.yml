@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         iam_managed_policy_list:
-          - name: molecule-admin
+          - name: molecule-iam-managed-policy-admin
             policy:
               Version: '2012-10-17'
               Statement:
@@ -12,7 +12,7 @@ provisioner:
                   Action: '*'
                   Resource: '*'
 
-          - name: molecule-s3
+          - name: molecule-iam-managed-policy-s3
             policy:
               Version: '2012-10-17'
               Statement:

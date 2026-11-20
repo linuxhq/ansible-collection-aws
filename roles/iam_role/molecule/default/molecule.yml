@@ -28,17 +28,17 @@ provisioner:
           - AmazonVPCReadOnlyAccess
 
         iam_role_name_list:
-          - name: molecule-role-00
-          - name: molecule-role-01
-          - name: molecule-role-02
-          - name: molecule-role-03
-          - name: molecule-role-04
-          - name: molecule-role-05
-          - name: molecule-role-06
-          - name: molecule-role-07
-          - name: molecule-role-08
-          - name: molecule-role-09
-          - name: molecule-role-10
-          - name: molecule-role-11
-          - name: molecule-role-12
+          - name: molecule-iam-role-00
+          - name: molecule-iam-role-01
+          - name: molecule-iam-role-02
+          - name: molecule-iam-role-03
+          - name: molecule-iam-role-04
+          - name: molecule-iam-role-05
+          - name: molecule-iam-role-06
+          - name: molecule-iam-role-07
+          - name: molecule-iam-role-08
+          - name: molecule-iam-role-09
+          - name: molecule-iam-role-10
+          - name: molecule-iam-role-11
+          - name: molecule-iam-role-12
 ...

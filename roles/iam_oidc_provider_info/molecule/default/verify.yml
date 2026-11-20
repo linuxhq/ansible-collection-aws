@@ -10,15 +10,15 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].client_id_list.0 == 'sts.amazonaws.com'
-          - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].tags.Name == 'molecule-oidc-provider'
-          - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].tags.molecule ==
+          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].client_id_list.0 == 'sts.amazonaws.com'
+          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].tags.Name == 'molecule-iam-oidc-provider-info'
+          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].tags.molecule ==
               'iam_oidc_provider_info'
 
     - name: Ensure oidc provider arn filter target is generated
       ansible.builtin.set_fact:
         iam_oidc_provider_info_arn_filter:
-          "{{ _iam_oidc_provider_info_dict['oidc.molecule.example.com'].open_id_connect_provider_arn }}"
+          "{{ _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].open_id_connect_provider_arn }}"
 
     - name: Ensure role is included with arn
       ansible.builtin.include_role:
@@ -30,7 +30,7 @@
       ansible.builtin.assert:
         that:
           - _iam_oidc_provider_info_list | length == 1
-          - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].open_id_connect_provider_arn ==
+          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].open_id_connect_provider_arn ==
               iam_oidc_provider_info_arn_filter
 
     - name: Ensure role is included with url
@@ -43,7 +43,7 @@
       ansible.builtin.assert:
         that:
           - _iam_oidc_provider_info_list | length == 1
-          - _iam_oidc_provider_info_dict['oidc.molecule.example.com'].client_id_list.0 == 'sts.amazonaws.com'
+          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].client_id_list.0 == 'sts.amazonaws.com'
 
     - name: Ensure role is included with an unknown arn
       ansible.builtin.include_role:
@@ -51,7 +51,7 @@
       vars:
         iam_oidc_provider_info_arn:
           "{{ iam_oidc_provider_info_arn_filter |
-              replace('oidc.molecule.example.com', 'oidc.missing.example.com') }}"
+              replace('oidc.molecule-iam-oidc-provider-info.org', 'oidc.missing.example.com') }}"
 
     - name: Ensure info with an unknown arn is verified
       ansible.builtin.assert:

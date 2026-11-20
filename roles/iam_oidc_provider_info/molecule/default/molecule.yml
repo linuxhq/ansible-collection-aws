@@ -4,10 +4,10 @@ provisioner:
     group_vars:
       all:
         iam_oidc_provider_list:
-          - name: molecule-oidc-provider
+          - name: molecule-iam-oidc-provider-info
             tags:
               molecule: iam_oidc_provider_info
-            url: https://oidc.molecule.example.com
+            url: https://oidc.molecule-iam-oidc-provider-info.org
             client_id_list:
               - sts.amazonaws.com
             thumbprint_list:

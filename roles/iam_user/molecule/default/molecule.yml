@@ -4,10 +4,10 @@ provisioner:
     group_vars:
       all:
         iam_user_list:
-          - name: molecule-admin
+          - name: molecule-iam-user-admin
             purge_policies: true
-          - name: molecule-kopia
+          - name: molecule-iam-user-kopia
             purge_policies: true
-          - name: molecule-molecule
+          - name: molecule-iam-user-molecule
             purge_policies: true
 ...

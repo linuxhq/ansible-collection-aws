@@ -4,11 +4,11 @@ provisioner:
     group_vars:
       all:
         iam_group_list:
-          - name: molecule-ec2
-          - name: molecule-rds
+          - name: molecule-iam-policy-info-ec2
+          - name: molecule-iam-policy-info-rds
 
         iam_policy_list:
-          - iam_name: molecule-ec2
+          - iam_name: molecule-iam-policy-info-ec2
             iam_type: user
             policy_json:
               Version: '2012-10-17'
@@ -20,7 +20,7 @@ provisioner:
                     - '*'
             policy_name: MoleculeEc2FullAccess
 
-          - iam_name: molecule-rds
+          - iam_name: molecule-iam-policy-info-rds
             iam_type: group
             policy_json:
               Version: '2012-10-17'
@@ -32,7 +32,7 @@ provisioner:
                     - '*'
             policy_name: MoleculeRdsFullAccess
 
-          - iam_name: molecule-s3
+          - iam_name: molecule-iam-policy-info-s3
             iam_type: role
             policy_json:
               Version: '2012-10-17'
@@ -45,7 +45,7 @@ provisioner:
             policy_name: MoleculeS3FullAccess
 
         iam_role_list:
-          - name: molecule-s3
+          - name: molecule-iam-policy-info-s3
             assume_role_policy_document:
               Version: '2012-10-17'
               Statement:
@@ -58,6 +58,6 @@ provisioner:
             delete_instance_profile: true
 
         iam_user_list:
-          - name: molecule-ec2
-          - name: molecule-rds
+          - name: molecule-iam-policy-info-ec2
+          - name: molecule-iam-policy-info-rds
 ...

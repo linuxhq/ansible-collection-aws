@@ -9,7 +9,7 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _iam_user_info_dict['molecule-admin'].user_id is defined
-          - _iam_user_info_dict['molecule-kopia'].user_id is defined
-          - _iam_user_info_dict['molecule-molecule'].user_id is defined
+          - _iam_user_info_dict['molecule-iam-user-info-admin'].user_id is defined
+          - _iam_user_info_dict['molecule-iam-user-info-kopia'].user_id is defined
+          - _iam_user_info_dict['molecule-iam-user-info-molecule'].user_id is defined
 ...

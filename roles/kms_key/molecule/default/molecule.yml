@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         iam_role_list:
-          - name: admin
+          - name: molecule-kms-key-admin
             assume_role_policy_document:
               Version: '2012-10-17'
               Statement:
@@ -18,7 +18,7 @@ provisioner:
               - AdministratorAccess
 
         kms_key_list:
-          - name: molecule-root
+          - name: molecule-kms-key-root
             pending_window: 7
             policy:
               Version: '2012-10-17'
@@ -29,7 +29,7 @@ provisioner:
                   Action: kms:*
                   Resource: '*'
 
-          - name: molecule-admin
+          - name: molecule-kms-key-admin
             pending_window: 7
             policy:
               Version: '2012-10-17'
@@ -47,5 +47,5 @@ provisioner:
                   Condition:
                     ArnEquals:
                       'aws:PrincipalArn':
-                        - 'arn:aws:iam::{{ _aws_caller_info_account }}:role/admin'
+                        - 'arn:aws:iam::{{ _aws_caller_info_account }}:role/molecule-kms-key-admin'
 ...
