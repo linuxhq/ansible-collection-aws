@@ -2,14 +2,13 @@
 - name: Cleanup
   hosts: all
 
-  tasks:
+  pre_tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         rds_instance_param_group_list:
           "{{ rds_instance_param_group_list |
               map('combine', {'state': 'absent'}) }}"
 
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: rds_instance_param_group
+  roles:
+    - rds_instance_param_group
 ...

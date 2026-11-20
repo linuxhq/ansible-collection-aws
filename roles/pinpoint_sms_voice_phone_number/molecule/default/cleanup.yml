@@ -18,12 +18,7 @@
               if 'molecule-pinpoint-sms-voice-phone-number-simulator' in _pinpoint_sms_voice_phone_number_info_dict
               else [] }}"
 
-    - name: Ensure roles are included
+    - name: Ensure phone numbers are removed
       ansible.builtin.include_role:
-        name: "{{ _cleanup }}"
-      loop:
-        - pinpoint_sms_voice_phone_number
-      loop_control:
-        label: "{{ _cleanup }}"
-        loop_var: _cleanup
+        name: pinpoint_sms_voice_phone_number
 ...

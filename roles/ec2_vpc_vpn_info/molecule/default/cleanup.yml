@@ -57,12 +57,7 @@
       retries: 40
       delay: 15
 
-    - name: Ensure roles are included
+    - name: Ensure customer gateways are removed
       ansible.builtin.include_role:
-        name: "{{ _cleanup }}"
-      loop:
-        - ec2_customer_gateway
-      loop_control:
-        label: "{{ _cleanup }}"
-        loop_var: _cleanup
+        name: ec2_customer_gateway
 ...
