@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         s3_bucket_list:
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-00"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-00"
             accelerate_enabled: true
             policy:
               Version: '2012-10-17'
@@ -13,8 +13,8 @@ provisioner:
                   Action: s3:*
                   Principal: '*'
                   Resource:
-                    - "arn:aws:s3:::molecule-bucket-{{ ansible_facts.date_time.date }}-00"
-                    - "arn:aws:s3:::molecule-bucket-{{ ansible_facts.date_time.date }}-00/*"
+                    - "arn:aws:s3:::molecule-s3-bucket-{{ ansible_facts.date_time.date }}-00"
+                    - "arn:aws:s3:::molecule-s3-bucket-{{ ansible_facts.date_time.date }}-00/*"
                   Condition:
                     Bool:
                       'aws:SecureTransport': false
@@ -24,17 +24,17 @@ provisioner:
               ignore_public_acls: true
               restrict_public_buckets: true
 
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-01"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-02"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-03"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-04"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-05"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-06"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-07"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-08"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-09"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-10"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-11"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-12"
-          - name: "molecule-bucket-{{ ansible_facts.date_time.date }}-13"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-01"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-02"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-03"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-04"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-05"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-06"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-07"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-08"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-09"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-10"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-11"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-12"
+          - name: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-13"
 ...

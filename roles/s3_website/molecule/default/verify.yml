@@ -6,7 +6,7 @@
     - role: s3_bucket_info
       s3_bucket_info_bucket_facts:
         bucket_website: true
-      s3_bucket_info_name_filter: "molecule-bucket-{{ ansible_facts.date_time.date }}-"
+      s3_bucket_info_name_filter: "molecule-s3-website-{{ ansible_facts.date_time.date }}-"
 
   post_tasks:
     - name: Ensure websites are verified

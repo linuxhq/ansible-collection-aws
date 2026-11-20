@@ -4,7 +4,7 @@
 
   roles:
     - role: s3_bucket_info
-      s3_bucket_info_name_filter: "molecule-bucket-{{ ansible_facts.date_time.date }}-"
+      s3_bucket_info_name_filter: "molecule-s3-bucket-{{ ansible_facts.date_time.date }}-"
 
   post_tasks:
     - name: Ensure buckets are verified
