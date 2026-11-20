@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   check_mode: true
   tasks:
     - name: Ensure account information is queried
@@ -25,13 +26,20 @@
           - __ses_sandbox_request_query.account.details.website_url == 'https://github.com/ansible/molecule'
           - __ses_sandbox_request_query.account.details.additional_contact_email_addresses ==
             ['jake@molecule.org', 'john@molecule.org']
-          - __ses_sandbox_request_query.account.production_access_enabled | d(false) ==
-            __ses_sandbox_info_query.account.production_access_enabled | d(false)
-          - __ses_sandbox_request_query.account.details.review_details | d({}) ==
+          - __ses_sandbox_request_query.account.production_access_enabled |
+            d(false) ==
+            __ses_sandbox_info_query.account.production_access_enabled |
+            d(false)
+          - __ses_sandbox_request_query.account.details.review_details |
+            d({}) ==
             __ses_sandbox_info_query.account.details.review_details | d({})
           - __ses_sandbox_request_query is changed or
-            __ses_sandbox_info_query.account.production_access_enabled | d(false) | bool or
-            __ses_sandbox_info_query.account.details.review_details | d({}) | length > 0
+            __ses_sandbox_info_query.account.production_access_enabled |
+            d(false) |
+            bool or
+            __ses_sandbox_info_query.account.details.review_details |
+            d({}) |
+            length > 0
 
     - name: Ensure the role predicts an account details request
       ansible.builtin.import_role:

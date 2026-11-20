@@ -1,11 +1,7 @@
 ---
 - name: Converge
   hosts: all
-  roles:
-    - role: notifications_contacts
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
 
+  roles:
     - notifications_contacts_info
 ...

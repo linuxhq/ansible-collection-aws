@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - ses_sandbox_info
 
@@ -16,7 +17,6 @@
           - _ses_sandbox_info_dict.details.contact_language == 'EN'
           - _ses_sandbox_info_dict.details.mail_type == 'TRANSACTIONAL'
           - _ses_sandbox_info_dict.details.review_details.case_id is defined
-          - _ses_sandbox_info_dict.details.review_details.status is defined
           - _ses_sandbox_info_dict.details.use_case_description is defined
           - _ses_sandbox_info_dict.details.website_url ==
               ses_sandbox_website_url

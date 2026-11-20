@@ -1,0 +1,13 @@
+---
+- name: Cleanup
+  hosts: all
+
+  roles:
+    - aws_region_info
+    - role: ec2_instance_metadata
+      vars:
+        ec2_instance_metadata_http_endpoint: no-preference
+        ec2_instance_metadata_http_put_response_hop_limit: -1
+        ec2_instance_metadata_http_tokens: no-preference
+        ec2_instance_metadata_instance_metadata_tags: no-preference
+...

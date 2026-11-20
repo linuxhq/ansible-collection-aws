@@ -1,11 +1,7 @@
 ---
 - name: Converge
   hosts: all
-  roles:
-    - role: acm_certificate
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
 
+  roles:
     - acm_certificate_info
 ...

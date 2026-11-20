@@ -1,19 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: ec2_customer_gateway
       ec2_customer_gateway_list: []
-      tags:
-        - molecule-idempotence-notest
 
-    - role: ec2_customer_gateway
-      ec2_customer_gateway_list:
-        "{{ ec2_customer_gateway_list_create }}"
-      tags:
-        - molecule-idempotence-notest
-
-    - role: ec2_customer_gateway
-      ec2_customer_gateway_list:
-        "{{ ec2_customer_gateway_list_update }}"
+    - ec2_customer_gateway
 ...

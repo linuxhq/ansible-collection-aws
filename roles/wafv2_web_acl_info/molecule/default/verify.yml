@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure role is included without filters
       ansible.builtin.include_role:
@@ -9,43 +10,51 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].arn is defined
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].id is defined
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].name is defined
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].arn is defined
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].id is defined
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].name is defined
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].arn is defined
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].id is defined
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].name is defined
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-knownbadinputsruleset'].rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].arn is defined
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].id is defined
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].name is defined
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-linuxruleset'].rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].arn is defined
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].id is defined
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].name is defined
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-anonymousiplist'].rules | length == 1
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].arn is defined
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].id is defined
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].name is defined
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].rules is defined
-          - _wafv2_web_acl_info_dict['molecule-sqliruleset'].rules | length == 1
-          - _wafv2_web_acl_info_dict.values() | map(attribute='tags') | map(attribute='Name') | list ==
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-amazonipreputationlist'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-amazonipreputationlist'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-amazonipreputationlist'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-amazonipreputationlist'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-amazonipreputationlist'].rules |
+            length == 1
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-commonruleset'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-commonruleset'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-commonruleset'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-commonruleset'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-commonruleset'].rules |
+            length == 1
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-knownbadinputsruleset'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-knownbadinputsruleset'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-knownbadinputsruleset'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-knownbadinputsruleset'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-knownbadinputsruleset'].rules |
+            length == 1
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-linuxruleset'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-linuxruleset'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-linuxruleset'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-linuxruleset'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-linuxruleset'].rules |
+            length == 1
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-anonymousiplist'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-anonymousiplist'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-anonymousiplist'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-anonymousiplist'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-anonymousiplist'].rules |
+            length == 1
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-sqliruleset'].arn is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-sqliruleset'].id is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-sqliruleset'].name is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-sqliruleset'].rules is defined
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-sqliruleset'].rules | length == 1
+          - _wafv2_web_acl_info_dict.values() |
+            map(attribute='tags') |
+            map(attribute='Name') |
+            list ==
               _wafv2_web_acl_info_dict.keys() | list
 
     - name: Ensure web acl id filter target is generated
       ansible.builtin.set_fact:
         wafv2_web_acl_info_id_filter:
-          "{{ _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].id }}"
+          "{{ _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-amazonipreputationlist'].id }}"
 
     - name: Ensure role is included with web acl id
       ansible.builtin.include_role:
@@ -57,45 +66,31 @@
       ansible.builtin.assert:
         that:
           - _wafv2_web_acl_info_list | length == 1
-          - _wafv2_web_acl_info_dict['molecule-amazonipreputationlist'].id == wafv2_web_acl_info_id_filter
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-amazonipreputationlist'].id == wafv2_web_acl_info_id_filter
 
     - name: Ensure role is included with web acl name
       ansible.builtin.include_role:
         name: wafv2_web_acl_info
       vars:
-        wafv2_web_acl_info_name: molecule-commonruleset
+        wafv2_web_acl_info_name: molecule-wafv2-web-acl-info-commonruleset
 
     - name: Ensure info with web acl name is verified
       ansible.builtin.assert:
         that:
           - _wafv2_web_acl_info_list | length == 1
-          - _wafv2_web_acl_info_dict.keys() | list == ['molecule-commonruleset']
-          - _wafv2_web_acl_info_dict['molecule-commonruleset'].rules | length == 1
+          - _wafv2_web_acl_info_dict.keys() | list == ['molecule-wafv2-web-acl-info-commonruleset']
+          - _wafv2_web_acl_info_dict['molecule-wafv2-web-acl-info-commonruleset'].rules |
+            length == 1
 
     - name: Ensure role is included with a missing web acl name
       ansible.builtin.include_role:
         name: wafv2_web_acl_info
       vars:
-        wafv2_web_acl_info_name: molecule-missing
+        wafv2_web_acl_info_name: molecule-wafv2-web-acl-info-missing
 
     - name: Ensure info with a missing web acl name is verified
       ansible.builtin.assert:
         that:
           - _wafv2_web_acl_info_list == []
           - _wafv2_web_acl_info_dict == {}
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        wafv2_web_acl_list:
-          "{{ wafv2_web_acl_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - wafv2_web_acl
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...

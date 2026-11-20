@@ -1,16 +1,10 @@
 ---
 - name: Converge
   hosts: all
-  roles:
-    - role: ec2_vpc_net
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
 
+  roles:
     - role: ec2_security_group
       ec2_security_group_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - ec2_security_group
 ...

@@ -1,0 +1,76 @@
+---
+- name: Cleanup
+  hosts: all
+
+  roles:
+    - aws_caller_info
+    - ec2_security_group_info
+    - ec2_vpc_net_info
+    - ec2_vpc_subnet_info
+
+  tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ec2_security_group_list:
+          "{{ ec2_security_group_list |
+              map('combine', {'security_groups': ec2_security_group_list.0.security_groups |
+                                                 map('combine', {'state': 'absent'})}) }}"
+        ec2_vpc_igw_list:
+          "{{ ec2_vpc_igw_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_net_list:
+          "{{ ec2_vpc_net_list |
+              map('combine', {'state': 'absent'}) }}"
+        ec2_vpc_subnet_list:
+          "{{ ec2_vpc_subnet_list |
+              map('combine', {'state': 'absent'}) }}"
+        iam_role_list:
+          "{{ iam_role_list |
+              map('combine', {'state': 'absent'}) }}"
+        rds_instance_list:
+          "{{ rds_instance_list |
+              map('combine', {'state': 'absent'}) }}"
+        rds_instance_param_group_list:
+          "{{ rds_instance_param_group_list |
+              map('combine', {'state': 'absent'}) }}"
+        rds_option_group_list:
+          "{{ rds_option_group_list |
+              map('combine', {'state': 'absent'}) }}"
+        rds_subnet_group_list:
+          "{{ rds_subnet_group_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure rds instances are deleted
+      ansible.builtin.include_role:
+        name: rds_instance
+
+    - name: Ensure rds option groups are deleted once the instances release them
+      amazon.aws.rds_option_group:
+        option_group_name: "{{ _og.option_group_name }}"
+        state: absent
+        validate_certs: true
+      register: __rds_option_group_deleted
+      loop: "{{ rds_option_group_list }}"
+      loop_control:
+        label: "{{ _og.option_group_name }}"
+        loop_var: _og
+      until:
+        - __rds_option_group_deleted is succeeded
+      retries: 20
+      delay: 30
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _cleanup }}"
+      loop:
+        - rds_subnet_group
+        - rds_instance_param_group
+        - ec2_security_group
+        - ec2_vpc_subnet
+        - ec2_vpc_igw
+        - ec2_vpc_net
+        - iam_role
+      loop_control:
+        label: "{{ _cleanup }}"
+        loop_var: _cleanup
+...

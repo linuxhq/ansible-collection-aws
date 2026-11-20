@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - iam_user_info
 
@@ -8,22 +9,7 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _iam_user_info_dict['molecule-admin'].user_id is defined
-          - _iam_user_info_dict['molecule-kopia'].user_id is defined
-          - _iam_user_info_dict['molecule-molecule'].user_id is defined
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        iam_user_list:
-          "{{ iam_user_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - iam_user
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
+          - _iam_user_info_dict['molecule-iam-user-info-admin'].user_id is defined
+          - _iam_user_info_dict['molecule-iam-user-info-kopia'].user_id is defined
+          - _iam_user_info_dict['molecule-iam-user-info-molecule'].user_id is defined
 ...

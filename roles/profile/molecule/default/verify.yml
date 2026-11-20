@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   environment:
     PATH: '/opt/awscli/bin'
 
@@ -9,6 +10,7 @@
       ansible.builtin.command:
         cmd:
           aws sts get-caller-identity
+            --profile molecule
             --output text
             --query Account
       register: __profile_account
@@ -17,4 +19,9 @@
     - name: Ensure profile account is displayed
       ansible.builtin.debug:
         msg: "{{ __profile_account.stdout }}"
+
+    - name: Ensure profile account is verified
+      ansible.builtin.assert:
+        that:
+          - __profile_account.stdout is match('^[0-9]{12}$')
 ...

@@ -1,11 +1,7 @@
 ---
 - name: Converge
   hosts: all
-  roles:
-    - role: ec2_key
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
 
+  roles:
     - ec2_key_info
 ...

@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - ssm_parameter_info
 
@@ -8,10 +9,10 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ssm_parameter_info_dict['/molecule/db/admin/username'].value == ssm_parameter_list.0.value
-          - _ssm_parameter_info_dict['/molecule/db/admin/password'].value == ssm_parameter_list.1.value
-          - _ssm_parameter_info_dict['/molecule/sys/username'].value == ssm_parameter_list.2.value
-          - _ssm_parameter_info_dict['/molecule/sys/password'].value == ssm_parameter_list.3.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/db/admin/username'].value == ssm_parameter_list.0.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/db/admin/password'].value == ssm_parameter_list.1.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/sys/username'].value == ssm_parameter_list.2.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/sys/password'].value == ssm_parameter_list.3.value
 
     - name: Ensure info is gathered for the first parameter
       ansible.builtin.include_role:
@@ -33,22 +34,10 @@
         that:
           - _ssm_parameter_info_list | map(attribute='name') ==
             [ssm_parameter_list.2.name, ssm_parameter_list.3.name]
-          - _ssm_parameter_info_dict | dict2items | map(attribute='key') | sort ==
+          - _ssm_parameter_info_dict |
+            dict2items |
+            map(attribute='key') |
+            sort ==
             [ssm_parameter_list.2.name, ssm_parameter_list.3.name] | sort
           - _ssm_parameter_info_dict[ssm_parameter_list.3.name].value == ssm_parameter_list.3.value
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ssm_parameter_list:
-          "{{ ssm_parameter_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - ssm_parameter
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...

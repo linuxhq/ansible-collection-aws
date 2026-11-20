@@ -1,11 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
-    - role: s3_bucket
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
+    - role: s3_bucket_info
+      s3_bucket_info_bucket_facts: {}
 
     - s3_bucket_info
 ...

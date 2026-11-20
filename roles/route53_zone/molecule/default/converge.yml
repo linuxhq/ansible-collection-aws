@@ -1,16 +1,10 @@
 ---
 - name: Converge
   hosts: all
-  roles:
-    - role: ec2_vpc_net
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
 
+  roles:
     - role: route53_zone
       route53_zone_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - route53_zone
 ...

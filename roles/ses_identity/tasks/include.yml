@@ -66,6 +66,11 @@
     # An omitted value deletes the stored record, whatever its value.
     value: "{{ omit if _identity.state == 'absent' else '\"v=DMARC1; p=quarantine;\"' }}"
     zone: "{{ _identity.zone }}"
+  register: __ses_identity_dmarc_result
+  failed_when:
+    - __ses_identity_dmarc_result.failed | d(false)
+    - _identity.state != 'absent' or
+      __ses_identity_dmarc_result.msg | d('') is not search('does not exist in Route53')
 
 - name: Ensure aws simple email service identity dkim records are managed
   tags:
@@ -82,10 +87,15 @@
       "{{ omit if _identity.state == 'absent' else
           _dkim ~ '.' ~ __ses_identity_dkim_attributes.signing_hosted_zone }}"
     zone: "{{ _identity.zone }}"
+  register: __ses_identity_dkim_record_result
   loop: "{{ __ses_identity_value_dkim }}"
   loop_control:
     label: "{{ _dkim | d(none) }}"
     loop_var: _dkim
+  failed_when:
+    - __ses_identity_dkim_record_result.failed | d(false)
+    - _identity.state != 'absent' or
+      __ses_identity_dkim_record_result.msg | d('') is not search('does not exist in Route53')
 
 - name: Ensure aws simple email service identity spf records are managed
   tags:
@@ -100,6 +110,11 @@
     # An omitted value deletes the stored record, whatever its value.
     value: "{{ omit if _identity.state == 'absent' else '\"v=spf1 include:amazonses.com -all\"' }}"
     zone: "{{ _identity.zone }}"
+  register: __ses_identity_spf_result
+  failed_when:
+    - __ses_identity_spf_result.failed | d(false)
+    - _identity.state != 'absent' or
+      __ses_identity_spf_result.msg | d('') is not search('does not exist in Route53')
 
 - name: Ensure aws simple email service identity is absent
   tags:

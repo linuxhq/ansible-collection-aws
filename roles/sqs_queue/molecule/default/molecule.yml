@@ -1,37 +1,10 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         sqs_queue_list:
-          - name: molecule-bounce
+          - name: molecule-sqs-queue-bounce
             delay_seconds: 0
             policy:
               Version: '2012-10-17'
@@ -43,20 +16,20 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-bounce"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-bounce"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-bounce"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-bounce"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-bounce"
+                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-bounce"
 
-          - name: molecule-complaint
+          - name: molecule-sqs-queue-complaint
             delay_seconds: 0
             policy:
               Version: '2012-10-17'
@@ -68,20 +41,20 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-complaint"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-complaint"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-complaint"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-complaint"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-complaint"
+                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-complaint"
 
-          - name: molecule-delivery
+          - name: molecule-sqs-queue-delivery
             delay_seconds: 0
             policy:
               Version: '2012-10-17'
@@ -93,37 +66,16 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-delivery"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-delivery"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-delivery"
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
+                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sqs-queue-delivery"
 ...

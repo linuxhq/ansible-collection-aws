@@ -1,0 +1,14 @@
+---
+- name: Cleanup
+  hosts: all
+
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        pinpoint_sms_voice_phone_number_list:
+          "{{ pinpoint_sms_voice_phone_number_list |
+              map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - pinpoint_sms_voice_phone_number
+...

@@ -1,15 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: iam_oidc_provider
       iam_oidc_provider_list: []
-      tags:
-        - molecule-idempotence-notest
-
-    - role: iam_oidc_provider
-      tags:
-        - molecule-idempotence-notest
 
     - iam_oidc_provider
 ...

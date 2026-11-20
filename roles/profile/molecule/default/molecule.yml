@@ -1,13 +1,8 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
 driver:
   name: vagrant
+  options:
+    managed: true
 
 platforms:
   - name: almalinux9
@@ -16,36 +11,31 @@ platforms:
     memory: 4096
 
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
+        profile_list:
+          - name: molecule
+            config:
+              output: json
+              region: us-east-1
+            credentials:
+              aws_access_key_id:
+                "{{ lookup('ansible.builtin.ini',
+                           'aws_access_key_id',
+                           file='~/.aws/credentials',
+                           section='molecule') }}"
+              aws_secret_access_key:
+                "{{ lookup('ansible.builtin.ini',
+                           'aws_secret_access_key',
+                           file='~/.aws/credentials',
+                           section='molecule') }}"
 
-verifier:
-  name: ansible
-  options:
-    diff: true
+          - name: dummy
+            config:
+              output: yaml
+              region: us-east-1
+            credentials:
+              aws_access_key_id: DUMMY012345678901234
+              aws_secret_access_key: DuMmYDuMmYDuMmYDuMmYDuMmYDuMmYDuMmYDuMmY
 ...

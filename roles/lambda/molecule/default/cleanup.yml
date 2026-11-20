@@ -1,0 +1,27 @@
+---
+- name: Cleanup
+  hosts: all
+
+  roles:
+    - aws_caller_info
+
+  post_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        iam_role_list:
+          "{{ iam_role_list |
+              map('combine', {'state': 'absent'}) }}"
+        lambda_list:
+          "{{ lambda_list |
+              map('combine', {'state': 'absent'}) }}"
+
+    - name: Ensure roles are included
+      ansible.builtin.include_role:
+        name: "{{ _cleanup }}"
+      loop:
+        - lambda
+        - iam_role
+      loop_control:
+        label: "{{ _cleanup }}"
+        loop_var: _cleanup
+...

@@ -1,26 +1,21 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - ec2_vpc_net_info
+    - ec2_vpc_subnet_info
 
   post_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_vpc_net_list:
-          "{{ ec2_vpc_net_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_subnet_list:
-          "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - ec2_vpc_subnet
-        - ec2_vpc_net
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _ec2_vpc_subnet_info_dict[_subnet.name].availability_zone == _subnet.az
+          - _ec2_vpc_subnet_info_dict[_subnet.name].cidr_block == _subnet.cidr
+          - _ec2_vpc_subnet_info_dict[_subnet.name].vpc_id == _ec2_vpc_net_info_dict['molecule-ec2-vpc-subnet'].id
+      loop: "{{ ec2_vpc_subnet_list.0.subnets }}"
       loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
+        label: "{{ _subnet.name }}"
+        loop_var: _subnet
 ...

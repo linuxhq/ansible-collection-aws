@@ -1,0 +1,9 @@
+---
+- name: Cleanup
+  hosts: all
+
+  roles:
+    - role: sns_sms_attributes
+      sns_sms_attributes_default_sender_id: ""
+      sns_sms_attributes_default_sms_type: Promotional
+...

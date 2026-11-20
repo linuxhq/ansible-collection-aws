@@ -1,0 +1,12 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - aws_caller_info
+    - iam_role
+    - ec2_vpc_net
+    - ec2_vpc_subnet
+    - ec2_security_group
+    - eks_cluster
+...

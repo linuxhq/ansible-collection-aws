@@ -1,0 +1,14 @@
+---
+- name: Cleanup
+  hosts: all
+
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        iam_oidc_provider_list:
+          "{{ iam_oidc_provider_list |
+              map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - iam_oidc_provider
+...

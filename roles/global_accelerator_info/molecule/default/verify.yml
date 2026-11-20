@@ -1,10 +1,8 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
-    - ec2_security_group_info
-    - ec2_vpc_net_info
-    - ec2_vpc_subnet_info
     - elb_application_lb_info
 
   post_tasks:
@@ -17,14 +15,16 @@
         that:
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].accelerator_arn is defined
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].dns_name is defined
-          - not (_global_accelerator_info_dict['molecule-global-accelerator-info-00'].enabled | bool)
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].enabled |
+            bool
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].ip_address_type == 'IPV4'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].status == 'DEPLOYED'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].tags.molecule ==
               'global_accelerator_info'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].accelerator_arn is defined
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].dns_name is defined
-          - not (_global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled | bool)
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled |
+            bool
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].ip_address_type == 'IPV4'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].status == 'DEPLOYED'
           - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].tags.molecule ==
@@ -75,10 +75,13 @@
     - name: Ensure info with listeners is verified
       ansible.builtin.assert:
         that:
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners | length == 2
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
-              selectattr('endpoint_groups', 'defined') | list == []
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 0
+            length == 2
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              selectattr('endpoint_groups', 'defined') |
+              list == []
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners |
+            length == 1
 
     - name: Ensure role is included with endpoint groups
       ansible.builtin.include_role:
@@ -89,102 +92,103 @@
     - name: Ensure info with endpoint groups is verified
       ansible.builtin.assert:
         that:
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners | length == 2
           - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
-              json_query('[].protocol') | unique == ['TCP']
+            length == 2
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              json_query('[].protocol') |
+              unique == ['TCP']
+          - __global_accelerator_info_listener_80.endpoint_groups |
+            d([]) |
+            length == 0
+          - __global_accelerator_info_listener_443.endpoint_groups | length == 1
+          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_group_region == 'us-east-1'
+          - __global_accelerator_info_listener_443.endpoint_groups.0.traffic_dial_percentage == 100
+          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions |
+            length == 1
+          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
+              _elb_application_lb_info_dict['molecule-ga-info-80'].load_balancer_arn
+          - __global_accelerator_info_listener_443.endpoint_groups.0.endpoint_descriptions.0.weight == 128
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners |
+            length == 1
+      vars:
+        __global_accelerator_info_listener_80:
+          "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 80) |
+              first }}"
+        __global_accelerator_info_listener_443:
+          "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 443) |
+              first }}"
+
+    - name: Ensure accelerators are disabled and their listeners are changed
+      ansible.builtin.include_role:
+        name: global_accelerator
+      vars:
+        global_accelerator_list:
+          - name: molecule-global-accelerator-info-00
+            enabled: false
+            tags:
+              molecule: global_accelerator_info
+            listeners:
+              - protocol: TCP
+                port_ranges:
+                  - from_port: 81
+                    to_port: 81
+                endpoint_groups: []
+              - protocol: TCP
+                port_ranges:
+                  - from_port: 444
+                    to_port: 444
+                endpoint_groups:
+                  - endpoint_group_region: us-east-1
+                    traffic_dial_percentage: 50
+                    endpoint_configurations:
+                      - endpoint_id:
+                          "{{ _elb_application_lb_info_dict[
+                                'molecule-ga-info-80'
+                              ].load_balancer_arn | d(none) }}"
+                        weight: 200
+          - name: molecule-global-accelerator-info-01
+            enabled: false
+            tags:
+              molecule: global_accelerator_info
+            listeners: []
+
+    - name: Ensure role is included with endpoint groups after the change
+      ansible.builtin.include_role:
+        name: global_accelerator_info
+      vars:
+        global_accelerator_info_include_endpoint_groups: true
+
+    - name: Ensure changed info with endpoint groups is verified
+      ansible.builtin.assert:
+        that:
+          - not (_global_accelerator_info_dict['molecule-global-accelerator-info-00'].enabled | bool)
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].status == 'DEPLOYED'
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+            length == 2
+          - __global_accelerator_info_listener_81.endpoint_groups |
+            d([]) |
+            length == 0
           - __global_accelerator_info_listener_444.endpoint_groups | length == 1
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_group_region == 'us-east-1'
           - __global_accelerator_info_listener_444.endpoint_groups.0.traffic_dial_percentage == 50
-          - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions | length == 1
+          - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions |
+            length == 1
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions.0.endpoint_id ==
-              _elb_application_lb_info_dict['molecule-http-80'].load_balancer_arn
+              _elb_application_lb_info_dict['molecule-ga-info-80'].load_balancer_arn
           - __global_accelerator_info_listener_444.endpoint_groups.0.endpoint_descriptions.0.weight == 200
-          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners | length == 0
+          - not (_global_accelerator_info_dict['molecule-global-accelerator-info-01'].enabled | bool)
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].status == 'DEPLOYED'
+          - _global_accelerator_info_dict['molecule-global-accelerator-info-01'].listeners |
+            length == 0
       vars:
+        __global_accelerator_info_listener_81:
+          "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
+              selectattr('port_ranges.0.from_port', 'equalto', 81) |
+              first }}"
         __global_accelerator_info_listener_444:
           "{{ _global_accelerator_info_dict['molecule-global-accelerator-info-00'].listeners |
               selectattr('port_ranges.0.from_port', 'equalto', 444) |
               first }}"
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
-            security_groups:
-              "{{ ec2_security_group_list.0.security_groups |
-                  map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_igw_list:
-          "{{ ec2_vpc_igw_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_net_list:
-          "{{ ec2_vpc_net_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_subnet_list:
-          "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'}) }}"
-        elb_application_lb_list:
-          "{{ elb_application_lb_list |
-              map('combine', {'state': 'absent'}) }}"
-        elb_target_group_list:
-          "{{ elb_target_group_list |
-              map('combine', {'state': 'absent'}) }}"
-        global_accelerator_list:
-          "{{ global_accelerator_list_update |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure network interface owning roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - global_accelerator
-        - elb_application_lb
-        - elb_target_group
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
-
-    - name: Ensure information about leftover aws virtual private cloud nat gateways is gathered
-      amazon.aws.ec2_vpc_nat_gateway_info:
-        filters:
-          state:
-            - available
-            - pending
-          vpc-id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
-        validate_certs: true
-      register: __global_accelerator_nat_gateway_info
-
-    - name: Ensure leftover aws virtual private cloud nat gateways are absent
-      amazon.aws.ec2_vpc_nat_gateway:
-        nat_gateway_id: "{{ _nat.nat_gateway_id }}"
-        release_eip: true
-        state: absent
-        validate_certs: true
-        wait: true
-      loop: "{{ __global_accelerator_nat_gateway_info.result }}"
-      loop_control:
-        label: "{{ _nat.nat_gateway_id }}"
-        loop_var: _nat
-
-    - name: Ensure aws network interfaces are released
-      amazon.aws.ec2_eni_info:
-        filters:
-          vpc-id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
-        validate_certs: true
-      register: __global_accelerator_eni_info
-      delay: 15
-      retries: 40
-      until:
-        - __global_accelerator_eni_info.network_interfaces | length == 0
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - ec2_security_group
-        - ec2_vpc_subnet
-        - ec2_vpc_igw
-        - ec2_vpc_net
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...

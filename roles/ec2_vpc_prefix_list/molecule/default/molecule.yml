@@ -1,37 +1,10 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         ec2_vpc_prefix_list_entries:
-          - name: molecule-localhost
+          - name: molecule-ec2-vpc-prefix-list-localhost
             entries:
               - cidr: 127.0.0.1/32
                 description: localhost-1
@@ -43,7 +16,7 @@ provisioner:
                 description: localhost-4
               - cidr: 127.0.0.5/32
                 description: localhost-5
-          - name: molecule-private
+          - name: molecule-ec2-vpc-prefix-list-private
             max_entries: 10
             entries:
               - cidr: 192.168.1.0/24
@@ -56,25 +29,4 @@ provisioner:
                 description: private-4
               - cidr: 192.168.5.0/24
                 description: private-5
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
 ...

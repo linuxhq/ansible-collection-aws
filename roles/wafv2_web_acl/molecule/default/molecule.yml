@@ -1,37 +1,10 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         wafv2_web_acl_list:
-          - name: molecule-amazonipreputationlist
+          - name: molecule-wafv2-web-acl-amazonipreputationlist
             scope: regional
             default_action: Allow
             rules:
@@ -48,7 +21,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesAmazonIpReputationList
                   sampled_requests_enabled: true
 
-          - name: molecule-commonruleset
+          - name: molecule-wafv2-web-acl-commonruleset
             scope: regional
             default_action: Allow
             rules:
@@ -68,7 +41,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesCommonRuleSet
                   sampled_requests_enabled: true
 
-          - name: molecule-knownbadinputsruleset
+          - name: molecule-wafv2-web-acl-knownbadinputsruleset
             scope: regional
             default_action: Allow
             rules:
@@ -85,7 +58,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesKnownBadInputsRuleSet
                   sampled_requests_enabled: true
 
-          - name: molecule-linuxruleset
+          - name: molecule-wafv2-web-acl-linuxruleset
             scope: regional
             default_action: Allow
             rules:
@@ -102,7 +75,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesLinuxRuleSet
                   sampled_requests_enabled: true
 
-          - name: molecule-anonymousiplist
+          - name: molecule-wafv2-web-acl-anonymousiplist
             scope: regional
             default_action: Allow
             rules:
@@ -119,7 +92,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesAnonymousIpList
                   sampled_requests_enabled: true
 
-          - name: molecule-sqliruleset
+          - name: molecule-wafv2-web-acl-sqliruleset
             scope: regional
             default_action: Allow
             rules:
@@ -135,25 +108,4 @@ provisioner:
                   cloud_watch_metrics_enabled: true
                   metric_name: AWS-AWSManagedRulesSQLiRuleSet
                   sampled_requests_enabled: true
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
 ...

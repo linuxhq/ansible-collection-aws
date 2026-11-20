@@ -1,0 +1,14 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - iam_role
+    - ec2_vpc_net
+    - ec2_vpc_igw
+    - ec2_vpc_subnet
+    - ec2_security_group
+    - rds_instance_param_group
+    - rds_option_group
+    - rds_subnet_group
+...

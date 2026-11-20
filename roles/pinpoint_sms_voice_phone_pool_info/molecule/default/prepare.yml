@@ -1,0 +1,8 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - pinpoint_sms_voice_phone_number
+    - pinpoint_sms_voice_phone_pool
+...

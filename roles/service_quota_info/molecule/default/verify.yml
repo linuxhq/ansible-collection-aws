@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - service_quota_info
 
@@ -47,7 +48,8 @@
       ansible.builtin.assert:
         that:
           - _service_quota_info_list | length == 1
-          - _service_quota_info_dict.keys() | list == [service_quota_list.0.quotas.0.quota_code]
+          - _service_quota_info_dict.keys() |
+            list == [service_quota_list.0.quotas.0.quota_code]
           - _service_quota_info_dict[service_quota_list.0.quotas.0.quota_code].quota_code ==
               service_quota_list.0.quotas.0.quota_code
           - _service_quota_info_dict[service_quota_list.0.quotas.0.quota_code].value is defined

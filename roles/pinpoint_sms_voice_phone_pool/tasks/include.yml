@@ -7,13 +7,13 @@
     deletion_protection_enabled:
       "{{ _pool.deletion_protection_enabled | d(omit) }}"
     iso_country_code: "{{ _pool.iso_country_code | d(omit) }}"
-    message_type: "{{ _pool.message_type }}"
+    message_type: "{{ _pool.message_type | d(omit) }}"
     name: "{{ _pool.name }}"
-    origination_identity: "{{ _pool.origination_identity }}"
+    origination_identity: "{{ _pool.origination_identity | d(omit) }}"
     pool_id: "{{ _pool.pool_id | d(omit) }}"
     purge_tags: "{{ _pool.purge_tags | d(true) }}"
     state: "{{ _pool.state | d('present') }}"
-    tags: "{{ _pool.tags | d({}) | combine({'Name': _pool.name}) }}"
+    tags: "{{ _pool.tags | d({}) }}"
     validate_certs: true
     wait: "{{ _pool.wait | d(omit) }}"
     wait_delay: "{{ _pool.wait_delay | d(omit) }}"
@@ -29,8 +29,6 @@
   poll: "{{ pinpoint_sms_voice_phone_pool_poll }}"
   when:
     - _pool.name is defined
-    - _pool.message_type is defined
-    - _pool.origination_identity is defined
   changed_when:
     - ansible_check_mode | bool
     - __pinpoint_sms_voice_phone_pool_result.changed | bool

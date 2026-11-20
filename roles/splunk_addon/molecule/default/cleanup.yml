@@ -1,0 +1,8 @@
+---
+- name: Cleanup
+  hosts: all
+
+  roles:
+    - role: splunk_addon
+      splunk_addon_state: absent
+...

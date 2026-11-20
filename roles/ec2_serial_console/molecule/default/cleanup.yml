@@ -1,0 +1,9 @@
+---
+- name: Cleanup
+  hosts: all
+
+  roles:
+    - role: ec2_serial_console
+      vars:
+        ec2_serial_console_state: absent
+...

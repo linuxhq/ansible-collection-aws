@@ -1,19 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: ssm_document
       ssm_document_list: []
-      tags:
-        - molecule-idempotence-notest
 
-    - role: ssm_document
-      ssm_document_list:
-        "{{ ssm_document_list_create }}"
-      tags:
-        - molecule-idempotence-notest
-
-    - role: ssm_document
-      ssm_document_list:
-        "{{ ssm_document_list_update }}"
+    - ssm_document
 ...

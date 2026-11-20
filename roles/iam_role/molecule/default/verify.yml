@@ -1,13 +1,28 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        iam_role_list:
-          "{{ iam_role_list |
-              map('combine', {'state': 'absent'}) }}"
 
-  roles:
-    - iam_role
+  tasks:
+    - name: Ensure molecule aws iam roles are queried
+      amazon.aws.iam_role_info:
+        name: "{{ _role.name }}"
+        validate_certs: true
+      loop: "{{ iam_role_list }}"
+      loop_control:
+        label: "{{ _role.name }}"
+        loop_var: _role
+      register: __molecule_iam_role_query
+
+    - name: Ensure molecule aws iam roles are verified
+      ansible.builtin.assert:
+        that:
+          - _query.iam_roles | length == 1
+          - _query.iam_roles.0.managed_policies |
+            map(attribute='policy_name') |
+            sort ==
+            _query._role.managed_policies | sort
+      loop: "{{ __molecule_iam_role_query.results }}"
+      loop_control:
+        label: "{{ _query._role.name }}"
+        loop_var: _query
 ...

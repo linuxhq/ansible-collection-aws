@@ -43,4 +43,8 @@
     - _jid.ansible_job_id is defined
   until:
     - __iam_policy_status.finished | bool
+  failed_when:
+    - __iam_policy_status.failed | d(false)
+    - _jid._policy.state | d('present') != 'absent' or
+      __iam_policy_status.error.code | d('') != 'NoSuchEntity'
 ...

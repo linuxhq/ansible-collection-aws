@@ -1,34 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
-    - role: ec2_vpc_net
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ec2_vpc_subnet
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ec2_security_group
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - role: route53_resolver
       route53_resolver_list: []
-      tags:
-        - molecule-idempotence-notest
 
-    - role: route53_resolver
-      route53_resolver_list:
-        "{{ route53_resolver_list_create }}"
-      tags:
-        - molecule-idempotence-notest
-
-    - role: route53_resolver
-      route53_resolver_list:
-        "{{ route53_resolver_list_update }}"
+    - route53_resolver
 ...

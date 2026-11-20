@@ -1,0 +1,12 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - aws_az_info
+    - aws_caller_info
+    - route53_zone
+    - sqs_queue
+    - sns_topic
+    - ses_identity
+...

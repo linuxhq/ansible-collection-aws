@@ -1,0 +1,17 @@
+---
+breaking_changes:
+  - pinpoint_sms_voice_phone_number - ``name`` is now required for every state. The module always manages it as the
+    ``Name`` tag, overriding any ``Name`` entry in ``tags``, and it identifies the phone number when
+    ``phone_number_id`` is omitted. Before, a ``Name`` entry in ``tags`` identified the number, and a request without
+    one adopted any phone number with the requested attributes.
+  - pinpoint_sms_voice_phone_pool - ``name`` is now required for every state, including ``state=absent``.
+minor_changes:
+  - pinpoint_sms_voice_phone_number - ``state=absent`` without ``phone_number_id`` now releases the phone number whose
+    ``Name`` tag equals ``name``, and fails without changes when several phone numbers have that tag.
+  - pinpoint_sms_voice_phone_pool - ``state=absent`` without ``pool_id`` now deletes the pool whose ``Name`` tag
+    equals ``name``, and fails without changes when several pools have that tag.
+  - pinpoint_sms_voice_phone_number role - an item with ``state=absent`` now needs only ``name``. The fields used to
+    request a number are passed only when set, and the module requires them when ``state=present``.
+  - pinpoint_sms_voice_phone_pool role - an item with ``state=absent`` now needs only ``name``. ``message_type`` and
+    ``origination_identity`` are passed only when set, and the module requires them when ``state=present``.
+...

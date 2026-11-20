@@ -1,39 +1,12 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         sns_topic_list:
-          - name: molecule-info-bounce
+          - name: molecule-sns-topic-info-bounce
             subscriptions:
-              - endpoint: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-bounce"
+              - endpoint: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-bounce"
                 protocol: sqs
             policy:
               Version: '2012-10-17'
@@ -44,16 +17,16 @@ provisioner:
                   Action:
                     - sns:Publish
                   Resource:
-                    - "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-bounce"
+                    - "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-bounce"
                   Condition:
                     StringEquals:
                       'AWS:SourceAccount': "{{ _aws_caller_info_account }}"
                       'AWS:SourceArn':
-                        - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:identity/molecule.org"
+                        - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:identity/molecule-sns-topic-info.org"
 
-          - name: molecule-info-complaint
+          - name: molecule-sns-topic-info-complaint
             subscriptions:
-              - endpoint: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-complaint"
+              - endpoint: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-complaint"
                 protocol: sqs
             policy:
               Version: '2012-10-17'
@@ -64,16 +37,16 @@ provisioner:
                   Action:
                     - sns:Publish
                   Resource:
-                    - "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-complaint"
+                    - "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-complaint"
                   Condition:
                     StringEquals:
                       'AWS:SourceAccount': "{{ _aws_caller_info_account }}"
                       'AWS:SourceArn':
-                        - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:identity/molecule.org"
+                        - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:identity/molecule-sns-topic-info.org"
 
-          - name: molecule-info-delivery
+          - name: molecule-sns-topic-info-delivery
             subscriptions:
-              - endpoint: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-delivery"
+              - endpoint: "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-delivery"
                 protocol: sqs
             policy:
               Version: '2012-10-17'
@@ -84,15 +57,15 @@ provisioner:
                   Action:
                     - sns:Publish
                   Resource:
-                    - "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-delivery"
+                    - "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-delivery"
                   Condition:
                     StringEquals:
                       'AWS:SourceAccount': "{{ _aws_caller_info_account }}"
                       'AWS:SourceArn':
-                        - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:identity/molecule.org"
+                        - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:identity/molecule-sns-topic-info.org"
 
         sqs_queue_list:
-          - name: molecule-info-bounce
+          - name: molecule-sns-topic-info-bounce
             policy:
               Version: '2012-10-17'
               Statement:
@@ -103,20 +76,20 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-bounce"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-bounce"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-bounce"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-bounce"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-bounce"
+                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-bounce"
 
-          - name: molecule-info-complaint
+          - name: molecule-sns-topic-info-complaint
             policy:
               Version: '2012-10-17'
               Statement:
@@ -127,20 +100,20 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-complaint"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-complaint"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-complaint"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-complaint"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-complaint"
+                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-complaint"
 
-          - name: molecule-info-delivery
+          - name: molecule-sns-topic-info-delivery
             policy:
               Version: '2012-10-17'
               Statement:
@@ -151,37 +124,16 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-delivery"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-delivery"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-delivery"
+                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-delivery"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-info-delivery"
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
+                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{ _aws_caller_info_account }}:molecule-sns-topic-info-delivery"
 ...

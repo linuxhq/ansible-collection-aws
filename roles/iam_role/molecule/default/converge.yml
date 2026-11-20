@@ -1,11 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: iam_role
       iam_role_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - iam_role
 ...

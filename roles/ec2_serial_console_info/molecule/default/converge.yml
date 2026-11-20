@@ -1,11 +1,11 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
-    - role: ec2_serial_console
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
+    - role: ec2_serial_console_info
+      ec2_serial_console_info_regions:
+        - us-east-1
 
     - ec2_serial_console_info
 ...

@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - ec2_security_group_info
     - ec2_vpc_net_info
@@ -19,8 +20,10 @@
         __association:
           "{{ _route53_resolver_rule_info_list |
               selectattr('id', 'equalto', _association.resolver_rule_id) |
-              map(attribute='associations') | flatten |
-              selectattr('vpc_id', 'equalto', _association.vpc_id) | list }}"
+              map(attribute='associations') |
+              flatten |
+              selectattr('vpc_id', 'equalto', _association.vpc_id) |
+              list }}"
       loop: "{{ route53_resolver_rule_associate_list }}"
       loop_control:
         label: "{{ _association.name }}"
@@ -51,63 +54,4 @@
               route53_resolver_rule_associate_list.0.name ~ '-renamed'
           - __route53_resolver_rule_associate_unnamed.resolver_rule_association_id ==
               __route53_resolver_rule_associate_rename.resolver_rule_association_id
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-1'].id }}"
-            security_groups:
-              "{{ ec2_security_group_list.0.security_groups |
-                  map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_net_list:
-          "{{ ec2_vpc_net_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_subnet_list:
-          "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'}) }}"
-        route53_resolver_list:
-          "{{ route53_resolver_list |
-              map('combine', {'state': 'absent'}) }}"
-        route53_resolver_rule_associate_list:
-          "{{ route53_resolver_rule_associate_list |
-              map('combine', {'state': 'absent'}) }}"
-        route53_resolver_rule_list:
-          "{{ route53_resolver_rule_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure associations are deleted
-      ansible.builtin.include_role:
-        name: route53_resolver_rule_associate
-
-    - name: Ensure role is included after deletion
-      ansible.builtin.include_role:
-        name: route53_resolver_rule_info
-
-    - name: Ensure deleted associations are verified
-      ansible.builtin.assert:
-        that:
-          - __association | length == 0
-      vars:
-        __association:
-          "{{ _route53_resolver_rule_info_list |
-              selectattr('id', 'equalto', _association.resolver_rule_id) |
-              map(attribute='associations') | flatten |
-              selectattr('vpc_id', 'equalto', _association.vpc_id) | list }}"
-      loop: "{{ route53_resolver_rule_associate_list }}"
-      loop_control:
-        label: "{{ _association.name }}"
-        loop_var: _association
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - route53_resolver_rule
-        - route53_resolver
-        - ec2_security_group
-        - ec2_vpc_subnet
-        - ec2_vpc_net
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...

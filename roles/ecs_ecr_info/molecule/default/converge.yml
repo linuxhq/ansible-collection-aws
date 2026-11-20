@@ -1,13 +1,7 @@
 ---
 - name: Converge
   hosts: all
-  roles:
-    - role: ecs_ecr
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
 
-    - role: ecs_ecr_info
-      ecs_ecr_info_repository_names:
-        - molecule-00
+  roles:
+    - ecs_ecr_info
 ...

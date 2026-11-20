@@ -1,0 +1,9 @@
+---
+- name: Cleanup
+  hosts: all
+
+  roles:
+    - role: iam_account_alias
+      iam_account_alias_name: linuxhq
+      iam_account_alias_state: present
+...

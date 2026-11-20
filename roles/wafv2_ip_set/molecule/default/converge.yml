@@ -1,11 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: wafv2_ip_set
       wafv2_ip_set_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - wafv2_ip_set
 ...

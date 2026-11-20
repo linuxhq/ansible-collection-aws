@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure iam password policy information is gathered
       ansible.builtin.command:

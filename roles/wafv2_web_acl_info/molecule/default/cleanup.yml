@@ -1,0 +1,14 @@
+---
+- name: Cleanup
+  hosts: all
+
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        wafv2_web_acl_list:
+          "{{ wafv2_web_acl_list |
+              map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - wafv2_web_acl
+...

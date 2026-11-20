@@ -1,21 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
-    - role: iam_group
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: iam_user
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - role: iam_policy
       iam_policy_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - iam_policy
 ...

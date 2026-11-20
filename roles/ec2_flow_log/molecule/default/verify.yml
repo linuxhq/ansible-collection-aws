@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - aws_caller_info
     - ec2_transit_gateway_info
@@ -11,8 +12,12 @@
   post_tasks:
     - name: Ensure flow log names and resource ids are set
       ansible.builtin.set_fact:
-        __ec2_flow_log_names: "{{ ec2_flow_log_list | map(attribute='name') | list }}"
-        __ec2_flow_log_resource_ids: "{{ ec2_flow_log_list | map(attribute='resource_ids') | flatten }}"
+        __ec2_flow_log_names: "{{ ec2_flow_log_list |
+                                  map(attribute='name') |
+                                  list }}"
+        __ec2_flow_log_resource_ids: "{{ ec2_flow_log_list |
+                                         map(attribute='resource_ids') |
+                                         flatten }}"
 
     - name: Ensure flow logs are queried
       linuxhq.aws.ec2_flow_log_info:
@@ -47,7 +52,7 @@
         log_destination: "{{ ec2_flow_log_bucket_resource }}"
         log_destination_type: s3
         max_aggregation_interval: 60
-        name: molecule-subnet
+        name: molecule-ec2-flow-log-subnet
         resource_ids: "{{ ec2_flow_log_list[1].resource_ids }}"
         resource_type: Subnet
         validate_certs: true
@@ -64,12 +69,12 @@
         __ec2_flow_log_original:
           "{{ __ec2_flow_log_query.flow_logs |
               selectattr('tags.Name', 'defined') |
-              selectattr('tags.Name', 'eq', 'molecule-subnet') |
+              selectattr('tags.Name', 'eq', 'molecule-ec2-flow-log-subnet') |
               first }}"
         __ec2_flow_log_matches:
           "{{ __ec2_flow_log_replaced_query.flow_logs |
               selectattr('tags.Name', 'defined') |
-              selectattr('tags.Name', 'eq', 'molecule-subnet') |
+              selectattr('tags.Name', 'eq', 'molecule-ec2-flow-log-subnet') |
               list }}"
       ansible.builtin.assert:
         that:
@@ -86,7 +91,7 @@
         log_destination: "{{ ec2_flow_log_bucket_resource }}"
         log_destination_type: s3
         max_aggregation_interval: 60
-        name: molecule-subnet
+        name: molecule-ec2-flow-log-subnet
         resource_ids: "{{ ec2_flow_log_list[1].resource_ids }}"
         resource_type: Subnet
         validate_certs: true
@@ -96,56 +101,4 @@
       ansible.builtin.assert:
         that:
           - __ec2_flow_log_rerun is not changed
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_flow_log_list:
-          "{{ ec2_flow_log_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_transit_gateway_list:
-          "{{ ec2_transit_gateway_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_transit_gateway_vpc_attachment_list:
-          "{{ ec2_transit_gateway_vpc_attachment_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_net_list:
-          "{{ ec2_vpc_net_list |
-              map('combine', {'state': 'absent'}) }}"
-        ec2_vpc_subnet_list:
-          "{{ ec2_vpc_subnet_list |
-              map('combine', {'state': 'absent'}) }}"
-        s3_bucket_list:
-          "{{ s3_bucket_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure flow log role is included
-      ansible.builtin.include_role:
-        name: ec2_flow_log
-
-    - name: Ensure flow logs are deleted
-      linuxhq.aws.ec2_flow_log_info:
-        resource_ids: "{{ __ec2_flow_log_resource_ids }}"
-        validate_certs: true
-      register: __ec2_flow_log_deleted
-
-    - name: Ensure flow log deletion is verified
-      ansible.builtin.assert:
-        that:
-          - __ec2_flow_log_deleted.flow_logs |
-            selectattr('tags.Name', 'defined') |
-            selectattr('tags.Name', 'in', __ec2_flow_log_names) |
-            list | length == 0
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - ec2_transit_gateway_vpc_attachment
-        - ec2_transit_gateway
-        - ec2_vpc_subnet
-        - ec2_vpc_net
-        - s3_bucket
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
 ...

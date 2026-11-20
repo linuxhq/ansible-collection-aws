@@ -1,0 +1,9 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - ec2_vpc_net
+    - route53_zone
+    - route53_record
+...

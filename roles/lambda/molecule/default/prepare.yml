@@ -1,0 +1,12 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - iam_role
+
+  tasks:
+    - name: Ensure iam role is propagated to lambda
+      ansible.builtin.pause:
+        seconds: 30
+...

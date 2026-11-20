@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure role is included without filters
       ansible.builtin.include_role:
@@ -35,31 +36,4 @@
           - _ssm_association_info_dict['molecule-ssm-association-info'].association_id is defined
           - _ssm_association_info_dict['molecule-ssm-association-info'].name ==
               ssm_association_list.0.name
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ssm_association_list:
-          "{{ ssm_association_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - ssm_association
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
-
-    - name: Ensure role is included with filters after removal
-      ansible.builtin.include_role:
-        name: ssm_association_info
-      vars:
-        ssm_association_info_filters:
-          AssociationName: molecule-ssm-association-info
-
-    - name: Ensure removed association is verified
-      ansible.builtin.assert:
-        that:
-          - _ssm_association_info_list == []
 ...

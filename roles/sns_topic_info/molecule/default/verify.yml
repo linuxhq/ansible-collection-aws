@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - aws_az_info
     - aws_caller_info
@@ -10,32 +11,16 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _sns_topic_info_dict['molecule-info-bounce'].display_name is defined
-          - _sns_topic_info_dict['molecule-info-bounce'].subscriptions | length == 1
-          - _sns_topic_info_dict['molecule-info-bounce'].topic_arn is defined
-          - _sns_topic_info_dict['molecule-info-complaint'].display_name is defined
-          - _sns_topic_info_dict['molecule-info-complaint'].subscriptions | length == 1
-          - _sns_topic_info_dict['molecule-info-complaint'].topic_arn is defined
-          - _sns_topic_info_dict['molecule-info-delivery'].display_name is defined
-          - _sns_topic_info_dict['molecule-info-delivery'].subscriptions | length == 1
-          - _sns_topic_info_dict['molecule-info-delivery'].topic_arn is defined
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        sns_topic_list:
-          "{{ sns_topic_list |
-              map('combine', {'state': 'absent'}) }}"
-        sqs_queue_list:
-          "{{ sqs_queue_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - sns_topic
-        - sqs_queue
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
+          - _sns_topic_info_dict['molecule-sns-topic-info-bounce'].display_name is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-bounce'].subscriptions |
+            length == 1
+          - _sns_topic_info_dict['molecule-sns-topic-info-bounce'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-complaint'].display_name is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-complaint'].subscriptions |
+            length == 1
+          - _sns_topic_info_dict['molecule-sns-topic-info-complaint'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-delivery'].display_name is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-delivery'].subscriptions |
+            length == 1
+          - _sns_topic_info_dict['molecule-sns-topic-info-delivery'].topic_arn is defined
 ...

@@ -1,43 +1,16 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         iam_instance_profile_list:
-          - name: molecule-instance-profile-ec2
-            role: molecule-role-ec2
-          - name: molecule-instance-profile-vpc
-            role: molecule-role-vpc
+          - name: molecule-iam-instance-profile-ec2
+            role: molecule-iam-instance-profile-role-ec2
+          - name: molecule-iam-instance-profile-vpc
+            role: molecule-iam-instance-profile-role-vpc
 
         iam_role_list:
-          - name: molecule-role-ec2
+          - name: molecule-iam-instance-profile-role-ec2
             assume_role_policy_document:
               Version: '2012-10-17'
               Statement:
@@ -49,7 +22,7 @@ provisioner:
             create_instance_profile: false
             managed_policies:
               - AmazonEC2ReadOnlyAccess
-          - name: molecule-role-vpc
+          - name: molecule-iam-instance-profile-role-vpc
             assume_role_policy_document:
               Version: '2012-10-17'
               Statement:
@@ -61,25 +34,4 @@ provisioner:
             create_instance_profile: false
             managed_policies:
               - AmazonVPCReadOnlyAccess
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
 ...

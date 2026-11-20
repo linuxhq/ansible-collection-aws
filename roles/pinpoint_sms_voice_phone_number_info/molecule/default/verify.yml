@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure role is included without filters
       ansible.builtin.include_role:
@@ -9,7 +10,7 @@
     - name: Ensure requested phone number is selected
       ansible.builtin.set_fact:
         __pinpoint_sms_voice_phone_number_verify:
-          "{{ _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'] }}"
+          "{{ _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-sms-voice-phone-number-info-simulator'] }}"
 
     - name: Ensure info is verified
       ansible.builtin.assert:
@@ -71,24 +72,5 @@
     - name: Ensure info with filters is verified
       ansible.builtin.assert:
         that:
-          - _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-simulator'].phone_number_id is defined
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        pinpoint_sms_voice_phone_number_list:
-          "{{ pinpoint_sms_voice_phone_number_list |
-              map('combine',
-                  {'phone_number_id':
-                   __pinpoint_sms_voice_phone_number_verify.phone_number_id,
-                   'state':
-                   'absent'}) }}"
-
-    - name: Ensure roles are included
-      ansible.builtin.include_role:
-        name: "{{ _verify }}"
-      loop:
-        - pinpoint_sms_voice_phone_number
-      loop_control:
-        label: "{{ _verify }}"
-        loop_var: _verify
+          - _pinpoint_sms_voice_phone_number_info_dict['molecule-pinpoint-sms-voice-phone-number-info-simulator'].phone_number_id is defined
 ...

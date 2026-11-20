@@ -1,26 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
-    - role: pinpoint_sms_voice_phone_number
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: pinpoint_sms_voice_sender_id
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: pinpoint_sms_voice_phone_pool
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - role: pinpoint_sms_voice_phone_pool_associate
       pinpoint_sms_voice_phone_pool_associate_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - pinpoint_sms_voice_phone_pool_associate
 ...

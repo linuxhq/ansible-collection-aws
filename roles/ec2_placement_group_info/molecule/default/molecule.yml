@@ -1,93 +1,45 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         ec2_placement_group_list:
           - strategy: cluster
             placement_groups:
-              - name: molecule-cluster-1
-              - name: molecule-cluster-2
-              - name: molecule-cluster-3
-              - name: molecule-cluster-4
-              - name: molecule-cluster-5
-              - name: molecule-cluster-6
+              - name: molecule-ec2-placement-group-info-cluster-1
+              - name: molecule-ec2-placement-group-info-cluster-2
+              - name: molecule-ec2-placement-group-info-cluster-3
+              - name: molecule-ec2-placement-group-info-cluster-4
+              - name: molecule-ec2-placement-group-info-cluster-5
+              - name: molecule-ec2-placement-group-info-cluster-6
 
           - strategy: partition
             placement_groups:
-              - name: molecule-partition-1
+              - name: molecule-ec2-placement-group-info-partition-1
                 partition_count: 3
-              - name: molecule-partition-2
+              - name: molecule-ec2-placement-group-info-partition-2
                 partition_count: 3
-              - name: molecule-partition-3
+              - name: molecule-ec2-placement-group-info-partition-3
                 partition_count: 3
-              - name: molecule-partition-4
+              - name: molecule-ec2-placement-group-info-partition-4
                 partition_count: 5
-              - name: molecule-partition-5
+              - name: molecule-ec2-placement-group-info-partition-5
                 partition_count: 5
-              - name: molecule-partition-6
+              - name: molecule-ec2-placement-group-info-partition-6
                 partition_count: 5
-              - name: molecule-partition-7
+              - name: molecule-ec2-placement-group-info-partition-7
                 partition_count: 7
-              - name: molecule-partition-8
+              - name: molecule-ec2-placement-group-info-partition-8
                 partition_count: 7
-              - name: molecule-partition-9
+              - name: molecule-ec2-placement-group-info-partition-9
                 partition_count: 7
 
           - strategy: spread
             placement_groups:
-              - name: molecule-spread-1
-              - name: molecule-spread-2
-              - name: molecule-spread-3
-              - name: molecule-spread-4
-              - name: molecule-spread-5
-              - name: molecule-spread-6
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
+              - name: molecule-ec2-placement-group-info-spread-1
+              - name: molecule-ec2-placement-group-info-spread-2
+              - name: molecule-ec2-placement-group-info-spread-3
+              - name: molecule-ec2-placement-group-info-spread-4
+              - name: molecule-ec2-placement-group-info-spread-5
+              - name: molecule-ec2-placement-group-info-spread-6
 ...

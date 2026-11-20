@@ -1,37 +1,10 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         pinpoint_sms_voice_phone_number_list:
-          - name: molecule-pinpoint-simulator
+          - name: molecule-pinpoint-sms-voice-phone-pool-simulator
             iso_country_code: US
             message_type: TRANSACTIONAL
             number_capabilities:
@@ -39,34 +12,14 @@ provisioner:
             number_type: SIMULATOR
 
         pinpoint_sms_voice_phone_pool_list:
-          - name: molecule-pinpoint-pool
+          - name: molecule-pinpoint-sms-voice-phone-pool
             tags:
               molecule: pinpoint_sms_voice_phone_pool
             origination_identity:
               "{{ _pinpoint_sms_voice_phone_number_info_dict[
-                    'molecule-pinpoint-simulator'
-                  ].phone_number_id }}"
+                    'molecule-pinpoint-sms-voice-phone-pool-simulator'
+                  ].phone_number_id |
+                  d(omit) }}"
             iso_country_code: US
             message_type: TRANSACTIONAL
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
 ...

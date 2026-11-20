@@ -1,49 +1,13 @@
 ---
 - name: Converge
   hosts: all
-  pre_tasks:
-    - name: Ensure aws regions are gathered for the original instance metadata defaults
-      ansible.builtin.import_role:
-        name: aws_region_info
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - name: Ensure original aws instance metadata region defaults are gathered
-      linuxhq.aws.ec2_instance_metadata_info:
-        region: "{{ _region }}"
-        validate_certs: true
-      register: __ec2_instance_metadata_original
-      loop: "{{ ec2_instance_metadata_regions }}"
-      loop_control:
-        label: "{{ _region }}"
-        loop_var: _region
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    # The second converge keeps the defaults saved before the first one changed them.
-    - name: Ensure original aws instance metadata region defaults are saved
-      ansible.builtin.copy:
-        content:
-          "{{ dict(__ec2_instance_metadata_original.results |
-                   json_query('[].[region, account_level]')) |
-              to_json }}"
-        dest: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/original-instance-metadata-defaults.json"
-        force: false
-        mode: '0600'
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
 
   roles:
-    - role: aws_region_info
-      check_mode: false
+    - aws_region_info
 
-    - role: ec2_instance_metadata
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
+    - role: ec2_instance_metadata_info
+      ec2_instance_metadata_info_regions:
+        - us-east-1
 
     - ec2_instance_metadata_info
 ...

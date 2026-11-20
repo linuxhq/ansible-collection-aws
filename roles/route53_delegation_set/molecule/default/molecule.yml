@@ -1,61 +1,13 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         route53_delegation_set_list:
-          - name: "molecule-01-{{ route53_delegation_set_uuid }}"
-          - name: "molecule-02-{{ route53_delegation_set_uuid }}"
-          - name: "molecule-03-{{ route53_delegation_set_uuid }}"
+          - name: "molecule-route53-delegation-set-01-{{ route53_delegation_set_uuid }}"
+          - name: "molecule-route53-delegation-set-02-{{ route53_delegation_set_uuid }}"
+          - name: "molecule-route53-delegation-set-03-{{ route53_delegation_set_uuid }}"
 
         route53_delegation_set_uuid: >-
           {{ (lookup('ansible.builtin.file', '${MOLECULE_STATE_FILE}') | from_yaml).run_uuid }}
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
 ...

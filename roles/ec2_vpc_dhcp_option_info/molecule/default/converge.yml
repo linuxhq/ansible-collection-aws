@@ -1,11 +1,7 @@
 ---
 - name: Converge
   hosts: all
-  roles:
-    - role: ec2_vpc_dhcp_option
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
 
+  roles:
     - ec2_vpc_dhcp_option_info
 ...

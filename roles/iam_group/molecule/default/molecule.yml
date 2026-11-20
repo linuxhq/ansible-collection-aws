@@ -1,84 +1,36 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         iam_group_list:
-          - name: molecule-admin
+          - name: molecule-iam-group-admin
             managed_policies:
               - AdministratorAccess
             purge_policies: true
             users:
-              - molecule-admin
+              - molecule-iam-group-admin
 
-          - name: molecule-kopia
+          - name: molecule-iam-group-kopia
             managed_policies:
               - AmazonS3FullAccess
             purge_policies: true
             users:
-              - molecule-kopia
+              - molecule-iam-group-kopia
 
-          - name: molecule-molecule
+          - name: molecule-iam-group-molecule
             managed_policies:
               - AmazonEC2FullAccess
               - AmazonVPCReadOnlyAccess
             purge_policies: true
             users:
-              - molecule-molecule
+              - molecule-iam-group-molecule
 
         iam_user_list:
-          - name: molecule-admin
+          - name: molecule-iam-group-admin
             purge_policies: true
-          - name: molecule-kopia
+          - name: molecule-iam-group-kopia
             purge_policies: true
-          - name: molecule-molecule
+          - name: molecule-iam-group-molecule
             purge_policies: true
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
 ...

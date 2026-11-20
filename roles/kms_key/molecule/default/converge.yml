@@ -1,19 +1,12 @@
 ---
 - name: Converge
   hosts: all
-  roles:
-    - role: aws_caller_info
-      check_mode: false
 
-    - role: iam_role
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
+  roles:
+    - aws_caller_info
 
     - role: kms_key
       kms_key_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - kms_key
 ...

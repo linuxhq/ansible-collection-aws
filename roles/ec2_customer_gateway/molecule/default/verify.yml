@@ -1,13 +1,59 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        ec2_customer_gateway_list:
-          "{{ ec2_customer_gateway_list_update |
-              map('combine', {'state': 'absent'}) }}"
 
-  roles:
-    - ec2_customer_gateway
+  tasks:
+    - name: Ensure information about customer gateways is gathered
+      ansible.builtin.include_role:
+        name: ec2_customer_gateway_info
+
+    - name: Ensure customer gateways are verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _ec2_customer_gateway_info_list |
+            selectattr('customer_gateway_name', 'eq', _cgw.name) |
+            selectattr('ip_address', 'eq', _cgw.ip_address) |
+            list |
+            length == 1
+      loop: "{{ ec2_customer_gateway_list }}"
+      loop_control:
+        label: "{{ _cgw.name }}"
+        loop_var: _cgw
+
+    # The module finds a gateway by its IP address, so only the Name tag can change.
+    - name: Ensure customer gateways are renamed
+      ansible.builtin.include_role:
+        name: ec2_customer_gateway
+      vars:
+        ec2_customer_gateway_list:
+          - name: molecule-ec2-customer-gateway-renamed-00
+            ip_address: 1.1.1.0
+          - name: molecule-ec2-customer-gateway-renamed-01
+            ip_address: 1.1.1.1
+          - name: molecule-ec2-customer-gateway-renamed-02
+            ip_address: 1.1.1.2
+          - name: molecule-ec2-customer-gateway-renamed-03
+            ip_address: 1.1.1.3
+          - name: molecule-ec2-customer-gateway-renamed-04
+            ip_address: 1.1.1.4
+
+    - name: Ensure information about renamed customer gateways is gathered
+      ansible.builtin.include_role:
+        name: ec2_customer_gateway_info
+
+    - name: Ensure renamed customer gateways are verified
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - _ec2_customer_gateway_info_list |
+            selectattr('customer_gateway_name', 'eq', 'molecule-ec2-customer-gateway-renamed-' ~ '%02d' | format(_index)) |
+            selectattr('ip_address', 'eq', _cgw.ip_address) |
+            list |
+            length == 1
+      loop: "{{ ec2_customer_gateway_list }}"
+      loop_control:
+        index_var: _index
+        label: "{{ _cgw.ip_address }}"
+        loop_var: _cgw
 ...

@@ -1,10 +1,14 @@
 ---
 - name: Verify
   hosts: all
-  tasks:
-    - name: Ensure splunk addon resources are absent
-      ansible.builtin.include_role:
-        name: splunk_addon
-      vars:
-        splunk_addon_state: absent
+
+  roles:
+    - role: iam_user_info
+      iam_user_info_name: "{{ splunk_addon_iam_user_name }}"
+
+  post_tasks:
+    - name: Ensure info is verified
+      ansible.builtin.assert:
+        that:
+          - _iam_user_info_dict[splunk_addon_iam_user_name].arn is defined
 ...

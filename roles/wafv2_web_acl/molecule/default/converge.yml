@@ -1,15 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: wafv2_web_acl
       wafv2_web_acl_list: []
-      tags:
-        - molecule-idempotence-notest
-
-    - role: wafv2_web_acl
-      tags:
-        - molecule-idempotence-notest
 
     - wafv2_web_acl
 ...

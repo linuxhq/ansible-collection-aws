@@ -1,0 +1,10 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - aws_az_info
+    - aws_caller_info
+    - sqs_queue
+    - sns_topic
+...

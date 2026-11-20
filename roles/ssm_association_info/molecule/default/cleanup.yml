@@ -1,0 +1,14 @@
+---
+- name: Cleanup
+  hosts: all
+
+  pre_tasks:
+    - name: Ensure inventory lists are formatted
+      ansible.builtin.set_fact:
+        ssm_association_list:
+          "{{ ssm_association_list |
+              map('combine', {'state': 'absent'}) }}"
+
+  roles:
+    - ssm_association
+...

@@ -1,13 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
-    - ssm_association_info
-
-    - role: ssm_association
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - ssm_association_info
 ...

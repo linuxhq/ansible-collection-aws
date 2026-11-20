@@ -1,19 +1,10 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: cloudwatchlogs_log_group
       cloudwatchlogs_log_group_list: []
-      tags:
-        - molecule-idempotence-notest
 
-    - role: cloudwatchlogs_log_group
-      cloudwatchlogs_log_group_list:
-        "{{ cloudwatchlogs_log_group_list_create }}"
-      tags:
-        - molecule-idempotence-notest
-
-    - role: cloudwatchlogs_log_group
-      cloudwatchlogs_log_group_list:
-        "{{ cloudwatchlogs_log_group_list_update }}"
+    - cloudwatchlogs_log_group
 ...

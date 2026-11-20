@@ -1,0 +1,9 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - ec2_customer_gateway
+    - ec2_transit_gateway
+    - ec2_vpc_vpn
+...

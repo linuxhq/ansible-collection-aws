@@ -62,4 +62,8 @@
     - _jid.ansible_job_id is defined
   until:
     - __route53_record_status.finished | bool
+  failed_when:
+    - __route53_record_status.failed | d(false)
+    - _jid._record.1.state | d('present') != 'absent' or
+      __route53_record_status.msg | d('') is not search('does not exist in Route53')
 ...

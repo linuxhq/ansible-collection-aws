@@ -1,0 +1,9 @@
+---
+- name: Cleanup
+  hosts: all
+
+  roles:
+    - role: account_name
+      vars:
+        account_name_name: linuxhq
+...

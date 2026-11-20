@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure quotas are queried
       linuxhq.aws.service_quota:
@@ -23,7 +24,8 @@
       ansible.builtin.assert:
         that:
           - _query is not changed
-          - _query.current_quota.value >= _query._servicequota.1.value | float or
+          - _query.current_quota.value >= _query._servicequota.1.value |
+            float or
             _query.pending_requests | length > 0
       loop: "{{ __service_quota_query.results }}"
       loop_control:

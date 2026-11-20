@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure aws route53 delegation sets are queried
       linuxhq.aws.route53_delegation_set_info:
@@ -23,26 +24,4 @@
       loop_control:
         label: "{{ _delegationset.name }}"
         loop_var: _delegationset
-
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
-        route53_delegation_set_list:
-          "{{ route53_delegation_set_list |
-              map('combine', {'state': 'absent'}) }}"
-
-    - name: Ensure aws route53 delegation sets are removed
-      ansible.builtin.include_role:
-        name: route53_delegation_set
-
-    - name: Ensure aws route53 delegation sets are queried after removal
-      linuxhq.aws.route53_delegation_set_info:
-        validate_certs: true
-      register: __route53_delegation_set_removed
-
-    - name: Ensure aws route53 delegation sets are absent
-      ansible.builtin.assert:
-        that:
-          - __route53_delegation_set_removed.delegation_sets |
-            selectattr('caller_reference', 'in', route53_delegation_set_list | map(attribute='name') | list) |
-            list | length == 0
 ...

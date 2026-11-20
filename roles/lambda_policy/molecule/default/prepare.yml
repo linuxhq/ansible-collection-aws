@@ -1,0 +1,11 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - aws_az_info
+    - aws_caller_info
+    - iam_role
+    - elb_target_group
+    - lambda
+...

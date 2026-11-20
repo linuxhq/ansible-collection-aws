@@ -1,40 +1,13 @@
 ---
-prerun: false
-
-dependency:
-  name: galaxy
-  options:
-    requirements-file: ../../requirements.yml
-
-driver:
-  name: default
-  options:
-    managed: false
-    ansible_connection_options:
-      ansible_connection: local
-      ansible_python_interpreter: "{{ ansible_playbook_python }}"
-
-platforms:
-  - name: localhost
-
 provisioner:
-  name: ansible
-  env:
-    ANSIBLE_ACTION_WARNINGS: false
-    ANSIBLE_COLLECTIONS_PATH: ${ANSIBLE_COLLECTIONS_PATH}
-    ANSIBLE_DEPRECATION_WARNINGS: false
-    OBJC_DISABLE_INITIALIZE_FORK_SAFETY: 'YES'
-  log: true
-  options:
-    diff: true
   inventory:
     group_vars:
       all:
         iam_group_list:
-          - name: molecule-rds
+          - name: molecule-iam-policy-rds
 
         iam_policy_list:
-          - iam_name: molecule-ec2
+          - iam_name: molecule-iam-policy-ec2
             iam_type: user
             policy_json:
               Version: '2012-10-17'
@@ -46,7 +19,7 @@ provisioner:
                     - '*'
             policy_name: MoleculeEc2FullAccess
 
-          - iam_name: molecule-rds
+          - iam_name: molecule-iam-policy-rds
             iam_type: group
             policy_json:
               Version: '2012-10-17'
@@ -59,26 +32,5 @@ provisioner:
             policy_name: MoleculeRdsFullAccess
 
         iam_user_list:
-          - name: molecule-ec2
-
-scenario:
-  test_sequence:
-    - dependency
-    - cleanup
-    - destroy
-    - syntax
-    - create
-    - prepare
-    - check
-    - converge
-    - check
-    - idempotence
-    - verify
-    - cleanup
-    - destroy
-
-verifier:
-  name: ansible
-  options:
-    diff: true
+          - name: molecule-iam-policy-ec2
 ...

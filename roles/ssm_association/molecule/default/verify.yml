@@ -1,43 +1,49 @@
 ---
 - name: Verify
   hosts: all
-  pre_tasks:
+
+  tasks:
     - name: Ensure association info is gathered
       ansible.builtin.include_role:
         name: ssm_association_info
       vars:
         ssm_association_info_filters:
-          AssociationName: "{{ ssm_association_list_update.0.association_name }}"
+          AssociationName: "{{ ssm_association_list.0.association_name }}"
 
-    - name: Ensure updated association is verified
+    - name: Ensure association is verified
       ansible.builtin.assert:
         that:
           - _ssm_association_info_list | length == 1
-          - _ssm_association_info_list.0.association_name == ssm_association_list_update.0.association_name
-          - _ssm_association_info_list.0.name == ssm_association_list_update.0.name
-          - _ssm_association_info_list.0.schedule_expression == ssm_association_list_update.0.schedule_expression
-          - _ssm_association_info_list.0.targets == ssm_association_list_update.0.targets
+          - _ssm_association_info_list.0.association_name == ssm_association_list.0.association_name
+          - _ssm_association_info_list.0.name == ssm_association_list.0.name
+          - _ssm_association_info_list.0.schedule_expression == ssm_association_list.0.schedule_expression
+          - _ssm_association_info_list.0.targets == ssm_association_list.0.targets
           - _ssm_association_info_list.0.tags.molecule == 'ssm_association'
 
-    - name: Ensure inventory lists are formatted
-      ansible.builtin.set_fact:
+    - name: Ensure association schedule is changed
+      ansible.builtin.include_role:
+        name: ssm_association
+      vars:
         ssm_association_list:
-          "{{ ssm_association_list_update |
-              map('combine', {'state': 'absent'}) }}"
+          - name: AWS-UpdateSSMAgent
+            association_name: molecule-ssm-association
+            tags:
+              molecule: ssm_association
+            schedule_expression: 'cron(15 0 * * ? *)'
+            targets:
+              - key: InstanceIds
+                values: ['*']
 
-  roles:
-    - ssm_association
-
-  post_tasks:
-    - name: Ensure association info is gathered after removal
+    - name: Ensure changed association info is gathered
       ansible.builtin.include_role:
         name: ssm_association_info
       vars:
         ssm_association_info_filters:
-          AssociationName: "{{ ssm_association_list_update.0.association_name }}"
+          AssociationName: molecule-ssm-association
 
-    - name: Ensure removed association is verified
+    - name: Ensure changed association schedule is verified
       ansible.builtin.assert:
         that:
-          - _ssm_association_info_list == []
+          - _ssm_association_info_list | length == 1
+          - _ssm_association_info_list.0.schedule_expression == 'cron(15 0 * * ? *)'
 ...
