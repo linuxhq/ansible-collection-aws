@@ -21,37 +21,49 @@ provisioner:
 
         lambda_event_list:
           - lambda_function_arn:
-              "arn:aws:lambda:{{ _aws_az_info_list_l.0[:-1] }}:{{
-               _aws_caller_info_account }}:function:molecule-lambda-event-pass"
+              "{{ 'arn:aws:lambda:' ~
+                  _aws_az_info_list_l.0[:-1] ~ ':' ~
+                  _aws_caller_info_account ~
+                  ':function:molecule-lambda-event-pass' }}"
             event_source: sqs
             source_params:
               batch_size: 10
               enabled: true
               source_arn:
-                "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                 _aws_caller_info_account }}:molecule-lambda-event-bounce"
+                "{{ 'arn:aws:sqs:' ~
+                    _aws_az_info_list_l.0[:-1] ~ ':' ~
+                    _aws_caller_info_account ~
+                    ':molecule-lambda-event-bounce' }}"
 
           - lambda_function_arn:
-              "arn:aws:lambda:{{ _aws_az_info_list_l.0[:-1] }}:{{
-               _aws_caller_info_account }}:function:molecule-lambda-event-pass"
+              "{{ 'arn:aws:lambda:' ~
+                  _aws_az_info_list_l.0[:-1] ~ ':' ~
+                  _aws_caller_info_account ~
+                  ':function:molecule-lambda-event-pass' }}"
             event_source: sqs
             source_params:
               batch_size: 10
               enabled: true
               source_arn:
-                "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                 _aws_caller_info_account }}:molecule-lambda-event-complaint"
+                "{{ 'arn:aws:sqs:' ~
+                    _aws_az_info_list_l.0[:-1] ~ ':' ~
+                    _aws_caller_info_account ~
+                    ':molecule-lambda-event-complaint' }}"
 
           - lambda_function_arn:
-              "arn:aws:lambda:{{ _aws_az_info_list_l.0[:-1] }}:{{
-               _aws_caller_info_account }}:function:molecule-lambda-event-pass"
+              "{{ 'arn:aws:lambda:' ~
+                  _aws_az_info_list_l.0[:-1] ~ ':' ~
+                  _aws_caller_info_account ~
+                  ':function:molecule-lambda-event-pass' }}"
             event_source: sqs
             source_params:
               batch_size: 10
               enabled: true
               source_arn:
-                "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                 _aws_caller_info_account }}:molecule-lambda-event-delivery"
+                "{{ 'arn:aws:sqs:' ~
+                    _aws_az_info_list_l.0[:-1] ~ ':' ~
+                    _aws_caller_info_account ~
+                    ':molecule-lambda-event-delivery' }}"
 
         lambda_list:
           - name: molecule-lambda-event-pass
@@ -78,21 +90,27 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-lambda-event-bounce"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-lambda-event-bounce' }}"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-lambda-event-bounce"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-lambda-event-bounce' }}"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                         _aws_caller_info_account }}:molecule-lambda-event-bounce"
+                        "{{ 'arn:aws:sns:' ~
+                            _aws_az_info_list_l.0[:-1] ~ ':' ~
+                            _aws_caller_info_account ~
+                            ':molecule-lambda-event-bounce' }}"
 
           - name: molecule-lambda-event-complaint
             policy:
@@ -105,21 +123,27 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-lambda-event-complaint"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-lambda-event-complaint' }}"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-lambda-event-complaint"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-lambda-event-complaint' }}"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                         _aws_caller_info_account }}:molecule-lambda-event-complaint"
+                        "{{ 'arn:aws:sns:' ~
+                            _aws_az_info_list_l.0[:-1] ~ ':' ~
+                            _aws_caller_info_account ~
+                            ':molecule-lambda-event-complaint' }}"
 
           - name: molecule-lambda-event-delivery
             policy:
@@ -132,19 +156,25 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-lambda-event-delivery"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-lambda-event-delivery' }}"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-lambda-event-delivery"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-lambda-event-delivery' }}"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                         _aws_caller_info_account }}:molecule-lambda-event-delivery"
+                        "{{ 'arn:aws:sns:' ~
+                            _aws_az_info_list_l.0[:-1] ~ ':' ~
+                            _aws_caller_info_account ~
+                            ':molecule-lambda-event-delivery' }}"
 ...

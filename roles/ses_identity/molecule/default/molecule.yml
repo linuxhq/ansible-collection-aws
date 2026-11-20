@@ -20,8 +20,10 @@ provisioner:
           - name: molecule-ses-identity-bounce
             subscriptions:
               - endpoint:
-                  "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                   _aws_caller_info_account }}:molecule-ses-identity-bounce"
+                  "{{ 'arn:aws:sqs:' ~
+                      _aws_az_info_list_l.0[:-1] ~ ':' ~
+                      _aws_caller_info_account ~
+                      ':molecule-ses-identity-bounce' }}"
                 protocol: sqs
             policy:
               Version: '2012-10-17'
@@ -32,20 +34,26 @@ provisioner:
                   Action:
                     - sns:Publish
                   Resource:
-                    - "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-ses-identity-bounce"
+                    - "{{ 'arn:aws:sns:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-ses-identity-bounce' }}"
                   Condition:
                     StringEquals:
                       'AWS:SourceAccount': "{{ _aws_caller_info_account }}"
                       'AWS:SourceArn':
-                        - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                           _aws_caller_info_account }}:identity/molecule-ses-identity.org"
+                        - "{{ 'arn:aws:ses:' ~
+                              _aws_az_info_list_l.0[:-1] ~ ':' ~
+                              _aws_caller_info_account ~
+                              ':identity/molecule-ses-identity.org' }}"
 
           - name: molecule-ses-identity-complaint
             subscriptions:
               - endpoint:
-                  "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                   _aws_caller_info_account }}:molecule-ses-identity-complaint"
+                  "{{ 'arn:aws:sqs:' ~
+                      _aws_az_info_list_l.0[:-1] ~ ':' ~
+                      _aws_caller_info_account ~
+                      ':molecule-ses-identity-complaint' }}"
                 protocol: sqs
             policy:
               Version: '2012-10-17'
@@ -56,20 +64,26 @@ provisioner:
                   Action:
                     - sns:Publish
                   Resource:
-                    - "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-ses-identity-complaint"
+                    - "{{ 'arn:aws:sns:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-ses-identity-complaint' }}"
                   Condition:
                     StringEquals:
                       'AWS:SourceAccount': "{{ _aws_caller_info_account }}"
                       'AWS:SourceArn':
-                        - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                           _aws_caller_info_account }}:identity/molecule-ses-identity.org"
+                        - "{{ 'arn:aws:ses:' ~
+                              _aws_az_info_list_l.0[:-1] ~ ':' ~
+                              _aws_caller_info_account ~
+                              ':identity/molecule-ses-identity.org' }}"
 
           - name: molecule-ses-identity-delivery
             subscriptions:
               - endpoint:
-                  "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                   _aws_caller_info_account }}:molecule-ses-identity-delivery"
+                  "{{ 'arn:aws:sqs:' ~
+                      _aws_az_info_list_l.0[:-1] ~ ':' ~
+                      _aws_caller_info_account ~
+                      ':molecule-ses-identity-delivery' }}"
                 protocol: sqs
             policy:
               Version: '2012-10-17'
@@ -80,14 +94,18 @@ provisioner:
                   Action:
                     - sns:Publish
                   Resource:
-                    - "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-ses-identity-delivery"
+                    - "{{ 'arn:aws:sns:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-ses-identity-delivery' }}"
                   Condition:
                     StringEquals:
                       'AWS:SourceAccount': "{{ _aws_caller_info_account }}"
                       'AWS:SourceArn':
-                        - "arn:aws:ses:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                           _aws_caller_info_account }}:identity/molecule-ses-identity.org"
+                        - "{{ 'arn:aws:ses:' ~
+                              _aws_az_info_list_l.0[:-1] ~ ':' ~
+                              _aws_caller_info_account ~
+                              ':identity/molecule-ses-identity.org' }}"
 
         sqs_queue_list:
           - name: molecule-ses-identity-bounce
@@ -101,21 +119,27 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-ses-identity-bounce"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-ses-identity-bounce' }}"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-ses-identity-bounce"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-ses-identity-bounce' }}"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                         _aws_caller_info_account }}:molecule-ses-identity-bounce"
+                        "{{ 'arn:aws:sns:' ~
+                            _aws_az_info_list_l.0[:-1] ~ ':' ~
+                            _aws_caller_info_account ~
+                            ':molecule-ses-identity-bounce' }}"
 
           - name: molecule-ses-identity-complaint
             policy:
@@ -128,21 +152,27 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-ses-identity-complaint"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-ses-identity-complaint' }}"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-ses-identity-complaint"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-ses-identity-complaint' }}"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                         _aws_caller_info_account }}:molecule-ses-identity-complaint"
+                        "{{ 'arn:aws:sns:' ~
+                            _aws_az_info_list_l.0[:-1] ~ ':' ~
+                            _aws_caller_info_account ~
+                            ':molecule-ses-identity-complaint' }}"
 
           - name: molecule-ses-identity-delivery
             policy:
@@ -155,19 +185,25 @@ provisioner:
                   Action:
                     - sqs:*
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-ses-identity-delivery"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-ses-identity-delivery' }}"
                 - Effect: Allow
                   Principal:
                     Service: sns.amazonaws.com
                   Action:
                     - sqs:SendMessage
                   Resource:
-                    - "arn:aws:sqs:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                       _aws_caller_info_account }}:molecule-ses-identity-delivery"
+                    - "{{ 'arn:aws:sqs:' ~
+                          _aws_az_info_list_l.0[:-1] ~ ':' ~
+                          _aws_caller_info_account ~
+                          ':molecule-ses-identity-delivery' }}"
                   Condition:
                     ArnEquals:
                       'aws:SourceArn':
-                        "arn:aws:sns:{{ _aws_az_info_list_l.0[:-1] }}:{{
-                         _aws_caller_info_account }}:molecule-ses-identity-delivery"
+                        "{{ 'arn:aws:sns:' ~
+                            _aws_az_info_list_l.0[:-1] ~ ':' ~
+                            _aws_caller_info_account ~
+                            ':molecule-ses-identity-delivery' }}"
 ...
