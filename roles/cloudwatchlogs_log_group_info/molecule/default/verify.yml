@@ -9,13 +9,13 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _cloudwatchlogs_log_group_info_dict['molecule-00'].arn is defined
-          - _cloudwatchlogs_log_group_info_dict['molecule-00'].log_group_name is defined
-          - _cloudwatchlogs_log_group_info_dict['molecule-00'].retention_in_days == 30
-          - _cloudwatchlogs_log_group_info_dict['molecule-01'].arn is defined
-          - _cloudwatchlogs_log_group_info_dict['molecule-01'].log_group_name is defined
-          - _cloudwatchlogs_log_group_info_dict['molecule-01'].retention_in_days == 60
-          - _cloudwatchlogs_log_group_info_dict['molecule-02'].arn is defined
-          - _cloudwatchlogs_log_group_info_dict['molecule-02'].log_group_name is defined
-          - _cloudwatchlogs_log_group_info_dict['molecule-02'].retention_in_days == 120
+          - _cloudwatchlogs_log_group_info_dict['molecule-cloudwatchlogs-log-group-info-00'].arn is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-cloudwatchlogs-log-group-info-00'].log_group_name is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-cloudwatchlogs-log-group-info-00'].retention_in_days == 30
+          - _cloudwatchlogs_log_group_info_dict['molecule-cloudwatchlogs-log-group-info-01'].arn is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-cloudwatchlogs-log-group-info-01'].log_group_name is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-cloudwatchlogs-log-group-info-01'].retention_in_days == 60
+          - _cloudwatchlogs_log_group_info_dict['molecule-cloudwatchlogs-log-group-info-02'].arn is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-cloudwatchlogs-log-group-info-02'].log_group_name is defined
+          - _cloudwatchlogs_log_group_info_dict['molecule-cloudwatchlogs-log-group-info-02'].retention_in_days == 120
 ...

@@ -4,10 +4,10 @@ provisioner:
     group_vars:
       all:
         cloudwatchlogs_log_group_list:
-          - name: molecule-00
+          - name: molecule-cloudwatchlogs-log-group-info-00
             retention: 30
-          - name: molecule-01
+          - name: molecule-cloudwatchlogs-log-group-info-01
             retention: 60
-          - name: molecule-02
+          - name: molecule-cloudwatchlogs-log-group-info-02
             retention: 120
 ...
