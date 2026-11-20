@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         ec2_vpc_net_list:
-          - name: molecule
+          - name: molecule-ec2-vpc-subnet-info
             cidr_block: 10.0.0.0/16
 
         ec2_vpc_subnet_info_filters:
@@ -12,44 +12,44 @@ provisioner:
             - available
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-ec2-vpc-subnet-info'].id | d(omit) }}"
             subnets:
-              - name: molecule-a-00
+              - name: molecule-ec2-vpc-subnet-info-a-00
                 tags:
                   molecule: ec2_vpc_subnet_info
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,0) }}"
-              - name: molecule-a-01
+              - name: molecule-ec2-vpc-subnet-info-a-01
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,1) }}"
-              - name: molecule-a-02
+              - name: molecule-ec2-vpc-subnet-info-a-02
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,2) }}"
-              - name: molecule-a-03
+              - name: molecule-ec2-vpc-subnet-info-a-03
                 az: us-east-1a
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,3) }}"
-              - name: molecule-c-00
+              - name: molecule-ec2-vpc-subnet-info-c-00
                 az: us-east-1c
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,4) }}"
-              - name: molecule-c-01
+              - name: molecule-ec2-vpc-subnet-info-c-01
                 az: us-east-1c
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,5) }}"
-              - name: molecule-c-02
+              - name: molecule-ec2-vpc-subnet-info-c-02
                 az: us-east-1c
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,6) }}"
-              - name: molecule-c-03
+              - name: molecule-ec2-vpc-subnet-info-c-03
                 az: us-east-1c
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,7) }}"
-              - name: molecule-d-00
+              - name: molecule-ec2-vpc-subnet-info-d-00
                 az: us-east-1d
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,8) }}"
-              - name: molecule-d-01
+              - name: molecule-ec2-vpc-subnet-info-d-01
                 az: us-east-1d
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,9) }}"
-              - name: molecule-d-02
+              - name: molecule-ec2-vpc-subnet-info-d-02
                 az: us-east-1d
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,10) }}"
-              - name: molecule-d-03
+              - name: molecule-ec2-vpc-subnet-info-d-03
                 az: us-east-1d
                 cidr: "{{ '10.0.0.0/16' | ansible.utils.ipsubnet(24,11) }}"
 ...

@@ -12,39 +12,39 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_vpc_route_table_info_dict['molecule-pub'].id is defined
-          - _ec2_vpc_route_table_info_dict['molecule-pub'].tags.molecule ==
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pub'].id is defined
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pub'].tags.molecule ==
               'ec2_vpc_route_table_info'
-          - _ec2_vpc_route_table_info_dict['molecule-pub'].associations.0.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pub'].associations.0.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['molecule-pub'].associations.1.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pub'].associations.1.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['molecule-pub'].associations.2.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pub'].associations.2.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['molecule-pub'].routes.1.gateway_id ==
-              _ec2_vpc_igw_info_dict['molecule'].internet_gateway_id
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pub'].routes.1.gateway_id ==
+              _ec2_vpc_igw_info_dict['molecule-ec2-vpc-route-table-info'].internet_gateway_id
 
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-a'].id is defined
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-a'].associations.0.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-a'].id is defined
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-a'].associations.0.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-a'].associations.0.subnet_id ==
-              _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-a'].routes.1.nat_gateway_id ==
-              _ec2_vpc_nat_gateway_info_dict['molecule-pub-a'].nat_gateway_id
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-a'].associations.0.subnet_id ==
+              _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-info-pvt-a'].id
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-a'].routes.1.nat_gateway_id ==
+              _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-route-table-info-pub-a'].nat_gateway_id
 
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-c'].id is defined
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-c'].associations.0.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-c'].id is defined
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-c'].associations.0.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-c'].associations.0.subnet_id ==
-              _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-c'].routes.1.nat_gateway_id ==
-              _ec2_vpc_nat_gateway_info_dict['molecule-pub-c'].nat_gateway_id
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-c'].associations.0.subnet_id ==
+              _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-info-pvt-c'].id
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-c'].routes.1.nat_gateway_id ==
+              _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-route-table-info-pub-c'].nat_gateway_id
 
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-d'].id is defined
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-d'].associations.0.association_state.state ==
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-d'].id is defined
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-d'].associations.0.association_state.state ==
               'associated'
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-d'].associations.0.subnet_id ==
-              _ec2_vpc_subnet_info_dict['molecule-pvt-d'].id
-          - _ec2_vpc_route_table_info_dict['molecule-pvt-d'].routes.1.nat_gateway_id ==
-              _ec2_vpc_nat_gateway_info_dict['molecule-pub-d'].nat_gateway_id
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-d'].associations.0.subnet_id ==
+              _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-info-pvt-d'].id
+          - _ec2_vpc_route_table_info_dict['molecule-ec2-vpc-route-table-info-pvt-d'].routes.1.nat_gateway_id ==
+              _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-route-table-info-pub-d'].nat_gateway_id
 ...

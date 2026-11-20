@@ -9,9 +9,9 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_vpc_nat_gateway_info_dict['molecule-pub-a'].nat_gateway_id is defined
-          - _ec2_vpc_nat_gateway_info_dict['molecule-pub-a'].tags.molecule ==
+          - _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-nat-gateway-info-pub-a'].nat_gateway_id is defined
+          - _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-nat-gateway-info-pub-a'].tags.molecule ==
               'ec2_vpc_nat_gateway_info'
-          - _ec2_vpc_nat_gateway_info_dict['molecule-pub-c'].nat_gateway_id is defined
-          - _ec2_vpc_nat_gateway_info_dict['molecule-pub-d'].nat_gateway_id is defined
+          - _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-nat-gateway-info-pub-c'].nat_gateway_id is defined
+          - _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-nat-gateway-info-pub-d'].nat_gateway_id is defined
 ...

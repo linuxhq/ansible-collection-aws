@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         ec2_vpc_prefix_list_entries:
-          - name: molecule-localhost
+          - name: molecule-ec2-vpc-prefix-list-info-localhost
             tags:
               molecule: ec2_vpc_prefix_list_info
             entries:
@@ -18,7 +18,7 @@ provisioner:
                 description: localhost-4
               - cidr: 127.0.0.5/32
                 description: localhost-5
-          - name: molecule-private
+          - name: molecule-ec2-vpc-prefix-list-info-private
             entries:
               - cidr: 192.168.1.0/24
                 description: private-1

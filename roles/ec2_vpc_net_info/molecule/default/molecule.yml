@@ -8,16 +8,16 @@ provisioner:
             - available
 
         ec2_vpc_net_list:
-          - name: molecule-00
+          - name: molecule-ec2-vpc-net-info-00
             tags:
               molecule: ec2_vpc_net_info
             cidr_block: 10.0.0.0/16
-          - name: molecule-01
+          - name: molecule-ec2-vpc-net-info-01
             cidr_block: 10.1.0.0/16
-          - name: molecule-02
+          - name: molecule-ec2-vpc-net-info-02
             cidr_block: 10.2.0.0/16
-          - name: molecule-03
+          - name: molecule-ec2-vpc-net-info-03
             cidr_block: 10.3.0.0/16
-          - name: molecule-04
+          - name: molecule-ec2-vpc-net-info-04
             cidr_block: 10.4.0.0/16
 ...

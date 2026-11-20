@@ -4,55 +4,55 @@ provisioner:
     group_vars:
       all:
         ec2_vpc_dhcp_option_list:
-          - name: molecule-00
+          - name: molecule-ec2-vpc-dhcp-option-00
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-01
+          - name: molecule-ec2-vpc-dhcp-option-01
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-02
+          - name: molecule-ec2-vpc-dhcp-option-02
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-03
+          - name: molecule-ec2-vpc-dhcp-option-03
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-04
+          - name: molecule-ec2-vpc-dhcp-option-04
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-05
+          - name: molecule-ec2-vpc-dhcp-option-05
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-06
+          - name: molecule-ec2-vpc-dhcp-option-06
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-07
+          - name: molecule-ec2-vpc-dhcp-option-07
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-08
+          - name: molecule-ec2-vpc-dhcp-option-08
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-09
+          - name: molecule-ec2-vpc-dhcp-option-09
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-10
+          - name: molecule-ec2-vpc-dhcp-option-10
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-11
+          - name: molecule-ec2-vpc-dhcp-option-11
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2
-          - name: molecule-12
+          - name: molecule-ec2-vpc-dhcp-option-12
             dns_servers:
               - 1.1.1.1
               - 1.1.1.2

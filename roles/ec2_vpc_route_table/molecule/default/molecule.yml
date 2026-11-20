@@ -4,103 +4,103 @@ provisioner:
     group_vars:
       all:
         ec2_vpc_igw_list:
-          - name: molecule
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - name: molecule-ec2-vpc-route-table
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-ec2-vpc-route-table'].id | d(omit) }}"
 
         ec2_vpc_nat_gateway_info_filters:
           state:
             - available
 
         ec2_vpc_nat_gateway_list:
-          - name: molecule-pub-a
+          - name: molecule-ec2-vpc-route-table-pub-a
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id |
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-pub-a'].id |
                            d(omit) }}"
             wait: true
-          - name: molecule-pub-c
+          - name: molecule-ec2-vpc-route-table-pub-c
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id |
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-pub-c'].id |
                            d(omit) }}"
             wait: true
-          - name: molecule-pub-d
+          - name: molecule-ec2-vpc-route-table-pub-d
             if_exist_do_not_create: true
             release_eip: true
-            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-pub-d'].id |
+            subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-pub-d'].id |
                            d(omit) }}"
             wait: true
 
         ec2_vpc_net_list:
-          - name: molecule
+          - name: molecule-ec2-vpc-route-table
             cidr_block: 10.0.0.0/16
 
         ec2_vpc_route_table_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-ec2-vpc-route-table'].id | d(omit) }}"
             route_tables:
-              - name: "molecule-pub"
+              - name: "molecule-ec2-vpc-route-table-pub"
                 routes:
                   - dest: '0.0.0.0/0'
                     gateway_id: igw
                 subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-a'].id |
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-pub-a'].id |
                         d(omit) }}"
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-c'].id |
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-pub-c'].id |
                         d(omit) }}"
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pub-d'].id |
-                        d(omit) }}"
-
-              - name: "molecule-pvt-a"
-                routes:
-                  - dest: '0.0.0.0/0'
-                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-a'].nat_gateway_id |
-                                    d(omit) }}"
-                subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-a'].id |
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-pub-d'].id |
                         d(omit) }}"
 
-              - name: "molecule-pvt-c"
+              - name: "molecule-ec2-vpc-route-table-pvt-a"
                 routes:
                   - dest: '0.0.0.0/0'
-                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-c'].nat_gateway_id |
+                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-route-table-pub-a'].nat_gateway_id |
                                     d(omit) }}"
                 subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-c'].id |
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-pvt-a'].id |
                         d(omit) }}"
 
-              - name: "molecule-pvt-d"
+              - name: "molecule-ec2-vpc-route-table-pvt-c"
                 routes:
                   - dest: '0.0.0.0/0'
-                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-pub-d'].nat_gateway_id |
+                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-route-table-pub-c'].nat_gateway_id |
                                     d(omit) }}"
                 subnets:
-                  - "{{ _ec2_vpc_subnet_info_dict['molecule-pvt-d'].id |
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-pvt-c'].id |
+                        d(omit) }}"
+
+              - name: "molecule-ec2-vpc-route-table-pvt-d"
+                routes:
+                  - dest: '0.0.0.0/0'
+                    gateway_id: "{{ _ec2_vpc_nat_gateway_info_dict['molecule-ec2-vpc-route-table-pub-d'].nat_gateway_id |
+                                    d(omit) }}"
+                subnets:
+                  - "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-route-table-pvt-d'].id |
                         d(omit) }}"
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-ec2-vpc-route-table'].id | d(omit) }}"
             subnets:
-              - name: molecule-pub-a
+              - name: molecule-ec2-vpc-route-table-pub-a
                 az: us-east-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(24,0) }}"
-              - name: molecule-pub-c
+              - name: molecule-ec2-vpc-route-table-pub-c
                 az: us-east-1c
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(24,1) }}"
-              - name: molecule-pub-d
+              - name: molecule-ec2-vpc-route-table-pub-d
                 az: us-east-1d
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(24,2) }}"
-              - name: molecule-pvt-a
+              - name: molecule-ec2-vpc-route-table-pvt-a
                 az: us-east-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(24,3) }}"
-              - name: molecule-pvt-c
+              - name: molecule-ec2-vpc-route-table-pvt-c
                 az: us-east-1c
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(24,4) }}"
-              - name: molecule-pvt-d
+              - name: molecule-ec2-vpc-route-table-pvt-d
                 az: us-east-1d
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(24,5) }}"

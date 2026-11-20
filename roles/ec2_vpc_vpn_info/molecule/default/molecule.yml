@@ -4,9 +4,9 @@ provisioner:
     group_vars:
       all:
         ec2_customer_gateway_list:
-          - name: molecule-00
+          - name: molecule-ec2-vpc-vpn-info-00
             ip_address: 1.1.1.20
-          - name: molecule-01
+          - name: molecule-ec2-vpc-vpn-info-01
             ip_address: 1.1.1.21
 
         ec2_transit_gateway_info_filters:
@@ -14,29 +14,29 @@ provisioner:
             - available
 
         ec2_transit_gateway_list:
-          - name: molecule
+          - name: molecule-ec2-vpc-vpn-info
 
         ec2_vpc_vpn_info_filters:
           state:
             - available
 
         ec2_vpc_vpn_list:
-          - name: molecule-00
+          - name: molecule-ec2-vpc-vpn-info-00
             tags:
               molecule: ec2_vpc_vpn_info
             customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id |
+              "{{ _ec2_customer_gateway_info_dict['molecule-ec2-vpc-vpn-info-00'].customer_gateway_id |
                   d(omit) }}"
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+              "{{ _ec2_transit_gateway_info_dict['molecule-ec2-vpc-vpn-info'].transit_gateway_id |
                   d(omit) }}"
 
-          - name: molecule-01
+          - name: molecule-ec2-vpc-vpn-info-01
             customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id |
+              "{{ _ec2_customer_gateway_info_dict['molecule-ec2-vpc-vpn-info-01'].customer_gateway_id |
                   d(omit) }}"
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+              "{{ _ec2_transit_gateway_info_dict['molecule-ec2-vpc-vpn-info'].transit_gateway_id |
                   d(omit) }}"
             static_only: true
             tunnel_options:

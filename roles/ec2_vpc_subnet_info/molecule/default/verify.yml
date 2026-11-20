@@ -9,17 +9,17 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_vpc_subnet_info_dict['molecule-a-00'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-a-00'].tags.molecule == 'ec2_vpc_subnet_info'
-          - _ec2_vpc_subnet_info_dict['molecule-a-01'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-a-02'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-a-03'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-c-00'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-c-01'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-c-02'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-c-03'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-d-00'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-d-01'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-d-02'].id is defined
-          - _ec2_vpc_subnet_info_dict['molecule-d-03'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-a-00'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-a-00'].tags.molecule == 'ec2_vpc_subnet_info'
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-a-01'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-a-02'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-a-03'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-c-00'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-c-01'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-c-02'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-c-03'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-d-00'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-d-01'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-d-02'].id is defined
+          - _ec2_vpc_subnet_info_dict['molecule-ec2-vpc-subnet-info-d-03'].id is defined
 ...

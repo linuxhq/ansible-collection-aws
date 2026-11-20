@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         ec2_vpc_net_list:
-          - name: molecule
+          - name: molecule-ec2-vpc-vgw
             cidr_block: 192.168.0.0/24
 
         ec2_vpc_vgw_info_filters:
@@ -12,7 +12,7 @@ provisioner:
             - available
 
         ec2_vpc_vgw_list:
-          - name: molecule
+          - name: molecule-ec2-vpc-vgw
             vpc_id: "{{ _ec2_vpc_net_info_dict[ec2_vpc_net_list.0.name].id |
                         d(omit) }}"
 ...

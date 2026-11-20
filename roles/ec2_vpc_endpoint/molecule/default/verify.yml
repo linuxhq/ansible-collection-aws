@@ -11,12 +11,12 @@
         name: ec2_vpc_endpoint_info
       vars:
         ec2_vpc_endpoint_info_filters:
-          vpc-id: "{{ _ec2_vpc_net_info_dict['molecule'].id }}"
+          vpc-id: "{{ _ec2_vpc_net_info_dict['molecule-ec2-vpc-endpoint'].id }}"
 
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_vpc_endpoint_info_dict['molecule'].vpc_endpoint_id is defined
-          - _ec2_vpc_endpoint_info_dict['molecule'].service_name ==
+          - _ec2_vpc_endpoint_info_dict['molecule-ec2-vpc-endpoint'].vpc_endpoint_id is defined
+          - _ec2_vpc_endpoint_info_dict['molecule-ec2-vpc-endpoint'].service_name ==
               ec2_vpc_endpoint_list.0.service
 ...

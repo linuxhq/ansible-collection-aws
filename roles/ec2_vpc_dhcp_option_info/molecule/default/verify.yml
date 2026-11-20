@@ -9,19 +9,19 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_vpc_dhcp_option_info_dict['molecule-00'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-00'].tags.molecule ==
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-00'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-00'].tags.molecule ==
               'ec2_vpc_dhcp_option_info'
-          - _ec2_vpc_dhcp_option_info_dict['molecule-01'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-02'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-03'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-04'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-05'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-06'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-07'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-08'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-09'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-10'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-11'].dhcp_options_id is defined
-          - _ec2_vpc_dhcp_option_info_dict['molecule-12'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-01'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-02'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-03'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-04'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-05'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-06'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-07'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-08'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-09'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-10'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-11'].dhcp_options_id is defined
+          - _ec2_vpc_dhcp_option_info_dict['molecule-ec2-vpc-dhcp-option-info-12'].dhcp_options_id is defined
 ...

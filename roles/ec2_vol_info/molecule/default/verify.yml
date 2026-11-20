@@ -9,17 +9,17 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_vol_info_dict['molecule-vol-a-01'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-a-01'].tags.molecule == 'ec2_vol_info'
-          - _ec2_vol_info_dict['molecule-vol-a-02'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-a-03'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-a-04'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-a-05'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-a-06'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-c-01'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-c-02'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-c-03'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-c-04'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-c-05'].id is defined
-          - _ec2_vol_info_dict['molecule-vol-c-06'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-a-01'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-a-01'].tags.molecule == 'ec2_vol_info'
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-a-02'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-a-03'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-a-04'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-a-05'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-a-06'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-c-01'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-c-02'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-c-03'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-c-04'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-c-05'].id is defined
+          - _ec2_vol_info_dict['molecule-ec2-vol-info-vol-c-06'].id is defined
 ...

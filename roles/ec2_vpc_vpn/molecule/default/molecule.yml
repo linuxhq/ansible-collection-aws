@@ -10,11 +10,11 @@ provisioner:
             retention: 1
 
         ec2_customer_gateway_list:
-          - name: molecule-00
+          - name: molecule-ec2-vpc-vpn-00
             ip_address: 1.1.1.10
-          - name: molecule-01
+          - name: molecule-ec2-vpc-vpn-01
             ip_address: 1.1.1.11
-          - name: molecule-02
+          - name: molecule-ec2-vpc-vpn-02
             ip_address: 1.1.1.12
 
         ec2_transit_gateway_info_filters:
@@ -22,24 +22,24 @@ provisioner:
             - available
 
         ec2_transit_gateway_list:
-          - name: molecule
+          - name: molecule-ec2-vpc-vpn
 
         ec2_vpc_vpn_list:
-          - name: molecule-00
+          - name: molecule-ec2-vpc-vpn-00
             customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-00'].customer_gateway_id |
+              "{{ _ec2_customer_gateway_info_dict['molecule-ec2-vpc-vpn-00'].customer_gateway_id |
                   d(omit) }}"
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+              "{{ _ec2_transit_gateway_info_dict['molecule-ec2-vpc-vpn'].transit_gateway_id |
                   d(omit) }}"
             tunnel_bandwidth: large
 
-          - name: molecule-01
+          - name: molecule-ec2-vpc-vpn-01
             customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-01'].customer_gateway_id |
+              "{{ _ec2_customer_gateway_info_dict['molecule-ec2-vpc-vpn-01'].customer_gateway_id |
                   d(omit) }}"
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+              "{{ _ec2_transit_gateway_info_dict['molecule-ec2-vpc-vpn'].transit_gateway_id |
                   d(omit) }}"
             enable_acceleration: false
             outside_ip_address_type: PublicIpv4
@@ -60,12 +60,12 @@ provisioner:
                 phase2_integrity_algorithms: [SHA2-256]
                 phase2_dh_group_numbers: [16]
 
-          - name: molecule-02
+          - name: molecule-ec2-vpc-vpn-02
             customer_gateway_id:
-              "{{ _ec2_customer_gateway_info_dict['molecule-02'].customer_gateway_id |
+              "{{ _ec2_customer_gateway_info_dict['molecule-ec2-vpc-vpn-02'].customer_gateway_id |
                   d(omit) }}"
             transit_gateway_id:
-              "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id |
+              "{{ _ec2_transit_gateway_info_dict['molecule-ec2-vpc-vpn'].transit_gateway_id |
                   d(omit) }}"
             tunnel_inside_ip_version: ipv6
             wait_timeout: 1200
