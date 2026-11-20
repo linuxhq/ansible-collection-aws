@@ -3,7 +3,5 @@
   hosts: all
 
   roles:
-    - role: aws_caller_info
-
     - aws_caller_info
 ...

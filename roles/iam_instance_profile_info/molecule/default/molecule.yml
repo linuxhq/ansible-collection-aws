@@ -3,6 +3,8 @@ provisioner:
   inventory:
     group_vars:
       all:
+        iam_instance_profile_info_path_prefix: /
+
         iam_instance_profile_list:
           - name: molecule-iam-instance-profile-info-ec2
             role: molecule-iam-instance-profile-info-role-ec2

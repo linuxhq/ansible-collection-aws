@@ -3,6 +3,8 @@ provisioner:
   inventory:
     group_vars:
       all:
+        iam_user_info_path_prefix: /
+
         iam_user_list:
           - name: molecule-iam-user-info-admin
             purge_policies: true

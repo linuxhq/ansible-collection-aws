@@ -101,6 +101,8 @@ provisioner:
             managed_policies:
               - AmazonSSMManagedInstanceCore
 
+        ssm_instance_info_connection_status: true
+
 verifier:
   options:
     diff: false

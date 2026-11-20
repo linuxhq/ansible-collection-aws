@@ -4,6 +4,7 @@
 
   roles:
     - role: ssm_instance_info
+      ssm_instance_info_connection_status: false
 
     - ssm_instance_info
 ...

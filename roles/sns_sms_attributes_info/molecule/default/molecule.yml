@@ -1,3 +1,9 @@
 ---
-{}
+provisioner:
+  inventory:
+    group_vars:
+      all:
+        sns_sms_attributes_info_attributes:
+          - DefaultSMSType
+          - MonthlySpendLimit
 ...

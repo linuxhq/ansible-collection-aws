@@ -3,7 +3,5 @@
   hosts: all
 
   roles:
-    - role: kms_key_info
-
     - kms_key_info
 ...

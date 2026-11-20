@@ -4,6 +4,7 @@
 
   roles:
     - role: eks_cluster_info
+      eks_cluster_info_include: []
 
     - eks_cluster_info
 ...

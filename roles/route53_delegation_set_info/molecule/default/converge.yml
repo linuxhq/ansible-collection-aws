@@ -3,7 +3,5 @@
   hosts: all
 
   roles:
-    - role: route53_delegation_set_info
-
     - route53_delegation_set_info
 ...
