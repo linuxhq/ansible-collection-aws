@@ -1061,6 +1061,72 @@ def test_deleted_waiter_treats_a_vanished_connection_as_deleted(params, outcome,
     sleep.assert_not_called()
 
 
+@pytest.mark.parametrize("state,changed", [("available", True), ("deleting", False)])
+@pytest.mark.parametrize("gateway", ["TransitGatewayId", "VpnConcentratorId"])
+def test_transit_gateway_delete_waits_for_the_attachment(params, connection, sdk_checks, state, changed, gateway):
+    connection.pop("VpnGatewayId")
+    connection.update(State=state, **{gateway: "tgw-123"})
+    client = Mock()
+    client.attach_mock(Mock(), "wait_for_connection_deleted")
+    client.attach_mock(Mock(), "wait_for_attachment_deleted")
+    with (
+        patch.object(plugin, "wait_for_connection_deleted", client.wait_for_connection_deleted),
+        patch.object(plugin, "wait_for_attachment_deleted", client.wait_for_attachment_deleted),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.ensure_absent(client, FakeModule(params), connection)
+
+    assert result.value.values == {"changed": changed, "vpn_connection": {}}
+    assert [call[0] for call in client.method_calls if call[0].startswith("wait_for")] == [
+        "wait_for_connection_deleted",
+        "wait_for_attachment_deleted",
+    ]
+    client.wait_for_attachment_deleted.assert_called_once_with(client, ANY, "vpn-123", changed=changed)
+    expected = {"describe_transit_gateway_attachments": ("Filters",)}
+    if changed:
+        expected["delete_vpn_connection"] = ("VpnConnectionId",)
+
+    sdk_checks.assert_called_once_with(ANY, client, "EC2", expected)
+
+
+def test_virtual_private_gateway_delete_does_not_wait_for_an_attachment(params, connection):
+    client = Mock()
+    with (
+        patch.object(plugin, "wait_for_connection_deleted"),
+        patch.object(plugin, "wait_for_attachment_deleted") as attachment_waiter,
+        pytest.raises(ModuleExit),
+    ):
+        plugin.ensure_absent(client, FakeModule(params), connection)
+
+    attachment_waiter.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "responses,sleeps",
+    [
+        ([[]], 0),
+        ([[{"State": "deleted"}]], 0),
+        ([[{"State": "deleting"}], [{"State": "deleted"}]], 1),
+        ([[{"State": "available"}], []], 1),
+    ],
+)
+def test_attachment_waiter_waits_until_no_attachment_is_left(params, responses, sleeps):
+    params.update(wait_delay=1, wait_timeout=600)
+    client = Session().create_client(
+        "ec2", region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
+    )
+    describe = Mock(side_effect=[{"TransitGatewayAttachments": attachments} for attachments in responses])
+    with (
+        patch.object(client, "describe_transit_gateway_attachments", describe),
+        patch("botocore.waiter.time.sleep") as sleep,
+    ):
+        plugin.wait_for_attachment_deleted(client, FakeModule(params), "vpn-123", changed=True)
+
+    assert describe.call_count == len(responses)
+    describe.assert_called_with(Filters=[{"Name": "resource-id", "Values": ["vpn-123"]}])
+    assert sleep.call_count == sleeps
+
+
 def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings(params, connection):
     params.update(name=None, filters={"customer-gateway-configuration": "x", "x-count": [2], "x-flag": [True]})
     client = Mock()

@@ -115,7 +115,11 @@ options:
     type: bool
     version_added: "2.6.0"
   state:
-    description: The desired connection state.
+    description:
+      - The desired connection state.
+      - With V(absent), the module waits until the connection is deleted. For a connection on a transit gateway, it
+        also waits until EC2 releases the transit gateway attachment, which AWS does some minutes later and which
+        blocks deleting the transit gateway until then.
     type: str
     choices: [present, absent]
     default: present
@@ -1073,6 +1077,34 @@ def wait_for_connection_deleted(client, module, connection_id, changed=False):
     )
 
 
+def wait_for_attachment_deleted(client, module, connection_id, changed=False):
+    """Wait until EC2 releases the transit gateway attachment of a deleted connection."""
+    waiter_name = "VPNAttachmentDeleted"
+    model = {
+        waiter_name: {
+            "operation": "DescribeTransitGatewayAttachments",
+            # Required model defaults; run_waiter applies the user's wait bounds.
+            "delay": 15,
+            "maxAttempts": 40,
+            "acceptors": [
+                {
+                    "state": "success",
+                    "matcher": "path",
+                    "argument": "length(TransitGatewayAttachments[?State != 'deleted'])",
+                    "expected": 0,
+                },
+            ],
+        },
+    }
+    run_waiter(
+        module,
+        custom_waiter(client, model, waiter_name),
+        f"Unable to wait for the transit gateway attachment of VPN connection {connection_id} to be deleted",
+        changed=changed,
+        Filters=[{"Name": "resource-id", "Values": [connection_id]}],
+    )
+
+
 def tunnel_request(options):
     result = {}
 
@@ -1850,9 +1882,18 @@ def ensure_absent(client, module, connection):
         module.exit_json(changed=False, vpn_connection={})
 
     changed = connection["State"] != "deleting"
+    # A transit gateway refuses deletion until EC2 releases the attachment of a deleted connection.
+    attached = bool(connection.get("TransitGatewayId") or connection.get("VpnConcentratorId"))
+    methods = {}
     if changed:
+        methods["delete_vpn_connection"] = ("VpnConnectionId",)
+
+    if attached:
+        methods["describe_transit_gateway_attachments"] = ("Filters",)
+
+    if methods:
         # Check mode fails where the real run would, before the delete.
-        require_client_methods(module, client, "EC2", {"delete_vpn_connection": ("VpnConnectionId",)})
+        require_client_methods(module, client, "EC2", methods)
 
     if module.check_mode:
         module.exit_json(changed=changed, vpn_connection={})
@@ -1871,6 +1912,9 @@ def ensure_absent(client, module, connection):
             module.fail_json_aws(e, msg=f"Unable to delete VPN connection {connection_id}")
 
     wait_for_connection_deleted(client, module, connection_id, changed=changed)
+    if attached:
+        wait_for_attachment_deleted(client, module, connection_id, changed=changed)
+
     module.exit_json(changed=changed, vpn_connection={})
 
 
