@@ -5,8 +5,6 @@
   roles:
     - role: notifications_hub
       notifications_hub_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - notifications_hub
 ...

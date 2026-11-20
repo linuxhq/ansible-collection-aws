@@ -3,14 +3,5 @@
   hosts: all
 
   roles:
-    - role: pinpoint_sms_voice_phone_number_info
-      tags:
-        - molecule-idempotence-notest
-
-    - role: pinpoint_sms_voice_phone_number
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - pinpoint_sms_voice_phone_number_info
 ...
