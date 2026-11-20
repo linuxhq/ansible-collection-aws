@@ -4,28 +4,28 @@ provisioner:
     group_vars:
       all:
         notifications_contacts_list:
-          - name: molecule-dummy01
-            email_address: dummy01@molecule.org
-          - name: molecule-dummy02
-            email_address: dummy02@molecule.org
-          - name: molecule-dummy03
-            email_address: dummy03@molecule.org
-          - name: molecule-dummy04
-            email_address: dummy04@molecule.org
-          - name: molecule-dummy05
-            email_address: dummy05@molecule.org
-          - name: molecule-dummy06
-            email_address: dummy06@molecule.org
-          - name: molecule-dummy07
-            email_address: dummy07@molecule.org
-          - name: molecule-dummy08
-            email_address: dummy08@molecule.org
-          - name: molecule-dummy09
-            email_address: dummy09@molecule.org
-          - name: molecule-dummy10
-            email_address: dummy10@molecule.org
-          - name: molecule-dummy11
-            email_address: dummy11@molecule.org
-          - name: molecule-dummy12
-            email_address: dummy12@molecule.org
+          - name: molecule-notifications-contacts-dummy01
+            email_address: dummy01@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy02
+            email_address: dummy02@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy03
+            email_address: dummy03@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy04
+            email_address: dummy04@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy05
+            email_address: dummy05@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy06
+            email_address: dummy06@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy07
+            email_address: dummy07@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy08
+            email_address: dummy08@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy09
+            email_address: dummy09@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy10
+            email_address: dummy10@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy11
+            email_address: dummy11@molecule-notifications-contacts.org
+          - name: molecule-notifications-contacts-dummy12
+            email_address: dummy12@molecule-notifications-contacts.org
 ...
