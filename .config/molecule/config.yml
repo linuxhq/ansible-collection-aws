@@ -38,6 +38,12 @@ provisioner:
           instance-state-name:
             - running
 
+        ec2_launch_template_info_filters:
+          launch-template-name:
+            "{{ ec2_launch_template_list |
+                d([]) |
+                map(attribute='template_name') }}"
+
         ec2_placement_group_info_filters:
           state:
             - available
