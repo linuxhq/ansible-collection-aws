@@ -2,41 +2,15 @@
 - name: Cleanup
   hosts: all
 
-  roles:
-    - pinpoint_sms_voice_phone_number_info
-    - pinpoint_sms_voice_phone_pool_info
-
-  post_tasks:
+  tasks:
     - name: Ensure inventory lists are formatted
       ansible.builtin.set_fact:
         pinpoint_sms_voice_phone_number_list:
-          "{{ ([pinpoint_sms_voice_phone_number_list.0 |
-                combine({'phone_number_id':
-                         _pinpoint_sms_voice_phone_number_info_dict[
-                           'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-1'
-                         ].phone_number_id,
-                         'state':
-                         'absent'})]
-               if 'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-1' in _pinpoint_sms_voice_phone_number_info_dict
-               else []) +
-              ([pinpoint_sms_voice_phone_number_list.1 |
-                combine({'phone_number_id':
-                         _pinpoint_sms_voice_phone_number_info_dict[
-                           'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-2'
-                         ].phone_number_id,
-                         'state':
-                         'absent'})]
-               if 'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-2' in _pinpoint_sms_voice_phone_number_info_dict
-               else []) }}"
+          "{{ pinpoint_sms_voice_phone_number_list |
+              map('combine', {'state': 'absent'}) }}"
         pinpoint_sms_voice_phone_pool_list:
           "{{ pinpoint_sms_voice_phone_pool_list |
-              map('combine',
-                  {'pool_id':
-                   _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-associate'].pool_id,
-                   'state':
-                   'absent'})
-              if 'molecule-pinpoint-sms-voice-phone-pool-associate' in _pinpoint_sms_voice_phone_pool_info_dict
-              else [] }}"
+              map('combine', {'state': 'absent'}) }}"
         pinpoint_sms_voice_sender_id_list:
           "{{ pinpoint_sms_voice_sender_id_list |
               map('combine', {'state': 'absent'}) }}"
