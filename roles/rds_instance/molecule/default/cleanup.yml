@@ -44,25 +44,25 @@
       ansible.builtin.include_role:
         name: rds_instance
 
-    - name: Ensure rds option groups are deleted once the instances release them
-      amazon.aws.rds_option_group:
-        option_group_name: "{{ _og.option_group_name }}"
-        state: absent
+    - name: Ensure rds instance automated snapshots are deleted
+      amazon.aws.rds_snapshot_info:
+        db_instance_identifier: "{{ _db.db_instance_identifier }}"
+        snapshot_type: automated
         validate_certs: true
-      register: __rds_option_group_deleted
-      loop: "{{ rds_option_group_list }}"
+      register: _snapshot_query
+      loop: "{{ rds_instance_list }}"
       loop_control:
-        label: "{{ _og.option_group_name }}"
-        loop_var: _og
-      until:
-        - __rds_option_group_deleted is succeeded
-      retries: 20
-      delay: 30
+        label: "{{ _db.db_instance_identifier }}"
+        loop_var: _db
+      delay: 15
+      retries: 40
+      until: _snapshot_query.snapshots | length == 0
 
     - name: Ensure roles are included
       ansible.builtin.include_role:
         name: "{{ _cleanup }}"
       loop:
+        - rds_option_group
         - rds_subnet_group
         - rds_instance_param_group
         - ec2_security_group
