@@ -2,6 +2,8 @@
 bugfixes:
   - ec2_vpc_dhcp_option role - removing an option set that does not exist now succeeds. Before,
     ``amazon.aws.ec2_vpc_dhcp_option`` failed with ``Unable to describe VPC associations for dhcp option id None``.
+  - ec2_vpc_nat_gateway role - removing a NAT gateway that does not exist now succeeds. Before,
+    ``amazon.aws.ec2_vpc_nat_gateway`` failed for want of ``nat_gateway_id`` when the gateway's subnet existed.
   - elb_target_group role - removing a target group no longer passes ``target_type``, so it no longer needs
     ``protocol``, ``port`` and ``vpc_id``, for example after its VPC is gone.
   - glue_connection role - removing a connection no longer passes ``connection_type``, so a ``NETWORK`` connection

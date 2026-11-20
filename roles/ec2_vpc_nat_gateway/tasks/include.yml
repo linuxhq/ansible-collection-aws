@@ -28,6 +28,8 @@
     - _nat.name is defined
     - _nat.nat_gateway_id is defined or
       _nat.subnet_id is defined
+    - _nat.state | d('present') != 'absent' or
+      _nat.name in __ec2_vpc_nat_gateway_dict
   changed_when:
     - ansible_check_mode | bool
     - __ec2_vpc_nat_gateway_result.changed | bool
