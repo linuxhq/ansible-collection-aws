@@ -2024,6 +2024,11 @@ def ensure_present(client, module, deadline=None):
     else:
         update_requests = sorted(update_requests, key=lambda update_request: "upgradePolicy" not in update_request)
 
+    # EKS can run its own update on an active cluster for longer than the update retries cover, so wait for
+    # in-progress updates before the first one.
+    if update_requests or version_changed:
+        wait_for_cluster_updates(client, module, deadline=deadline)
+
     # Failures after the first successful change report changed=True.
     mutated = False
     for index, update_request in enumerate(update_requests):
