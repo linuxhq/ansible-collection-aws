@@ -7,19 +7,19 @@
     - ec2_transit_gateway_vpc_attachment_info
 
   vars:
-    __molecule_transit_gateway_id: "{{ _ec2_transit_gateway_info_dict['molecule'].transit_gateway_id }}"
+    __molecule_transit_gateway_id: "{{ _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-route-table'].transit_gateway_id }}"
     __molecule_transit_gateway_attachment_id:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule'].transit_gateway_attachment_id }}"
+      "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-route-table'].transit_gateway_attachment_id }}"
 
   post_tasks:
-    - name: Ensure molecule-rtb route table is queried
+    - name: Ensure molecule-ec2-transit-gateway-route-table-rtb route table is queried
       linuxhq.aws.ec2_transit_gateway_route_table_info:
         filters:
-          "tag:Name": molecule-rtb
+          "tag:Name": molecule-ec2-transit-gateway-route-table-rtb
           transit-gateway-id: "{{ __molecule_transit_gateway_id }}"
       register: __molecule_rtb_query
 
-    - name: Ensure molecule-rtb routes are verified
+    - name: Ensure molecule-ec2-transit-gateway-route-table-rtb routes are verified
       ansible.builtin.assert:
         that:
           - __molecule_rtb_query.transit_gateway_route_tables | length == 1
@@ -36,12 +36,12 @@
                      selectattr('type', 'eq', 'static') |
                      list }}"
 
-    - name: Ensure molecule-rtb routes are replaced and purged
+    - name: Ensure molecule-ec2-transit-gateway-route-table-rtb routes are replaced and purged
       ansible.builtin.include_role:
         name: ec2_transit_gateway_route_table
       vars:
         ec2_transit_gateway_route_table_list:
-          - name: molecule-rtb
+          - name: molecule-ec2-transit-gateway-route-table-rtb
             purge_routes: true
             transit_gateway_id: "{{ __molecule_transit_gateway_id }}"
             routes:
@@ -50,14 +50,14 @@
               - destination_cidr_block: 10.20.0.0/16
                 transit_gateway_attachment_id: "{{ __molecule_transit_gateway_attachment_id }}"
 
-    - name: Ensure molecule-rtb route table is queried again
+    - name: Ensure molecule-ec2-transit-gateway-route-table-rtb route table is queried again
       linuxhq.aws.ec2_transit_gateway_route_table_info:
         filters:
-          "tag:Name": molecule-rtb
+          "tag:Name": molecule-ec2-transit-gateway-route-table-rtb
           transit-gateway-id: "{{ __molecule_transit_gateway_id }}"
       register: __molecule_rtb_query
 
-    - name: Ensure molecule-rtb replaced and purged routes are verified
+    - name: Ensure molecule-ec2-transit-gateway-route-table-rtb replaced and purged routes are verified
       ansible.builtin.assert:
         that:
           - __molecule_rtb_query.transit_gateway_route_tables | length == 1

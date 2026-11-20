@@ -8,11 +8,11 @@ provisioner:
             - available
 
         ec2_transit_gateway_list:
-          - name: molecule-00
+          - name: molecule-ec2-transit-gateway-info-00
             tags:
               molecule: ec2_transit_gateway_info
-          - name: molecule-01
-          - name: molecule-02
-          - name: molecule-03
-          - name: molecule-04
+          - name: molecule-ec2-transit-gateway-info-01
+          - name: molecule-ec2-transit-gateway-info-02
+          - name: molecule-ec2-transit-gateway-info-03
+          - name: molecule-ec2-transit-gateway-info-04
 ...
