@@ -9,8 +9,8 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _efs_info_dict['molecule-efs1'].encrypted | bool
-          - _efs_info_dict['molecule-efs1'].mount_targets | length == 3
-          - _efs_info_dict['molecule-efs2'].encrypted | bool
-          - _efs_info_dict['molecule-efs2'].mount_targets | length == 3
+          - _efs_info_dict['molecule-efs-efs1'].encrypted | bool
+          - _efs_info_dict['molecule-efs-efs1'].mount_targets | length == 3
+          - _efs_info_dict['molecule-efs-efs2'].encrypted | bool
+          - _efs_info_dict['molecule-efs-efs2'].mount_targets | length == 3
 ...

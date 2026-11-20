@@ -4,40 +4,40 @@ provisioner:
     group_vars:
       all:
         ecs_ecr_list:
-          - name: molecule-00
+          - name: molecule-ecs-ecr-00
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-01
+          - name: molecule-ecs-ecr-01
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-02
+          - name: molecule-ecs-ecr-02
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-03
+          - name: molecule-ecs-ecr-03
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-04
+          - name: molecule-ecs-ecr-04
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-05
+          - name: molecule-ecs-ecr-05
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-06
+          - name: molecule-ecs-ecr-06
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-07
+          - name: molecule-ecs-ecr-07
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-08
+          - name: molecule-ecs-ecr-08
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-09
+          - name: molecule-ecs-ecr-09
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-10
+          - name: molecule-ecs-ecr-10
             image_tag_mutability: immutable
             scan_on_push: true
-          - name: molecule-11
+          - name: molecule-ecs-ecr-11
             image_tag_mutability: immutable
             scan_on_push: true
 ...
