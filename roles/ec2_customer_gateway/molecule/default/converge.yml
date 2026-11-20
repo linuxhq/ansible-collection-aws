@@ -5,8 +5,6 @@
   roles:
     - role: ec2_customer_gateway
       ec2_customer_gateway_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - ec2_customer_gateway
 ...

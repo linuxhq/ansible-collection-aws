@@ -5,8 +5,6 @@
   roles:
     - role: ec2_key
       ec2_key_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - ec2_key
 ...

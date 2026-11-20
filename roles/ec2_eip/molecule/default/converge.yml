@@ -2,16 +2,9 @@
 - name: Converge
   hosts: all
 
-  tasks:
-    - name: Ensure role is imported with an empty list
-      tags:
-        - molecule-idempotence-notest
-      ansible.builtin.import_role:
-        name: ec2_eip
-      vars:
-        ec2_eip_list: []
+  roles:
+    - role: ec2_eip
+      ec2_eip_list: []
 
-    - name: Ensure role is imported
-      ansible.builtin.import_role:
-        name: ec2_eip
+    - ec2_eip
 ...

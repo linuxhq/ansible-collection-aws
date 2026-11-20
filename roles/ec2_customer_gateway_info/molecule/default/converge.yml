@@ -3,9 +3,5 @@
   hosts: all
 
   roles:
-    - role: ec2_customer_gateway
-      tags:
-        - molecule-idempotence-notest
-
     - ec2_customer_gateway_info
 ...

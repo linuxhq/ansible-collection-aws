@@ -5,8 +5,6 @@
   roles:
     - role: ec2_placement_group
       ec2_placement_group_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - ec2_placement_group
 ...
