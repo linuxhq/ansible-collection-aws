@@ -18,53 +18,53 @@
     - name: Ensure info without name is verified
       ansible.builtin.assert:
         that:
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].arn is defined
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].domain_name ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].arn is defined
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].domain_name ==
               route53_resolver_rule_list.0.domain_name ~ '.'
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].id is defined
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].resolver_endpoint_id ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].id is defined
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].resolver_endpoint_id ==
               route53_resolver_rule_list.0.resolver_endpoint_id
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].rule_type ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].rule_type ==
               route53_resolver_rule_list.0.rule_type
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].status == 'COMPLETE'
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].tags.molecule ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].status == 'COMPLETE'
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].tags.molecule ==
               'route53_resolver_rule_info'
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].target_ips |
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].target_ips |
             json_query('[].[ip, port]') |
             sort ==
               route53_resolver_rule_list.0.target_ips |
               json_query('[].[ip, port]') |
               sort
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].associations |
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].associations |
             length == 1
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].associations.0.name ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].associations.0.name ==
               route53_resolver_rule_associate_list.0.name
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].associations.0.vpc_id ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].associations.0.vpc_id ==
               route53_resolver_rule_associate_list.0.vpc_id
-          - _route53_resolver_rule_info_dict['molecule-cloudflare'].vpc_ids ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-cloudflare'].vpc_ids ==
               [route53_resolver_rule_associate_list.0.vpc_id]
-          - _route53_resolver_rule_info_dict['molecule-google'].arn is defined
-          - _route53_resolver_rule_info_dict['molecule-google'].domain_name ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].arn is defined
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].domain_name ==
               route53_resolver_rule_list.1.domain_name ~ '.'
-          - _route53_resolver_rule_info_dict['molecule-google'].id is defined
-          - _route53_resolver_rule_info_dict['molecule-google'].resolver_endpoint_id ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].id is defined
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].resolver_endpoint_id ==
               route53_resolver_rule_list.1.resolver_endpoint_id
-          - _route53_resolver_rule_info_dict['molecule-google'].rule_type ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].rule_type ==
               route53_resolver_rule_list.1.rule_type
-          - _route53_resolver_rule_info_dict['molecule-google'].status == 'COMPLETE'
-          - _route53_resolver_rule_info_dict['molecule-google'].target_ips |
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].status == 'COMPLETE'
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].target_ips |
             json_query('[].[ip, port]') |
             sort ==
               route53_resolver_rule_list.1.target_ips |
               json_query('[].[ip, port]') |
               sort
-          - _route53_resolver_rule_info_dict['molecule-google'].associations |
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].associations |
             length == 1
-          - _route53_resolver_rule_info_dict['molecule-google'].associations.0.name ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].associations.0.name ==
               route53_resolver_rule_associate_list.1.name
-          - _route53_resolver_rule_info_dict['molecule-google'].associations.0.vpc_id ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].associations.0.vpc_id ==
               route53_resolver_rule_associate_list.1.vpc_id
-          - _route53_resolver_rule_info_dict['molecule-google'].vpc_ids ==
+          - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-info-google'].vpc_ids ==
               [route53_resolver_rule_associate_list.1.vpc_id]
 
     - name: Ensure role is included with name
@@ -89,7 +89,7 @@
           - _route53_resolver_rule_info_dict[route53_resolver_rule_list.0.name].rule_type ==
               route53_resolver_rule_list.0.rule_type
           - _route53_resolver_rule_info_dict[route53_resolver_rule_list.0.name].vpc_ids ==
-              [_ec2_vpc_net_info_dict['molecule'].id]
+              [_ec2_vpc_net_info_dict['molecule-route53-resolver-rule-info'].id]
 
     - name: Ensure role is included with a filter that matches nothing
       ansible.builtin.include_role:

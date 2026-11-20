@@ -4,32 +4,32 @@ provisioner:
     group_vars:
       all:
         ec2_vpc_net_list:
-          - name: molecule
+          - name: molecule-route53-zone
             cidr_block: 192.168.0.0/24
 
         route53_zone_list:
-          - zone: molecule-pub-00.org
-          - zone: molecule-pub-01.org
-          - zone: molecule-pub-02.org
+          - zone: molecule-route53-zone-pub-00.org
+          - zone: molecule-route53-zone-pub-01.org
+          - zone: molecule-route53-zone-pub-02.org
 
-          - zone: molecule-pvt-01.org
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - zone: molecule-route53-zone-pvt-01.org
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-route53-zone'].id | d(omit) }}"
             vpc_region:
               "{{ lookup('ansible.builtin.ini',
                          'region',
                          file='~/.aws/config',
                          section='profile molecule') }}"
 
-          - zone: molecule-pvt-02.org
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - zone: molecule-route53-zone-pvt-02.org
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-route53-zone'].id | d(omit) }}"
             vpc_region:
               "{{ lookup('ansible.builtin.ini',
                          'region',
                          file='~/.aws/config',
                          section='profile molecule') }}"
 
-          - zone: molecule-pvt-03.org
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - zone: molecule-route53-zone-pvt-03.org
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-route53-zone'].id | d(omit) }}"
             vpc_region:
               "{{ lookup('ansible.builtin.ini',
                          'region',
