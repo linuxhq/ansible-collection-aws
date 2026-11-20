@@ -31,7 +31,7 @@
         name: ssm_document
       vars:
         ssm_document_list:
-          - name: molecule-command-shell
+          - name: molecule-ssm-document-command-shell
             tags:
               molecule: ssm_document
             document_type: Command
@@ -44,7 +44,7 @@
                   inputs:
                     runCommand:
                       - echo molecule-updated
-          - name: molecule-command-env
+          - name: molecule-ssm-document-command-env
             tags:
               molecule: ssm_document
             document_type: Command
@@ -58,7 +58,7 @@
                     runCommand:
                       - env | sort
                       - pwd
-          - name: molecule-session-shell
+          - name: molecule-ssm-document-session-shell
             tags:
               molecule: ssm_document
             document_type: Session
@@ -86,20 +86,20 @@
     - name: Ensure changed document content is verified
       ansible.builtin.assert:
         that:
-          - _ssm_document_info_dict['molecule-command-shell'].status == 'Active'
-          - _ssm_document_info_dict['molecule-command-shell'].content.description ==
+          - _ssm_document_info_dict['molecule-ssm-document-command-shell'].status == 'Active'
+          - _ssm_document_info_dict['molecule-ssm-document-command-shell'].content.description ==
               'Run an updated shell command'
-          - _ssm_document_info_dict['molecule-command-shell'].content.mainSteps.0.inputs.runCommand ==
+          - _ssm_document_info_dict['molecule-ssm-document-command-shell'].content.mainSteps.0.inputs.runCommand ==
               ['echo molecule-updated']
-          - _ssm_document_info_dict['molecule-command-env'].status == 'Active'
-          - _ssm_document_info_dict['molecule-command-env'].content.description ==
+          - _ssm_document_info_dict['molecule-ssm-document-command-env'].status == 'Active'
+          - _ssm_document_info_dict['molecule-ssm-document-command-env'].content.description ==
               'Print updated environment'
-          - _ssm_document_info_dict['molecule-command-env'].content.mainSteps.0.inputs.runCommand ==
+          - _ssm_document_info_dict['molecule-ssm-document-command-env'].content.mainSteps.0.inputs.runCommand ==
               ['env | sort', 'pwd']
-          - _ssm_document_info_dict['molecule-session-shell'].status == 'Active'
-          - _ssm_document_info_dict['molecule-session-shell'].content.description ==
+          - _ssm_document_info_dict['molecule-ssm-document-session-shell'].status == 'Active'
+          - _ssm_document_info_dict['molecule-ssm-document-session-shell'].content.description ==
               'Updated Session Manager shell preferences'
-          - _ssm_document_info_dict['molecule-session-shell'].content.inputs.shellProfile.linux == 'pwd'
+          - _ssm_document_info_dict['molecule-ssm-document-session-shell'].content.inputs.shellProfile.linux == 'pwd'
 
     - name: Ensure default document versions are queried
       linuxhq.aws.ssm_document_info:

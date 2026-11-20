@@ -7,17 +7,17 @@ provisioner:
           "{{ ssm_parameter_list }}"
 
         ssm_parameter_list:
-          - name: /molecule/db/admin/username
+          - name: /molecule-ssm-parameter-info/db/admin/username
             value: pku9qt7smMqgUixdWpwPH43ooMX9nWcT
 
-          - name: /molecule/db/admin/password
+          - name: /molecule-ssm-parameter-info/db/admin/password
             string_type: SecureString
             value: iEkPpbh4ygXRAutHzLCpX4ytvEgNUsd9
 
-          - name: /molecule/sys/username
+          - name: /molecule-ssm-parameter-info/sys/username
             value: VsxKsdzrz9aKwJzFthtPwYXkHqdncKp9
 
-          - name: /molecule/sys/password
+          - name: /molecule-ssm-parameter-info/sys/password
             string_type: SecureString
             value: gPTcwxVg7UpJPrHPmAq3aH9C49AigLHw
 ...

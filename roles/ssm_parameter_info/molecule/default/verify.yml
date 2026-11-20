@@ -9,10 +9,10 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ssm_parameter_info_dict['/molecule/db/admin/username'].value == ssm_parameter_list.0.value
-          - _ssm_parameter_info_dict['/molecule/db/admin/password'].value == ssm_parameter_list.1.value
-          - _ssm_parameter_info_dict['/molecule/sys/username'].value == ssm_parameter_list.2.value
-          - _ssm_parameter_info_dict['/molecule/sys/password'].value == ssm_parameter_list.3.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/db/admin/username'].value == ssm_parameter_list.0.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/db/admin/password'].value == ssm_parameter_list.1.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/sys/username'].value == ssm_parameter_list.2.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/sys/password'].value == ssm_parameter_list.3.value
 
     - name: Ensure info is gathered for the first parameter
       ansible.builtin.include_role:

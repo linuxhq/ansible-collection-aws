@@ -9,7 +9,7 @@
     - name: Ensure aws systems manager instance is online
       linuxhq.aws.ssm_instance_info:
         instance_ids:
-          - "{{ _ec2_instance_info_dict['molecule'].instance_id }}"
+          - "{{ _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id }}"
         validate_certs: true
       register: __ssm_instance_info_wait
       until:
@@ -22,20 +22,20 @@
         name: ssm_instance_info
       vars:
         ssm_instance_info_instance_ids:
-          - "{{ _ec2_instance_info_dict['molecule'].instance_id }}"
+          - "{{ _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id }}"
 
     - name: Ensure info with instance ids is verified
       ansible.builtin.assert:
         that:
           - _ssm_instance_info_list | length == 1
           - _ssm_instance_info_dict[
-              _ec2_instance_info_dict['molecule'].instance_id
-            ].instance_id == _ec2_instance_info_dict['molecule'].instance_id
+              _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id
+            ].instance_id == _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id
           - _ssm_instance_info_dict[
-              _ec2_instance_info_dict['molecule'].instance_id
+              _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id
             ].ping_status == 'Online'
           - _ssm_instance_info_dict[
-              _ec2_instance_info_dict['molecule'].instance_id
+              _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id
             ].resource_type == 'EC2Instance'
           - "'connection_status' not in _ssm_instance_info_list.0"
 
@@ -44,7 +44,7 @@
         name: ssm_instance_info
       vars:
         ssm_instance_info_instance_ids:
-          - "{{ _ec2_instance_info_dict['molecule'].instance_id }}"
+          - "{{ _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id }}"
         ssm_instance_info_ping_status: Online
 
     - name: Ensure info with ping status is verified
@@ -57,7 +57,7 @@
       linuxhq.aws.ssm_instance_info:
         connection_status: true
         instance_ids:
-          - "{{ _ec2_instance_info_dict['molecule'].instance_id }}"
+          - "{{ _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id }}"
         validate_certs: true
       register: __ssm_instance_info_connection
       until:
@@ -72,7 +72,7 @@
       vars:
         ssm_instance_info_connection_status: true
         ssm_instance_info_instance_ids:
-          - "{{ _ec2_instance_info_dict['molecule'].instance_id }}"
+          - "{{ _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id }}"
 
     - name: Ensure info with connection status is verified
       ansible.builtin.assert:

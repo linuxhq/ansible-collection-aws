@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         ssm_document_list:
-          - name: molecule-command-shell
+          - name: molecule-ssm-document-command-shell
             tags:
               molecule: ssm_document
             document_type: Command
@@ -17,7 +17,7 @@ provisioner:
                   inputs:
                     runCommand:
                       - echo molecule
-          - name: molecule-command-env
+          - name: molecule-ssm-document-command-env
             tags:
               molecule: ssm_document
             document_type: Command
@@ -30,7 +30,7 @@ provisioner:
                   inputs:
                     runCommand:
                       - env | sort
-          - name: molecule-session-shell
+          - name: molecule-ssm-document-session-shell
             tags:
               molecule: ssm_document
             document_type: Session
