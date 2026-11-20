@@ -34,46 +34,46 @@ provisioner:
           - instance: "{{ _ec2_instance_info_dict['molecule-ec2-vol-info-a'].instance_id |
                           d(omit) }}"
             volumes:
-              - name: molecule-ec2-vol-info-vol-a-01
+              - name: molecule-ec2-vol-info-a-01
                 tags:
                   molecule: ec2_vol_info
                 device_name: sdf
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-a-02
+              - name: molecule-ec2-vol-info-a-02
                 device_name: sdg
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-a-03
+              - name: molecule-ec2-vol-info-a-03
                 device_name: sdh
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-a-04
+              - name: molecule-ec2-vol-info-a-04
                 device_name: sdi
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-a-05
+              - name: molecule-ec2-vol-info-a-05
                 device_name: sdj
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-a-06
+              - name: molecule-ec2-vol-info-a-06
                 device_name: sdk
                 volume_size: "{{ 10 | random(start=1) }}"
 
           - instance: "{{ _ec2_instance_info_dict['molecule-ec2-vol-info-c'].instance_id |
                           d(omit) }}"
             volumes:
-              - name: molecule-ec2-vol-info-vol-c-01
+              - name: molecule-ec2-vol-info-c-01
                 device_name: sdf
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-c-02
+              - name: molecule-ec2-vol-info-c-02
                 device_name: sdg
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-c-03
+              - name: molecule-ec2-vol-info-c-03
                 device_name: sdh
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-c-04
+              - name: molecule-ec2-vol-info-c-04
                 device_name: sdi
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-c-05
+              - name: molecule-ec2-vol-info-c-05
                 device_name: sdj
                 volume_size: "{{ 10 | random(start=1) }}"
-              - name: molecule-ec2-vol-info-vol-c-06
+              - name: molecule-ec2-vol-info-c-06
                 device_name: sdk
                 volume_size: "{{ 10 | random(start=1) }}"
 

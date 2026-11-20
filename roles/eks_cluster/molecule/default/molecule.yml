@@ -6,7 +6,7 @@ provisioner:
         ec2_security_group_list:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-eks-cluster'].id | d(omit) }}"
             security_groups:
-              - name: molecule-eks-cluster-eks
+              - name: molecule-eks-cluster
                 rules:
                   - cidr_ip: 0.0.0.0/0
                     ports:
@@ -37,16 +37,16 @@ provisioner:
                           ansible.utils.ipsubnet(24,2) }}"
 
         eks_cluster_list:
-          - name: molecule-eks-cluster-eks1
+          - name: molecule-eks-cluster-00
             encryption_config:
               - provider:
-                  key_arn: "{{ _kms_key_info_dict['molecule-eks-cluster-eks'].key_arn |
+                  key_arn: "{{ _kms_key_info_dict['molecule-eks-cluster'].key_arn |
                                d(omit) }}"
             resources_vpc_config:
               endpoint_private_access: true
               endpoint_public_access: false
               security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks-cluster-eks'].group_id |
+                - "{{ _ec2_security_group_info_dict['molecule-eks-cluster'].group_id |
                       d(omit) }}"
               subnet_ids:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-eks-cluster-a'].id | d(omit) }}"
@@ -56,12 +56,12 @@ provisioner:
             version: '1.33'
             wait: true
 
-          - name: molecule-eks-cluster-eks2
+          - name: molecule-eks-cluster-01
             resources_vpc_config:
               endpoint_private_access: false
               endpoint_public_access: true
               security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks-cluster-eks'].group_id |
+                - "{{ _ec2_security_group_info_dict['molecule-eks-cluster'].group_id |
                       d(omit) }}"
               subnet_ids:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-eks-cluster-a'].id | d(omit) }}"
@@ -87,9 +87,9 @@ provisioner:
               - AmazonEKSClusterPolicy
 
         kms_key_info_filters:
-          alias: molecule-eks-cluster-eks
+          alias: molecule-eks-cluster
 
         kms_key_list:
-          - name: molecule-eks-cluster-eks
+          - name: molecule-eks-cluster
             pending_window: 7
 ...

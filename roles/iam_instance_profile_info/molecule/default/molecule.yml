@@ -4,9 +4,9 @@ provisioner:
     group_vars:
       all:
         iam_instance_profile_list:
-          - name: molecule-iam-instance-profile-info-instance-profile-ec2
+          - name: molecule-iam-instance-profile-info-ec2
             role: molecule-iam-instance-profile-info-role-ec2
-          - name: molecule-iam-instance-profile-info-instance-profile-vpc
+          - name: molecule-iam-instance-profile-info-vpc
             role: molecule-iam-instance-profile-info-role-vpc
 
         iam_role_list:

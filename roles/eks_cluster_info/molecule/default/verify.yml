@@ -10,17 +10,17 @@
     - name: Ensure info without name is verified
       ansible.builtin.assert:
         that:
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks1'].arn is defined
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks1'].endpoint is defined
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks1'].resources_vpc_config.endpoint_public_access
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks1'].status == 'ACTIVE'
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks1'].tags.molecule == 'eks_cluster_info'
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks1'].version == '1.34'
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks2'].arn is defined
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks2'].endpoint is defined
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks2'].resources_vpc_config.endpoint_private_access
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks2'].status == 'ACTIVE'
-          - _eks_cluster_info_dict['molecule-eks-cluster-info-eks2'].version == '1.35'
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-00'].arn is defined
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-00'].endpoint is defined
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-00'].resources_vpc_config.endpoint_public_access
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-00'].status == 'ACTIVE'
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-00'].tags.molecule == 'eks_cluster_info'
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-00'].version == '1.34'
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-01'].arn is defined
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-01'].endpoint is defined
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-01'].resources_vpc_config.endpoint_private_access
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-01'].status == 'ACTIVE'
+          - _eks_cluster_info_dict['molecule-eks-cluster-info-01'].version == '1.35'
 
     - name: Ensure role is included with one name
       ansible.builtin.include_role:

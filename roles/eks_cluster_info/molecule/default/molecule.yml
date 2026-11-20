@@ -6,7 +6,7 @@ provisioner:
         ec2_security_group_list:
           - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-eks-cluster-info'].id | d(omit) }}"
             security_groups:
-              - name: molecule-eks-cluster-info-eks
+              - name: molecule-eks-cluster-info
                 rules:
                   - cidr_ip: 0.0.0.0/0
                     ports:
@@ -37,7 +37,7 @@ provisioner:
                           ansible.utils.ipsubnet(24,2) }}"
 
         eks_cluster_list:
-          - name: molecule-eks-cluster-info-eks1
+          - name: molecule-eks-cluster-info-00
             tags:
               molecule: eks_cluster_info
             resources_vpc_config:
@@ -46,7 +46,7 @@ provisioner:
               public_access_cidrs:
                 - 69.107.10.200/29
               security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks-cluster-info-eks'].group_id |
+                - "{{ _ec2_security_group_info_dict['molecule-eks-cluster-info'].group_id |
                       d(omit) }}"
               subnet_ids:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-eks-cluster-info-a'].id | d(omit) }}"
@@ -56,12 +56,12 @@ provisioner:
             version: '1.34'
             wait: true
 
-          - name: molecule-eks-cluster-info-eks2
+          - name: molecule-eks-cluster-info-01
             resources_vpc_config:
               endpoint_private_access: true
               endpoint_public_access: false
               security_group_ids:
-                - "{{ _ec2_security_group_info_dict['molecule-eks-cluster-info-eks'].group_id |
+                - "{{ _ec2_security_group_info_dict['molecule-eks-cluster-info'].group_id |
                       d(omit) }}"
               subnet_ids:
                 - "{{ _ec2_vpc_subnet_info_dict['molecule-eks-cluster-info-a'].id | d(omit) }}"
