@@ -26,6 +26,7 @@
       ansible.builtin.include_role:
         name: eks_cluster_info
       vars:
+        eks_cluster_info_include: []
         eks_cluster_info_name: "{{ eks_cluster_list.0.name }}"
 
     - name: Ensure info with one name is verified
@@ -44,6 +45,7 @@
       ansible.builtin.include_role:
         name: eks_cluster_info
       vars:
+        eks_cluster_info_include: []
         eks_cluster_info_name: "{{ eks_cluster_list.1.name }}"
 
     - name: Ensure info with another name is verified
@@ -59,6 +61,7 @@
       ansible.builtin.include_role:
         name: eks_cluster_info
       vars:
+        eks_cluster_info_include: []
         eks_cluster_info_name: molecule-eks-cluster-info-missing
 
     - name: Ensure info with a missing name is verified

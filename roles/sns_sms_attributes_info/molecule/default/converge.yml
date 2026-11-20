@@ -4,6 +4,7 @@
 
   roles:
     - role: sns_sms_attributes_info
+      sns_sms_attributes_info_attributes: []
 
     - sns_sms_attributes_info
 ...

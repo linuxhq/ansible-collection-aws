@@ -4,6 +4,7 @@
 
   roles:
     - role: iam_instance_profile_info
+      iam_instance_profile_info_path_prefix: null
 
     - iam_instance_profile_info
 ...

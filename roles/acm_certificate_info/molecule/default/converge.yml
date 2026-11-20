@@ -4,6 +4,7 @@
 
   roles:
     - role: acm_certificate_info
+      acm_certificate_info_statuses: []
 
     - acm_certificate_info
 ...

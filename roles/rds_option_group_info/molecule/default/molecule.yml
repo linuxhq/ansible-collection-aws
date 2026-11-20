@@ -3,6 +3,8 @@ provisioner:
   inventory:
     group_vars:
       all:
+        rds_option_group_info_engine_name: mariadb
+
         rds_option_group_list:
           - engine_name: mariadb
             major_engine_version: 10.6

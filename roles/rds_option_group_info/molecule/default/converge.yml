@@ -4,6 +4,7 @@
 
   roles:
     - role: rds_option_group_info
+      rds_option_group_info_engine_name: null
 
     - rds_option_group_info
 ...

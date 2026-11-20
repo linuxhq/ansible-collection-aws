@@ -4,6 +4,7 @@
 
   roles:
     - role: global_accelerator_info
+      global_accelerator_info_include_listeners: false
 
     - global_accelerator_info
 ...

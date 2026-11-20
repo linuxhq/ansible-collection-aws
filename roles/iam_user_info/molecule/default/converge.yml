@@ -4,6 +4,7 @@
 
   roles:
     - role: iam_user_info
+      iam_user_info_path_prefix: null
 
     - iam_user_info
 ...

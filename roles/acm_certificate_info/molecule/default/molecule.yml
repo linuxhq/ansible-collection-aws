@@ -3,6 +3,10 @@ provisioner:
   inventory:
     group_vars:
       all:
+        acm_certificate_info_statuses:
+          - ISSUED
+          - PENDING_VALIDATION
+
         acm_certificate_list:
           - domain_name: molecule-acm-certificate-info.aws.linuxhq.dev
             type: amazon_issued
