@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure aws session manager proxy instance is identified
       amazon.aws.ec2_instance_info:

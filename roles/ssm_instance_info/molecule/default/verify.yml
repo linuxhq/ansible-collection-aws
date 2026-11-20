@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - ec2_instance_info
 

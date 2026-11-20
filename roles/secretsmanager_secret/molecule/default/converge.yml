@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: secretsmanager_secret
       secretsmanager_secret_list: []

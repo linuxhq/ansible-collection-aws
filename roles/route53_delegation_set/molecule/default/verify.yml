@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure aws route53 delegation sets are queried
       linuxhq.aws.route53_delegation_set_info:

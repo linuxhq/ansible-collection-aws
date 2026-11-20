@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - sns_sms_attributes_info
 

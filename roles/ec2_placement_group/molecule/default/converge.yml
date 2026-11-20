@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: ec2_placement_group
       ec2_placement_group_list: []

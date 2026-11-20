@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - ssm_association_info
 

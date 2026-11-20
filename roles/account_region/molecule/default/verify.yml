@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure aws account region opt-in statuses are gathered
       linuxhq.aws.account_region:

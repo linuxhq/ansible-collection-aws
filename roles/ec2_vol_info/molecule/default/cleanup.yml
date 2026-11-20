@@ -1,6 +1,7 @@
 ---
 - name: Cleanup
   hosts: all
+
   roles:
     - ec2_ami_info
     - ec2_instance_info

@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - role: secretsmanager_secret_info
       secretsmanager_secret_info_list: "{{ secretsmanager_secret_list }}"

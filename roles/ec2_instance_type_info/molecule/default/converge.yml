@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - ec2_instance_type_info
 ...

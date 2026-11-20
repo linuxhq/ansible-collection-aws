@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   check_mode: true
   tasks:
     - name: Ensure account information is queried

@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   tasks:
     - name: Ensure role is imported with an empty list
       tags:

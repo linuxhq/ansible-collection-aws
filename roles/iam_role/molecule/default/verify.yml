@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure molecule aws iam roles are queried
       amazon.aws.iam_role_info:

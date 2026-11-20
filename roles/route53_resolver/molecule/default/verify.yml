@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure ec2_security_group_info facts are gathered
       ansible.builtin.include_role:

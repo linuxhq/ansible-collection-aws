@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure information about aws iam account aliases is gathered
       ansible.builtin.include_role:

@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: wafv2_web_acl_info
       tags:

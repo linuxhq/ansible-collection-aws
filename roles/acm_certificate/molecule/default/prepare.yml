@@ -1,6 +1,7 @@
 ---
 - name: Prepare
   hosts: all
+
   tasks:
     - name: Ensure imported molecule certificate directory exists
       ansible.builtin.file:

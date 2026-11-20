@@ -1,6 +1,7 @@
 ---
 - name: Cleanup
   hosts: all
+
   roles:
     - ec2_transit_gateway_info
     - ec2_transit_gateway_vpc_attachment_info

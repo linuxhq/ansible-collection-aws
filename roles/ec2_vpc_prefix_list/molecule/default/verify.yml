@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure prefix lists are queried
       linuxhq.aws.ec2_vpc_prefix_list_info:

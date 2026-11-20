@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: ecs_ecr
       ecs_ecr_list: []

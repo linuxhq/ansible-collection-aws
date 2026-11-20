@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure aws iam oidc providers are queried
       linuxhq.aws.iam_oidc_provider_info:

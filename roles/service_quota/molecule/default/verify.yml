@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure quotas are queried
       linuxhq.aws.service_quota:

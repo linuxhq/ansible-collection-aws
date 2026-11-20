@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: rds_option_group
       rds_option_group_list: []

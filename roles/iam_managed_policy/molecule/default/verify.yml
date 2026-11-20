@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     # No info module exists, so a check-mode run reads each policy without changing it.
     - name: Ensure aws iam managed policies are gathered

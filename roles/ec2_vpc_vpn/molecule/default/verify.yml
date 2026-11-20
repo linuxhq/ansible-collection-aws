@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - cloudwatchlogs_log_group_info
     - ec2_customer_gateway_info

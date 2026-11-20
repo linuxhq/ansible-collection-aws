@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - role: iam_user_info
       iam_user_info_name: "{{ splunk_addon_iam_user_name }}"

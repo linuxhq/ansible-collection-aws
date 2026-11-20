@@ -1,6 +1,7 @@
 ---
 - name: Cleanup
   hosts: all
+
   roles:
     - aws_region_info
     - role: ec2_instance_metadata

@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure aws iam group members are gathered
       amazon.aws.iam_user_info:

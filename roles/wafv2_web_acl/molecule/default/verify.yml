@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure web acl info is gathered
       ansible.builtin.include_role:

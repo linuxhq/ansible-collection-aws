@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure information about created aws elastic container registry repositories is gathered
       ansible.builtin.include_role:

@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure information about aws notifications hubs is gathered
       ansible.builtin.include_role:

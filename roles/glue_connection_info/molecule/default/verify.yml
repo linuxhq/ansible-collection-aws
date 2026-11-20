@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   roles:
     - ec2_security_group_info
     - ec2_vpc_subnet_info

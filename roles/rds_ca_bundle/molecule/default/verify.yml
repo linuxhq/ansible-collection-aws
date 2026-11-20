@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure aws rds certificate authority bundles are queried
       ansible.builtin.stat:

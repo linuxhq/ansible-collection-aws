@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: all
+
   tasks:
     - name: Ensure information about customer gateways is gathered
       ansible.builtin.include_role:

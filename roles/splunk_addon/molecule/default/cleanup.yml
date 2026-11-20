@@ -1,6 +1,7 @@
 ---
 - name: Cleanup
   hosts: all
+
   tasks:
     - name: Ensure splunk addon resources are absent
       ansible.builtin.include_role:

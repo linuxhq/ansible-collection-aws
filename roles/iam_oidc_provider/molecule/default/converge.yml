@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: all
+
   roles:
     - role: iam_oidc_provider
       iam_oidc_provider_list: []
