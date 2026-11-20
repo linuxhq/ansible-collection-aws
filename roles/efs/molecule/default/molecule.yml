@@ -44,8 +44,13 @@ provisioner:
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(24,2) }}"
 
+        efs_info_tags:
+          molecule: efs
+
         efs_list:
           - name: molecule-efs-efs1
+            tags:
+              molecule: efs
             encrypt: true
             targets:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-efs-a'].id |
@@ -65,6 +70,8 @@ provisioner:
                         d(omit) }}"
 
           - name: molecule-efs-efs2
+            tags:
+              molecule: efs
             encrypt: true
             targets:
               - subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-efs-a'].id |
