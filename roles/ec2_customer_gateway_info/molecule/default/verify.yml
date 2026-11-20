@@ -9,14 +9,14 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_customer_gateway_info_dict['molecule-00'] is defined
-          - _ec2_customer_gateway_info_dict['molecule-00'].ip_address == ec2_customer_gateway_list.0.ip_address
-          - _ec2_customer_gateway_info_dict['molecule-01'] is defined
-          - _ec2_customer_gateway_info_dict['molecule-01'].ip_address == ec2_customer_gateway_list.1.ip_address
-          - _ec2_customer_gateway_info_dict['molecule-02'] is defined
-          - _ec2_customer_gateway_info_dict['molecule-02'].ip_address == ec2_customer_gateway_list.2.ip_address
-          - _ec2_customer_gateway_info_dict['molecule-03'] is defined
-          - _ec2_customer_gateway_info_dict['molecule-03'].ip_address == ec2_customer_gateway_list.3.ip_address
-          - _ec2_customer_gateway_info_dict['molecule-04'] is defined
-          - _ec2_customer_gateway_info_dict['molecule-04'].ip_address == ec2_customer_gateway_list.4.ip_address
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-00'] is defined
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-00'].ip_address == ec2_customer_gateway_list.0.ip_address
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-01'] is defined
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-01'].ip_address == ec2_customer_gateway_list.1.ip_address
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-02'] is defined
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-02'].ip_address == ec2_customer_gateway_list.2.ip_address
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-03'] is defined
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-03'].ip_address == ec2_customer_gateway_list.3.ip_address
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-04'] is defined
+          - _ec2_customer_gateway_info_dict['molecule-ec2-customer-gateway-info-04'].ip_address == ec2_customer_gateway_list.4.ip_address
 ...

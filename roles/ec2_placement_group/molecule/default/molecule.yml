@@ -6,40 +6,40 @@ provisioner:
         ec2_placement_group_list:
           - strategy: cluster
             placement_groups:
-              - name: molecule-cluster-1
-              - name: molecule-cluster-2
-              - name: molecule-cluster-3
-              - name: molecule-cluster-4
-              - name: molecule-cluster-5
-              - name: molecule-cluster-6
+              - name: molecule-ec2-placement-group-cluster-1
+              - name: molecule-ec2-placement-group-cluster-2
+              - name: molecule-ec2-placement-group-cluster-3
+              - name: molecule-ec2-placement-group-cluster-4
+              - name: molecule-ec2-placement-group-cluster-5
+              - name: molecule-ec2-placement-group-cluster-6
 
           - strategy: partition
             placement_groups:
-              - name: molecule-partition-1
+              - name: molecule-ec2-placement-group-partition-1
                 partition_count: 3
-              - name: molecule-partition-2
+              - name: molecule-ec2-placement-group-partition-2
                 partition_count: 3
-              - name: molecule-partition-3
+              - name: molecule-ec2-placement-group-partition-3
                 partition_count: 3
-              - name: molecule-partition-4
+              - name: molecule-ec2-placement-group-partition-4
                 partition_count: 5
-              - name: molecule-partition-5
+              - name: molecule-ec2-placement-group-partition-5
                 partition_count: 5
-              - name: molecule-partition-6
+              - name: molecule-ec2-placement-group-partition-6
                 partition_count: 5
-              - name: molecule-partition-7
+              - name: molecule-ec2-placement-group-partition-7
                 partition_count: 7
-              - name: molecule-partition-8
+              - name: molecule-ec2-placement-group-partition-8
                 partition_count: 7
-              - name: molecule-partition-9
+              - name: molecule-ec2-placement-group-partition-9
                 partition_count: 7
 
           - strategy: spread
             placement_groups:
-              - name: molecule-spread-1
-              - name: molecule-spread-2
-              - name: molecule-spread-3
-              - name: molecule-spread-4
-              - name: molecule-spread-5
-              - name: molecule-spread-6
+              - name: molecule-ec2-placement-group-spread-1
+              - name: molecule-ec2-placement-group-spread-2
+              - name: molecule-ec2-placement-group-spread-3
+              - name: molecule-ec2-placement-group-spread-4
+              - name: molecule-ec2-placement-group-spread-5
+              - name: molecule-ec2-placement-group-spread-6
 ...

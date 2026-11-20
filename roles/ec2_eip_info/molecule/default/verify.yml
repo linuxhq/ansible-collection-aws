@@ -9,10 +9,10 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_eip_info_dict['molecule-eip-01'].public_ip is defined
-          - _ec2_eip_info_dict['molecule-eip-01'].tags.molecule == 'ec2_eip_info'
-          - _ec2_eip_info_dict['molecule-eip-02'].public_ip is defined
-          - _ec2_eip_info_dict['molecule-eip-03'].public_ip is defined
-          - _ec2_eip_info_dict['molecule-eip-04'].public_ip is defined
-          - _ec2_eip_info_dict['molecule-eip-05'].public_ip is defined
+          - _ec2_eip_info_dict['molecule-ec2-eip-info-01'].public_ip is defined
+          - _ec2_eip_info_dict['molecule-ec2-eip-info-01'].tags.molecule == 'ec2_eip_info'
+          - _ec2_eip_info_dict['molecule-ec2-eip-info-02'].public_ip is defined
+          - _ec2_eip_info_dict['molecule-ec2-eip-info-03'].public_ip is defined
+          - _ec2_eip_info_dict['molecule-ec2-eip-info-04'].public_ip is defined
+          - _ec2_eip_info_dict['molecule-ec2-eip-info-05'].public_ip is defined
 ...

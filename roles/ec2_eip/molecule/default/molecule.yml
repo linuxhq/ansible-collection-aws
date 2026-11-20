@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         ec2_eip_list:
-          - name: molecule-eip-03
-          - name: molecule-eip-04
-          - name: molecule-eip-05
+          - name: molecule-ec2-eip-03
+          - name: molecule-ec2-eip-04
+          - name: molecule-ec2-eip-05
 ...

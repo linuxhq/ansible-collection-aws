@@ -4,14 +4,14 @@ provisioner:
     group_vars:
       all:
         ec2_customer_gateway_list:
-          - name: molecule-00
+          - name: molecule-ec2-customer-gateway-00
             ip_address: 1.1.1.0
-          - name: molecule-01
+          - name: molecule-ec2-customer-gateway-01
             ip_address: 1.1.1.1
-          - name: molecule-02
+          - name: molecule-ec2-customer-gateway-02
             ip_address: 1.1.1.2
-          - name: molecule-03
+          - name: molecule-ec2-customer-gateway-03
             ip_address: 1.1.1.3
-          - name: molecule-04
+          - name: molecule-ec2-customer-gateway-04
             ip_address: 1.1.1.4
 ...

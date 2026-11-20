@@ -9,7 +9,7 @@
     - name: Ensure aws elastic ip addresses are verified
       ansible.builtin.assert:
         that:
-          - _ec2_eip_info_dict['molecule-eip-03'].public_ip is defined
-          - _ec2_eip_info_dict['molecule-eip-04'].public_ip is defined
-          - _ec2_eip_info_dict['molecule-eip-05'].public_ip is defined
+          - _ec2_eip_info_dict['molecule-ec2-eip-03'].public_ip is defined
+          - _ec2_eip_info_dict['molecule-ec2-eip-04'].public_ip is defined
+          - _ec2_eip_info_dict['molecule-ec2-eip-05'].public_ip is defined
 ...
