@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - ec2_vpc_vpn - with ``state=absent``, a connection on a transit gateway or VPN concentrator is now waited on
+    until EC2 releases its transit gateway attachment. AWS releases it some minutes after the connection is
+    deleted, and refuses to delete the transit gateway until then.
+...
