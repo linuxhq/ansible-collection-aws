@@ -1,0 +1,10 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - ec2_vpc_net
+    - ec2_vpc_subnet
+    - ec2_security_group
+    - route53_resolver
+...

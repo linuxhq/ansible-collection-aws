@@ -3,35 +3,8 @@
   hosts: all
 
   roles:
-    - role: ec2_vpc_net
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ec2_vpc_subnet
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: ec2_security_group
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: route53_resolver
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
-    - role: route53_resolver_rule
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - role: route53_resolver_rule_associate
       route53_resolver_rule_associate_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - route53_resolver_rule_associate
 ...
