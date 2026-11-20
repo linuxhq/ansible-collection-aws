@@ -3,6 +3,5 @@
   hosts: all
 
   roles:
-    - ses_sandbox
     - ses_sandbox_info
 ...

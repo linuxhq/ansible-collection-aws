@@ -8,8 +8,6 @@
 
     - role: sqs_queue
       sqs_queue_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - sqs_queue
 ...
