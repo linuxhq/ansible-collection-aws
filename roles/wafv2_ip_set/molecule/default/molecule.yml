@@ -4,13 +4,13 @@ provisioner:
     group_vars:
       all:
         wafv2_ip_set_list:
-          - name: molecule-cloudflare
+          - name: molecule-wafv2-ip-set-cloudflare
             addresses:
               - 1.1.1.1/32
             ip_address_version: ipv4
             scope: regional
 
-          - name: molecule-google
+          - name: molecule-wafv2-ip-set-google
             addresses:
               - 8.8.8.8/32
               - 8.8.8.4/32

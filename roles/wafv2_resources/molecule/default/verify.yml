@@ -20,7 +20,7 @@
     - name: Ensure web acl associations are verified
       ansible.builtin.assert:
         that:
-          - _info._resource.arn is search(':loadbalancer/app/molecule/')
+          - _info._resource.arn is search(':loadbalancer/app/molecule-wafv2-resources/')
           - _info._resource.arn in _info.resource_arns
       loop: "{{ __wafv2_resources_info.results }}"
       loop_control:

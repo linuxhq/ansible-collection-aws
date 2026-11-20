@@ -4,48 +4,48 @@ provisioner:
     group_vars:
       all:
         ec2_security_group_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-wafv2-resources'].id | d(omit) }}"
             security_groups:
-              - name: molecule
+              - name: molecule-wafv2-resources
 
         ec2_vpc_igw_list:
-          - name: molecule
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - name: molecule-wafv2-resources
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-wafv2-resources'].id | d(omit) }}"
 
         ec2_vpc_net_list:
-          - name: molecule
+          - name: molecule-wafv2-resources
             cidr_block: 192.168.0.0/24
 
         ec2_vpc_subnet_list:
-          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+          - vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-wafv2-resources'].id | d(omit) }}"
             subnets:
-              - name: molecule-a
+              - name: molecule-wafv2-resources-a
                 az: us-east-1a
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(25,0) }}"
-              - name: molecule-c
+              - name: molecule-wafv2-resources-c
                 az: us-east-1c
                 cidr: "{{ ec2_vpc_net_list.0.cidr_block |
                           ansible.utils.ipsubnet(25,1) }}"
 
         elb_application_lb_list:
-          - name: molecule
+          - name: molecule-wafv2-resources
             security_groups:
-              - "{{ _ec2_security_group_info_dict['molecule'].group_id |
+              - "{{ _ec2_security_group_info_dict['molecule-wafv2-resources'].group_id |
                     d(omit) }}"
             subnets:
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-a'].id | d(omit) }}"
-              - "{{ _ec2_vpc_subnet_info_dict['molecule-c'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-wafv2-resources-a'].id | d(omit) }}"
+              - "{{ _ec2_vpc_subnet_info_dict['molecule-wafv2-resources-c'].id | d(omit) }}"
             listeners:
               - Protocol: HTTP
                 Port: 80
                 DefaultActions:
                   - Type: forward
-                    TargetGroupName: molecule
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+                    TargetGroupName: molecule-wafv2-resources
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-wafv2-resources'].id | d(omit) }}"
 
         elb_target_group_list:
-          - name: molecule
+          - name: molecule-wafv2-resources
             health_check_interval: 10
             health_check_path: /healthcheck
             health_check_port: 8080
@@ -57,16 +57,16 @@ provisioner:
             stickiness_enabled: true
             target_type: instance
             unhealthy_threshold_count: 3
-            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule'].id | d(omit) }}"
+            vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-wafv2-resources'].id | d(omit) }}"
 
         wafv2_resources_list:
-          - arn: "{{ _elb_application_lb_info_dict['molecule'].load_balancer_arn |
+          - arn: "{{ _elb_application_lb_info_dict['molecule-wafv2-resources'].load_balancer_arn |
                      d(omit) }}"
-            name: molecule
+            name: molecule-wafv2-resources
             scope: regional
 
         wafv2_web_acl_list:
-          - name: molecule
+          - name: molecule-wafv2-resources
             scope: regional
             default_action: Allow
             rules:

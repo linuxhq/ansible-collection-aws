@@ -4,7 +4,7 @@ provisioner:
     group_vars:
       all:
         wafv2_web_acl_list:
-          - name: molecule-amazonipreputationlist
+          - name: molecule-wafv2-web-acl-amazonipreputationlist
             scope: regional
             default_action: Allow
             rules:
@@ -21,7 +21,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesAmazonIpReputationList
                   sampled_requests_enabled: true
 
-          - name: molecule-commonruleset
+          - name: molecule-wafv2-web-acl-commonruleset
             scope: regional
             default_action: Allow
             rules:
@@ -41,7 +41,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesCommonRuleSet
                   sampled_requests_enabled: true
 
-          - name: molecule-knownbadinputsruleset
+          - name: molecule-wafv2-web-acl-knownbadinputsruleset
             scope: regional
             default_action: Allow
             rules:
@@ -58,7 +58,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesKnownBadInputsRuleSet
                   sampled_requests_enabled: true
 
-          - name: molecule-linuxruleset
+          - name: molecule-wafv2-web-acl-linuxruleset
             scope: regional
             default_action: Allow
             rules:
@@ -75,7 +75,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesLinuxRuleSet
                   sampled_requests_enabled: true
 
-          - name: molecule-anonymousiplist
+          - name: molecule-wafv2-web-acl-anonymousiplist
             scope: regional
             default_action: Allow
             rules:
@@ -92,7 +92,7 @@ provisioner:
                   metric_name: AWS-AWSManagedRulesAnonymousIpList
                   sampled_requests_enabled: true
 
-          - name: molecule-sqliruleset
+          - name: molecule-wafv2-web-acl-sqliruleset
             scope: regional
             default_action: Allow
             rules:
