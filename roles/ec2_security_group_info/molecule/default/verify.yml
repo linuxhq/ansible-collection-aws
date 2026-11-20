@@ -9,24 +9,24 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_security_group_info_dict['molecule-ftp'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-ftp'].tags.molecule == 'ec2_security_group_info'
-          - _ec2_security_group_info_dict['molecule-ssh'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-telnet'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-smtp'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-domain'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-http'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-pop3'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-imap'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-ldap'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-https'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-ircd'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-ircs'].group_id is defined
-          - _ec2_security_group_info_dict['molecule-cluster'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ftp'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ftp'].tags.molecule == 'ec2_security_group_info'
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ssh'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-telnet'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-smtp'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-domain'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-http'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-pop3'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-imap'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ldap'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-https'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ircd'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-ircs'].group_id is defined
+          - _ec2_security_group_info_dict['molecule-ec2-security-group-info-cluster'].group_id is defined
 
     - name: Ensure aws security group relationships are confirmed
       vars:
-        __cluster: "{{ _ec2_security_group_info_dict['molecule-cluster'] }}"
+        __cluster: "{{ _ec2_security_group_info_dict['molecule-ec2-security-group-info-cluster'] }}"
         __cluster_self:
           "{{ __cluster.ip_permissions |
               selectattr('ip_protocol', 'eq', '-1') |
@@ -51,7 +51,7 @@
           - __cluster_ssh | length == 1
           - __cluster_ssh.0.user_id_group_pairs |
             map(attribute='group_id') |
-            list == [_ec2_security_group_info_dict['molecule-ssh'].group_id]
+            list == [_ec2_security_group_info_dict['molecule-ec2-security-group-info-ssh'].group_id]
           - __cluster_ssh.0.ip_ranges |
             d([]) |
             length == 0

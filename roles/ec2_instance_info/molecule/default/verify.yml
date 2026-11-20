@@ -12,17 +12,17 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ec2_instance_info_dict['molecule-a'].image_id ==
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-a'].image_id ==
               _ec2_ami_info_latest[ec2_ami_info_list.0.name]
-          - _ec2_instance_info_dict['molecule-a'].instance_id is defined
-          - _ec2_instance_info_dict['molecule-a'].instance_type == 't3a.medium'
-          - _ec2_instance_info_dict['molecule-a'].tags.molecule == 'ec2_instance_info'
-          - _ec2_instance_info_dict['molecule-c'].image_id ==
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-a'].instance_id is defined
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-a'].instance_type == 't3a.medium'
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-a'].tags.molecule == 'ec2_instance_info'
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-c'].image_id ==
               _ec2_ami_info_latest[ec2_ami_info_list.0.name]
-          - _ec2_instance_info_dict['molecule-c'].instance_id is defined
-          - _ec2_instance_info_dict['molecule-c'].instance_type == 't3a.medium'
-          - _ec2_instance_info_dict['molecule-d'].image_id ==
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-c'].instance_id is defined
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-c'].instance_type == 't3a.medium'
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-d'].image_id ==
               _ec2_ami_info_latest[ec2_ami_info_list.0.name]
-          - _ec2_instance_info_dict['molecule-d'].instance_id is defined
-          - _ec2_instance_info_dict['molecule-d'].instance_type == 't3a.medium'
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-d'].instance_id is defined
+          - _ec2_instance_info_dict['molecule-ec2-instance-info-d'].instance_type == 't3a.medium'
 ...

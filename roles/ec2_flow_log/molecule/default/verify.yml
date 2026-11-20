@@ -52,7 +52,7 @@
         log_destination: "{{ ec2_flow_log_bucket_resource }}"
         log_destination_type: s3
         max_aggregation_interval: 60
-        name: molecule-subnet
+        name: molecule-ec2-flow-log-subnet
         resource_ids: "{{ ec2_flow_log_list[1].resource_ids }}"
         resource_type: Subnet
         validate_certs: true
@@ -69,12 +69,12 @@
         __ec2_flow_log_original:
           "{{ __ec2_flow_log_query.flow_logs |
               selectattr('tags.Name', 'defined') |
-              selectattr('tags.Name', 'eq', 'molecule-subnet') |
+              selectattr('tags.Name', 'eq', 'molecule-ec2-flow-log-subnet') |
               first }}"
         __ec2_flow_log_matches:
           "{{ __ec2_flow_log_replaced_query.flow_logs |
               selectattr('tags.Name', 'defined') |
-              selectattr('tags.Name', 'eq', 'molecule-subnet') |
+              selectattr('tags.Name', 'eq', 'molecule-ec2-flow-log-subnet') |
               list }}"
       ansible.builtin.assert:
         that:
@@ -91,7 +91,7 @@
         log_destination: "{{ ec2_flow_log_bucket_resource }}"
         log_destination_type: s3
         max_aggregation_interval: 60
-        name: molecule-subnet
+        name: molecule-ec2-flow-log-subnet
         resource_ids: "{{ ec2_flow_log_list[1].resource_ids }}"
         resource_type: Subnet
         validate_certs: true
