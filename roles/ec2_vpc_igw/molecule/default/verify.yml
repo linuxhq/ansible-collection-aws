@@ -11,5 +11,6 @@
       ansible.builtin.assert:
         that:
           - _ec2_vpc_igw_info_dict['molecule-ec2-vpc-igw'].attachments.0.state == 'available'
-          - _ec2_vpc_igw_info_dict['molecule-ec2-vpc-igw'].attachments.0.vpc_id == _ec2_vpc_net_info_dict['molecule-ec2-vpc-igw'].id
+          - _ec2_vpc_igw_info_dict['molecule-ec2-vpc-igw'].attachments.0.vpc_id ==
+              _ec2_vpc_net_info_dict['molecule-ec2-vpc-igw'].id
 ...

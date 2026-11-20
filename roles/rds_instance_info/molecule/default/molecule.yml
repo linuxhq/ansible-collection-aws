@@ -93,7 +93,8 @@ provisioner:
             master_username: mnkes9JwUdsq
             max_allocated_storage: 40
             monitoring_interval: 60
-            monitoring_role_arn: 'arn:aws:iam::{{ _aws_caller_info_account }}:role/molecule-rds-instance-info-monitoring'
+            monitoring_role_arn:
+              'arn:aws:iam::{{ _aws_caller_info_account }}:role/molecule-rds-instance-info-monitoring'
             multi_az: true
             option_group_name: molecule-rds-instance-info-mariadb118
             publicly_accessible: false

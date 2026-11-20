@@ -76,14 +76,18 @@
       ansible.builtin.assert:
         that:
           - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-cloudflare'].status == 'COMPLETE'
-          - (_route53_resolver_rule_info_dict['molecule-route53-resolver-rule-cloudflare'].target_ips | map(attribute='ip') | sort) ==
+          - (_route53_resolver_rule_info_dict['molecule-route53-resolver-rule-cloudflare'].target_ips |
+            map(attribute='ip') |
+            sort) ==
               ['1.1.1.3', '1.1.1.4']
           - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-cloudflare'].target_ips |
             map(attribute='port') |
             unique ==
               [53]
           - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-google'].status == 'COMPLETE'
-          - (_route53_resolver_rule_info_dict['molecule-route53-resolver-rule-google'].target_ips | map(attribute='ip') | sort) ==
+          - (_route53_resolver_rule_info_dict['molecule-route53-resolver-rule-google'].target_ips |
+            map(attribute='ip') |
+            sort) ==
               ['8.8.8.5', '8.8.8.9']
           - _route53_resolver_rule_info_dict['molecule-route53-resolver-rule-google'].target_ips |
             map(attribute='port') |

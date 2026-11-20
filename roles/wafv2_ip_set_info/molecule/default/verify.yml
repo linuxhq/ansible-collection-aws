@@ -21,8 +21,10 @@
           - _wafv2_ip_set_info_dict['molecule-wafv2-ip-set-info-google'].addresses | length == 2
           - _wafv2_ip_set_info_dict['molecule-wafv2-ip-set-info-google'].ip_address_version == 'IPV4'
           - _wafv2_ip_set_info_dict['molecule-wafv2-ip-set-info-google'].id is defined
-          - _wafv2_ip_set_info_dict['molecule-wafv2-ip-set-info-cloudflare'].tags.Name == 'molecule-wafv2-ip-set-info-cloudflare'
-          - _wafv2_ip_set_info_dict['molecule-wafv2-ip-set-info-google'].tags.Name == 'molecule-wafv2-ip-set-info-google'
+          - _wafv2_ip_set_info_dict['molecule-wafv2-ip-set-info-cloudflare'].tags.Name ==
+              'molecule-wafv2-ip-set-info-cloudflare'
+          - _wafv2_ip_set_info_dict['molecule-wafv2-ip-set-info-google'].tags.Name ==
+              'molecule-wafv2-ip-set-info-google'
 
     - name: Ensure ip set id filter target is generated
       ansible.builtin.set_fact:

@@ -16,7 +16,9 @@ provisioner:
                 blackhole: true
               - destination_cidr_block: 192.168.1.0/24
                 transit_gateway_attachment_id:
-                  "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-route-table'].transit_gateway_attachment_id |
+                  "{{ _ec2_transit_gateway_vpc_attachment_info_dict[
+                        'molecule-ec2-transit-gateway-route-table'
+                      ].transit_gateway_attachment_id |
                       d(omit) }}"
 
           - name: molecule-ec2-transit-gateway-route-table-rtb

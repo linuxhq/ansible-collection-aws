@@ -94,5 +94,7 @@
         that:
           - _sqs_queue_info_list | length == 3
           - _sqs_queue_info_dict.keys() | sort ==
-              ['molecule-sqs-queue-info-bounce', 'molecule-sqs-queue-info-complaint', 'molecule-sqs-queue-info-delivery']
+              ['molecule-sqs-queue-info-bounce',
+               'molecule-sqs-queue-info-complaint',
+               'molecule-sqs-queue-info-delivery']
 ...

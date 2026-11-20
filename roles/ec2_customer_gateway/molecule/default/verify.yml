@@ -47,7 +47,9 @@
         quiet: true
         that:
           - _ec2_customer_gateway_info_list |
-            selectattr('customer_gateway_name', 'eq', 'molecule-ec2-customer-gateway-renamed-' ~ '%02d' | format(_index)) |
+            selectattr('customer_gateway_name',
+                       'eq',
+                       'molecule-ec2-customer-gateway-renamed-' ~ '%02d' | format(_index)) |
             selectattr('ip_address', 'eq', _cgw.ip_address) |
             list |
             length == 1

@@ -9,8 +9,10 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/db/admin/username'].value == ssm_parameter_list.0.value
-          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/db/admin/password'].value == ssm_parameter_list.1.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/db/admin/username'].value ==
+              ssm_parameter_list.0.value
+          - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/db/admin/password'].value ==
+              ssm_parameter_list.1.value
           - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/sys/username'].value == ssm_parameter_list.2.value
           - _ssm_parameter_info_dict['/molecule-ssm-parameter-info/sys/password'].value == ssm_parameter_list.3.value
 

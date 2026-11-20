@@ -20,7 +20,9 @@ provisioner:
 
         pinpoint_sms_voice_phone_pool_associate_list:
           - pool_id:
-              "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-associate'].pool_id }}"
+              "{{ _pinpoint_sms_voice_phone_pool_info_dict[
+                    'molecule-pinpoint-sms-voice-phone-pool-associate'
+                  ].pool_id }}"
             iso_country_code: US
             associations:
               - origination_identity:
@@ -33,7 +35,9 @@ provisioner:
                       ].phone_number_id }}"
 
           - pool_id:
-              "{{ _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-associate'].pool_id }}"
+              "{{ _pinpoint_sms_voice_phone_pool_info_dict[
+                    'molecule-pinpoint-sms-voice-phone-pool-associate'
+                  ].pool_id }}"
             iso_country_code: DE
             associations:
               - origination_identity: MOLECULEPA

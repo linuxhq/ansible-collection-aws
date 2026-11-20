@@ -80,8 +80,9 @@
       ansible.builtin.assert:
         that:
           - _pinpoint_sms_voice_sender_id_info_list | length == 1
-          - _pinpoint_sms_voice_sender_id_info_dict[pinpoint_sms_voice_sender_id_info_molecule.sender_id_arn].sender_id ==
-              'MOLECULEINF'
+          - _pinpoint_sms_voice_sender_id_info_dict[
+              pinpoint_sms_voice_sender_id_info_molecule.sender_id_arn
+            ].sender_id == 'MOLECULEINF'
 
     - name: Ensure role is included with non-matching filters
       ansible.builtin.include_role:

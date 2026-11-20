@@ -10,8 +10,10 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].client_id_list.0 == 'sts.amazonaws.com'
-          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].tags.Name == 'molecule-iam-oidc-provider-info'
+          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].client_id_list.0 ==
+              'sts.amazonaws.com'
+          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].tags.Name ==
+              'molecule-iam-oidc-provider-info'
           - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].tags.molecule ==
               'iam_oidc_provider_info'
 
@@ -44,7 +46,8 @@
       ansible.builtin.assert:
         that:
           - _iam_oidc_provider_info_list | length == 1
-          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].client_id_list.0 == 'sts.amazonaws.com'
+          - _iam_oidc_provider_info_dict['oidc.molecule-iam-oidc-provider-info.org'].client_id_list.0 ==
+              'sts.amazonaws.com'
 
     - name: Ensure role is included with an unknown arn
       ansible.builtin.include_role:

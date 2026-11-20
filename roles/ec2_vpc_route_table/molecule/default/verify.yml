@@ -13,7 +13,8 @@
       ansible.builtin.assert:
         quiet: true
         that:
-          - _ec2_vpc_route_table_info_dict[_rtb.name].vpc_id == _ec2_vpc_net_info_dict['molecule-ec2-vpc-route-table'].id
+          - _ec2_vpc_route_table_info_dict[_rtb.name].vpc_id ==
+              _ec2_vpc_net_info_dict['molecule-ec2-vpc-route-table'].id
           - _ec2_vpc_route_table_info_dict[_rtb.name].associations |
             map(attribute='subnet_id') |
             sort ==

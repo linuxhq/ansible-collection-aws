@@ -7,9 +7,12 @@
     - ec2_transit_gateway_vpc_attachment_info
 
   vars:
-    __molecule_transit_gateway_id: "{{ _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-route-table'].transit_gateway_id }}"
+    __molecule_transit_gateway_id:
+      "{{ _ec2_transit_gateway_info_dict['molecule-ec2-transit-gateway-route-table'].transit_gateway_id }}"
     __molecule_transit_gateway_attachment_id:
-      "{{ _ec2_transit_gateway_vpc_attachment_info_dict['molecule-ec2-transit-gateway-route-table'].transit_gateway_attachment_id }}"
+      "{{ _ec2_transit_gateway_vpc_attachment_info_dict[
+            'molecule-ec2-transit-gateway-route-table'
+          ].transit_gateway_attachment_id }}"
 
   post_tasks:
     - name: Ensure molecule-ec2-transit-gateway-route-table-rtb route table is queried
