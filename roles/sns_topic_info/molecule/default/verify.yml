@@ -11,16 +11,16 @@
     - name: Ensure info is verified
       ansible.builtin.assert:
         that:
-          - _sns_topic_info_dict['molecule-info-bounce'].display_name is defined
-          - _sns_topic_info_dict['molecule-info-bounce'].subscriptions |
+          - _sns_topic_info_dict['molecule-sns-topic-info-bounce'].display_name is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-bounce'].subscriptions |
             length == 1
-          - _sns_topic_info_dict['molecule-info-bounce'].topic_arn is defined
-          - _sns_topic_info_dict['molecule-info-complaint'].display_name is defined
-          - _sns_topic_info_dict['molecule-info-complaint'].subscriptions |
+          - _sns_topic_info_dict['molecule-sns-topic-info-bounce'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-complaint'].display_name is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-complaint'].subscriptions |
             length == 1
-          - _sns_topic_info_dict['molecule-info-complaint'].topic_arn is defined
-          - _sns_topic_info_dict['molecule-info-delivery'].display_name is defined
-          - _sns_topic_info_dict['molecule-info-delivery'].subscriptions |
+          - _sns_topic_info_dict['molecule-sns-topic-info-complaint'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-delivery'].display_name is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-delivery'].subscriptions |
             length == 1
-          - _sns_topic_info_dict['molecule-info-delivery'].topic_arn is defined
+          - _sns_topic_info_dict['molecule-sns-topic-info-delivery'].topic_arn is defined
 ...

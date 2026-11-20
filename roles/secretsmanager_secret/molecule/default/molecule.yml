@@ -4,14 +4,14 @@ provisioner:
     group_vars:
       all:
         secretsmanager_secret_list:
-          - name: molecule-secret-1
-            description: molecule-secret-1
+          - name: molecule-secretsmanager-secret-1
+            description: molecule-secretsmanager-secret-1
             recovery_window: 0
             secret:
               - key: molecule-secret-1
                 value: WnvpxzicuneCE7PM7upC7aVNFwYoz7wE
-          - name: molecule-secret-2
-            description: molecule-secret-2
+          - name: molecule-secretsmanager-secret-2
+            description: molecule-secretsmanager-secret-2
             recovery_window: 0
             secret:
               - key: molecule-secret-2

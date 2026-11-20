@@ -7,13 +7,13 @@ provisioner:
           "{{ secretsmanager_secret_list }}"
 
         secretsmanager_secret_list:
-          - name: molecule-secret-1
+          - name: molecule-secretsmanager-secret-info-1
             recovery_window: 0
             secret:
               - key: molecule-key-1
                 value: WnvpxzicuneCE7PM7upC7aVNFwYoz7wE
 
-          - name: molecule-secret-2
+          - name: molecule-secretsmanager-secret-info-2
             recovery_window: 0
             secret:
               - key: molecule-key-1

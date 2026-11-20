@@ -9,7 +9,7 @@
   post_tasks:
     - name: Ensure aws simple queue service queue attributes are available
       linuxhq.aws.sqs_queue_info:
-        queue_name_prefix: molecule-info-
+        queue_name_prefix: molecule-sqs-queue-info-
         region: "{{ _aws_az_info_list_l.0[:-1] }}"
       register: __sqs_queue_info_verify
       retries: 30
@@ -28,7 +28,7 @@
       delay: 1
       until:
         - __sqs_queue_info_verify_unfiltered.queues |
-            selectattr('name', 'match', 'molecule-info-') |
+            selectattr('name', 'match', 'molecule-sqs-queue-info-') |
             selectattr('queue_arn', 'defined') |
             length == 3
 
@@ -41,40 +41,40 @@
     - name: Ensure info without name is verified
       ansible.builtin.assert:
         that:
-          - _sqs_queue_info_dict['molecule-info-bounce'].queue_arn is defined
-          - _sqs_queue_info_dict['molecule-info-bounce'].sqs_managed_sse_enabled |
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-bounce'].queue_arn is defined
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-bounce'].sqs_managed_sse_enabled |
             bool
-          - _sqs_queue_info_dict['molecule-info-complaint'].queue_arn is defined
-          - _sqs_queue_info_dict['molecule-info-complaint'].sqs_managed_sse_enabled |
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-complaint'].queue_arn is defined
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-complaint'].sqs_managed_sse_enabled |
             bool
-          - _sqs_queue_info_dict['molecule-info-delivery'].queue_arn is defined
-          - _sqs_queue_info_dict['molecule-info-delivery'].sqs_managed_sse_enabled |
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-delivery'].queue_arn is defined
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-delivery'].sqs_managed_sse_enabled |
             bool
-          - _sqs_queue_info_dict['molecule-info-bounce'].tags.Name == 'molecule-info-bounce'
-          - _sqs_queue_info_dict['molecule-info-complaint'].tags.Name == 'molecule-info-complaint'
-          - _sqs_queue_info_dict['molecule-info-delivery'].tags.Name == 'molecule-info-delivery'
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-bounce'].tags.Name == 'molecule-sqs-queue-info-bounce'
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-complaint'].tags.Name == 'molecule-sqs-queue-info-complaint'
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-delivery'].tags.Name == 'molecule-sqs-queue-info-delivery'
 
     - name: Ensure role is included with name
       ansible.builtin.include_role:
         name: sqs_queue_info
       vars:
-        sqs_queue_info_name: molecule-info-bounce
+        sqs_queue_info_name: molecule-sqs-queue-info-bounce
 
     - name: Ensure info with name is verified
       ansible.builtin.assert:
         that:
           - _sqs_queue_info_list | length == 1
-          - _sqs_queue_info_list.0.name == 'molecule-info-bounce'
-          - _sqs_queue_info_dict.keys() | list == ['molecule-info-bounce']
-          - _sqs_queue_info_dict['molecule-info-bounce'].queue_arn is defined
-          - _sqs_queue_info_dict['molecule-info-bounce'].sqs_managed_sse_enabled |
+          - _sqs_queue_info_list.0.name == 'molecule-sqs-queue-info-bounce'
+          - _sqs_queue_info_dict.keys() | list == ['molecule-sqs-queue-info-bounce']
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-bounce'].queue_arn is defined
+          - _sqs_queue_info_dict['molecule-sqs-queue-info-bounce'].sqs_managed_sse_enabled |
             bool
 
     - name: Ensure role is included with a missing name
       ansible.builtin.include_role:
         name: sqs_queue_info
       vars:
-        sqs_queue_info_name: molecule-info-missing
+        sqs_queue_info_name: molecule-sqs-queue-info-missing
 
     - name: Ensure info with a missing name is verified
       ansible.builtin.assert:
@@ -86,12 +86,12 @@
       ansible.builtin.include_role:
         name: sqs_queue_info
       vars:
-        sqs_queue_info_queue_name_prefix: molecule-info-
+        sqs_queue_info_queue_name_prefix: molecule-sqs-queue-info-
 
     - name: Ensure info with queue name prefix is verified
       ansible.builtin.assert:
         that:
           - _sqs_queue_info_list | length == 3
           - _sqs_queue_info_dict.keys() | sort ==
-              ['molecule-info-bounce', 'molecule-info-complaint', 'molecule-info-delivery']
+              ['molecule-sqs-queue-info-bounce', 'molecule-sqs-queue-info-complaint', 'molecule-sqs-queue-info-delivery']
 ...
