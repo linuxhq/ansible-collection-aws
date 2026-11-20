@@ -20,8 +20,8 @@
         that:
           - pinpoint_sms_voice_sender_id_info_molecule.deletion_protection_enabled is false
           - pinpoint_sms_voice_sender_id_info_molecule.message_types |
-              map('upper') |
-              list == ['TRANSACTIONAL']
+            map('upper') |
+            list == ['TRANSACTIONAL']
           - pinpoint_sms_voice_sender_id_info_molecule.monthly_leasing_price is defined
           - pinpoint_sms_voice_sender_id_info_molecule.registered is boolean
           - pinpoint_sms_voice_sender_id_info_molecule.sender_id_arn is defined

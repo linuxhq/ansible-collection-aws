@@ -22,9 +22,9 @@
           - _rds_subnet_group_info_dict['molecule-rds-subnet-group-info'].db_subnet_group_name ==
               rds_subnet_group_list.0.name
           - (_rds_subnet_group_info_dict['molecule-rds-subnet-group-info'].subnets |
-             map(attribute='subnet_identifier') |
-             sort) == (rds_subnet_group_list.0.subnets |
-             sort)
+            map(attribute='subnet_identifier') |
+            sort) == (rds_subnet_group_list.0.subnets |
+            sort)
           - _rds_subnet_group_info_dict['molecule-rds-subnet-group-info'].vpc_id ==
               _ec2_vpc_net_info_dict['molecule-rds-subnet-group-info'].id
           - _rds_subnet_group_info_dict['molecule-rds-subnet-group-info'].tags.Name == rds_subnet_group_list.0.name

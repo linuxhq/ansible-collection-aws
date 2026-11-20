@@ -13,8 +13,8 @@
           - _pinpoint_sms_voice_sender_id_info_list.0.sender_id == 'MOLECULESID'
           - _pinpoint_sms_voice_sender_id_info_list.0.deletion_protection_enabled is false
           - _pinpoint_sms_voice_sender_id_info_list.0.message_types |
-              map('upper') |
-              list == ['TRANSACTIONAL']
+            map('upper') |
+            list == ['TRANSACTIONAL']
           - _pinpoint_sms_voice_sender_id_info_list.0.sender_id_arn is defined
           - _pinpoint_sms_voice_sender_id_info_list.0.tags.molecule ==
               'pinpoint_sms_voice_sender_id'

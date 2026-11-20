@@ -191,12 +191,12 @@
           - _ec2_vpc_vpn_info_dict['molecule-ec2-vpc-vpn-00'].options.tunnel_options |
             map(attribute='log_options.cloud_watch_log_options') |
             unique ==
-            [dict(log_enabled=true,
-                  log_group_arn=_cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn,
-                  log_output_format='text',
-                  bgp_log_enabled=true,
-                  bgp_log_group_arn=_cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn,
-                  bgp_log_output_format='text')]
+              [dict(log_enabled=true,
+                    log_group_arn=_cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn,
+                    log_output_format='text',
+                    bgp_log_enabled=true,
+                    bgp_log_group_arn=_cloudwatchlogs_log_group_info_dict['molecule-ec2-vpc-vpn'].arn,
+                    bgp_log_output_format='text')]
           - _ec2_vpc_vpn_info_dict['molecule-ec2-vpc-vpn-01'].state == 'available'
           - _ec2_vpc_vpn_info_dict['molecule-ec2-vpc-vpn-01'].options.local_ipv4_network_cidr == '10.20.0.0/16'
           - _ec2_vpc_vpn_info_dict['molecule-ec2-vpc-vpn-01'].pre_shared_key_arn is not defined

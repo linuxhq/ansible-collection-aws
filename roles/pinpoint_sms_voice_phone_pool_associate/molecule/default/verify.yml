@@ -23,14 +23,16 @@
             ].origination_identities |
             map(attribute='origination_identity') |
             sort ==
-            [_pinpoint_sms_voice_phone_number_info_dict[
-               'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-1'
-             ].phone_number_id,
-             _pinpoint_sms_voice_phone_number_info_dict[
-               'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-2'
-             ].phone_number_id,
-             'MOLECULEPA'] |
-            sort
+              [
+                _pinpoint_sms_voice_phone_number_info_dict[
+                  'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-1'
+                ].phone_number_id,
+                _pinpoint_sms_voice_phone_number_info_dict[
+                  'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-2'
+                ].phone_number_id,
+                'MOLECULEPA'
+              ] |
+              sort
           - _pinpoint_sms_voice_phone_pool_info_dict[
               'molecule-pinpoint-sms-voice-phone-pool-associate'
             ].origination_identities |
@@ -60,7 +62,7 @@
           - __pinpoint_sms_voice_phone_pool_associate_query is not changed
           - __pinpoint_sms_voice_phone_pool_associate_query.association.origination_identity == 'MOLECULEPA'
           - __pinpoint_sms_voice_phone_pool_associate_query.association.origination_identity_arn ==
-            _pinpoint_sms_voice_sender_id_info_list.0.sender_id_arn
+              _pinpoint_sms_voice_sender_id_info_list.0.sender_id_arn
           - __pinpoint_sms_voice_phone_pool_associate_query.association.iso_country_code == 'DE'
 
     - name: Ensure inventory lists are formatted
@@ -115,9 +117,9 @@
             ].origination_identities |
             map(attribute='origination_identity') |
             list ==
-            [_pinpoint_sms_voice_phone_number_info_dict[
-               'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-1'
-             ].phone_number_id]
+              [_pinpoint_sms_voice_phone_number_info_dict[
+                'molecule-pinpoint-sms-voice-phone-pool-associate-simulator-1'
+              ].phone_number_id]
           - _pinpoint_sms_voice_phone_pool_info_dict[
               'molecule-pinpoint-sms-voice-phone-pool-associate'
             ].origination_identities |

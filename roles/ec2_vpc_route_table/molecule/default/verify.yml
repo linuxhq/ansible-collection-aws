@@ -18,7 +18,7 @@
           - _ec2_vpc_route_table_info_dict[_rtb.name].associations |
             map(attribute='subnet_id') |
             sort ==
-            _rtb.subnets | sort
+              _rtb.subnets | sort
       loop: "{{ ec2_vpc_route_table_list.0.route_tables }}"
       loop_control:
         label: "{{ _rtb.name }}"

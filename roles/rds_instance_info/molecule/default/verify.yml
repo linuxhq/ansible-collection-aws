@@ -22,8 +22,8 @@
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].db_subnet_group.subnets |
             map(attribute='subnet_identifier') |
             sort ==
-            rds_subnet_group_list.0.subnets |
-            sort
+              rds_subnet_group_list.0.subnets |
+              sort
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].endpoint.address is defined
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].endpoint.port is defined
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb106'].engine ==
@@ -55,8 +55,8 @@
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].db_subnet_group.subnets |
             map(attribute='subnet_identifier') |
             sort ==
-            rds_subnet_group_list.0.subnets |
-            sort
+              rds_subnet_group_list.0.subnets |
+              sort
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].enabled_cloudwatch_logs_exports ==
               rds_instance_list.1.enable_cloudwatch_logs_exports
           - _rds_instance_info_dict['molecule-rds-instance-info-mariadb118'].endpoint.address is defined

@@ -16,8 +16,8 @@
         that:
           - _eks_cluster_info_dict['molecule-eks-cluster-00'].status == 'ACTIVE'
           - _eks_cluster_info_dict['molecule-eks-cluster-00'].encryption_config ==
-            [dict(provider=dict(key_arn=_kms_key_info_dict['molecule-eks-cluster'].key_arn),
-                  resources=['secrets'])]
+              [dict(provider=dict(key_arn=_kms_key_info_dict['molecule-eks-cluster'].key_arn),
+                    resources=['secrets'])]
           - _eks_cluster_info_dict['molecule-eks-cluster-00'].version == '1.33'
           - _eks_cluster_info_dict['molecule-eks-cluster-00'].resources_vpc_config.endpoint_private_access
           - not _eks_cluster_info_dict['molecule-eks-cluster-00'].resources_vpc_config.endpoint_public_access
@@ -88,11 +88,11 @@
           - not _eks_cluster_info_dict['molecule-eks-cluster-00'].resources_vpc_config.endpoint_private_access
           - _eks_cluster_info_dict['molecule-eks-cluster-00'].resources_vpc_config.endpoint_public_access
           - _eks_cluster_info_dict['molecule-eks-cluster-00'].resources_vpc_config.public_access_cidrs ==
-            ['69.107.10.200/29']
+              ['69.107.10.200/29']
           - _eks_cluster_info_dict['molecule-eks-cluster-01'].status == 'ACTIVE'
           - _eks_cluster_info_dict['molecule-eks-cluster-01'].encryption_config ==
-            [dict(provider=dict(key_arn=_kms_key_info_dict['molecule-eks-cluster'].key_arn),
-                  resources=['secrets'])]
+              [dict(provider=dict(key_arn=_kms_key_info_dict['molecule-eks-cluster'].key_arn),
+                    resources=['secrets'])]
           - _eks_cluster_info_dict['molecule-eks-cluster-01'].version == '1.35'
           - _eks_cluster_info_dict['molecule-eks-cluster-01'].resources_vpc_config.endpoint_private_access
           - not _eks_cluster_info_dict['molecule-eks-cluster-01'].resources_vpc_config.endpoint_public_access

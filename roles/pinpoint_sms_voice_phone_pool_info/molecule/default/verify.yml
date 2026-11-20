@@ -18,7 +18,7 @@
           - _pinpoint_sms_voice_phone_pool_info_dict[
               'molecule-pinpoint-sms-voice-phone-pool-info'
             ].origination_identities |
-              length == 1
+            length == 1
           - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].pool_arn is defined
           - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].pool_id is defined
           - _pinpoint_sms_voice_phone_pool_info_dict['molecule-pinpoint-sms-voice-phone-pool-info'].status == 'ACTIVE'

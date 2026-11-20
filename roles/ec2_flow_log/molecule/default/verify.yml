@@ -39,7 +39,7 @@
           - __ec2_flow_log_matches.0.log_destination_type == 's3'
           - __ec2_flow_log_matches.0.log_destination == ec2_flow_log_bucket_resource
           - __ec2_flow_log_matches.0.max_aggregation_interval ==
-            (60 if _flow_log.resource_type is match('TransitGateway') else 600)
+              (60 if _flow_log.resource_type is match('TransitGateway') else 600)
           - _flow_log.traffic_type is not defined or
             __ec2_flow_log_matches.0.traffic_type == _flow_log.traffic_type
       loop: "{{ ec2_flow_log_list }}"

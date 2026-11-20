@@ -129,13 +129,13 @@
             length == ses_identity_list |
             length * 3
           - __ses_identity_dkim_records.results |
-              map(attribute='resource_record_sets') |
-              map('length') |
-              min == 1
+            map(attribute='resource_record_sets') |
+            map('length') |
+            min == 1
           - __ses_identity_txt_records.results |
-              map(attribute='resource_record_sets') |
-              map('length') |
-              max == 0
+            map(attribute='resource_record_sets') |
+            map('length') |
+            max == 0
 
     - name: Ensure identity dkim record values are verified
       ansible.builtin.assert:
