@@ -1,0 +1,12 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - aws_caller_info
+    - s3_bucket
+    - ec2_vpc_net
+    - ec2_vpc_subnet
+    - ec2_transit_gateway
+    - ec2_transit_gateway_vpc_attachment
+...
