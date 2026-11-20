@@ -13,10 +13,6 @@ provisioner:
               is-public: true
               virtualization-type: hvm
 
-        ec2_instance_info_filters:
-          instance-state-name:
-            - running
-
         ec2_instance_list:
           - name: molecule-ssm-instance-info
             exact_count: 1
@@ -42,10 +38,6 @@ provisioner:
         ec2_vpc_igw_list:
           - name: molecule-ssm-instance-info
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-ssm-instance-info'].id | d(omit) }}"
-
-        ec2_vpc_nat_gateway_info_filters:
-          state:
-            - available
 
         ec2_vpc_nat_gateway_list:
           - name: molecule-ssm-instance-info-pub

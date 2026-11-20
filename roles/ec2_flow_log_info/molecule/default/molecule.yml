@@ -46,16 +46,8 @@ provisioner:
         ec2_flow_log_source_arn:
           "arn:aws:logs:us-east-1:{{ _aws_caller_info_account }}:*"
 
-        ec2_transit_gateway_info_filters:
-          state:
-            - available
-
         ec2_transit_gateway_list:
           - name: molecule-ec2-flow-log-info
-
-        ec2_transit_gateway_vpc_attachment_info_filters:
-          state:
-            - available
 
         ec2_transit_gateway_vpc_attachment_list:
           - name: molecule-ec2-flow-log-info

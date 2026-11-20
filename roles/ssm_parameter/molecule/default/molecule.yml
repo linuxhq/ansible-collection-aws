@@ -7,10 +7,6 @@ provisioner:
           - name: molecule-ssm-parameter
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-ssm-parameter'].id | d(omit) }}"
 
-        ec2_vpc_nat_gateway_info_filters:
-          state:
-            - available
-
         ec2_vpc_nat_gateway_list:
           - name: molecule-ssm-parameter
             if_exist_do_not_create: true

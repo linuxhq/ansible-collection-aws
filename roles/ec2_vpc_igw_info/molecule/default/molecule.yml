@@ -3,10 +3,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ec2_vpc_igw_info_filters:
-          attachment.state:
-            - available
-
         ec2_vpc_igw_list:
           - name: molecule-ec2-vpc-igw-info
             tags:

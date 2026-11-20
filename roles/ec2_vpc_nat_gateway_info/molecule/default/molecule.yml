@@ -7,10 +7,6 @@ provisioner:
           - name: molecule-ec2-vpc-nat-gateway-info
             vpc_id: "{{ _ec2_vpc_net_info_dict['molecule-ec2-vpc-nat-gateway-info'].id | d(omit) }}"
 
-        ec2_vpc_nat_gateway_info_filters:
-          state:
-            - available
-
         ec2_vpc_nat_gateway_list:
           - name: molecule-ec2-vpc-nat-gateway-info-pub-a
             tags:

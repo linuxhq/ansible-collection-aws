@@ -9,16 +9,8 @@ provisioner:
           - name: molecule-ec2-vpc-vpn-info-01
             ip_address: 1.1.1.21
 
-        ec2_transit_gateway_info_filters:
-          state:
-            - available
-
         ec2_transit_gateway_list:
           - name: molecule-ec2-vpc-vpn-info
-
-        ec2_vpc_vpn_info_filters:
-          state:
-            - available
 
         ec2_vpc_vpn_list:
           - name: molecule-ec2-vpc-vpn-info-00

@@ -12,10 +12,6 @@ provisioner:
               is-public: true
               virtualization-type: hvm
 
-        ec2_instance_info_filters:
-          instance-state-name:
-            - running
-
         ec2_instance_list:
           - name: molecule-elb-target-group-info-1
             exact_count: 1

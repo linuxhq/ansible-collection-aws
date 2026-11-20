@@ -3,10 +3,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ec2_vpc_endpoint_info_filters:
-          vpc-endpoint-state:
-            - available
-
         ec2_vpc_endpoint_list:
           - name: molecule-ec2-vpc-endpoint-info
             tags:

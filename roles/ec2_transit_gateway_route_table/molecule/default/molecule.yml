@@ -3,10 +3,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ec2_transit_gateway_info_filters:
-          state:
-            - available
-
         ec2_transit_gateway_list:
           - name: molecule-ec2-transit-gateway-route-table
 
@@ -34,10 +30,6 @@ provisioner:
                 blackhole: true
               - destination_cidr_block: 10.30.0.0/16
                 blackhole: true
-
-        ec2_transit_gateway_vpc_attachment_info_filters:
-          state:
-            - available
 
         ec2_transit_gateway_vpc_attachment_list:
           - name: molecule-ec2-transit-gateway-route-table

@@ -3,10 +3,6 @@ provisioner:
   inventory:
     group_vars:
       all:
-        ec2_transit_gateway_info_filters:
-          state:
-            - available
-
         ec2_transit_gateway_list:
           - name: molecule-ec2-transit-gateway-vpc-attachment
 

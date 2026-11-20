@@ -7,10 +7,6 @@ provisioner:
           - name: molecule-ec2-vpc-vgw-info
             cidr_block: 192.168.0.0/24
 
-        ec2_vpc_vgw_info_filters:
-          state:
-            - available
-
         ec2_vpc_vgw_list:
           - name: molecule-ec2-vpc-vgw-info
             tags:
