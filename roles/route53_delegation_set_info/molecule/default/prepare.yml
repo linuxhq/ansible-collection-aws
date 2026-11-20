@@ -1,0 +1,7 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - route53_delegation_set
+...

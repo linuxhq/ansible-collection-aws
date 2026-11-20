@@ -3,10 +3,5 @@
   hosts: all
 
   roles:
-    - role: route53_delegation_set
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
-
     - route53_delegation_set_info
 ...

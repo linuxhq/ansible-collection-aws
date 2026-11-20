@@ -5,8 +5,6 @@
   roles:
     - role: route53_delegation_set
       route53_delegation_set_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - route53_delegation_set
 ...
