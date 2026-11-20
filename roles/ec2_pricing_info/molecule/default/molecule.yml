@@ -1,5 +1,20 @@
 ---
 provisioner:
+  inventory:
+    group_vars:
+      all:
+        ec2_pricing_info_filters:
+          - field: instanceType
+            value: t3.micro
+          - field: regionCode
+            value: us-east-1
+          - field: operatingSystem
+            value: Linux
+          - field: tenancy
+            value: Shared
+          - field: preInstalledSw
+            value: NA
+
   options:
     diff: false
 

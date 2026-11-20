@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_security_group_info
+      ec2_security_group_info_filters: {}
+
     - ec2_security_group_info
 ...

@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: elb_application_lb_info
+      elb_application_lb_info_names: []
+
     - elb_application_lb_info
 ...

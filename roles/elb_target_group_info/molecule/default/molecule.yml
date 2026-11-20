@@ -43,6 +43,11 @@ provisioner:
                 az: us-east-1a
                 cidr: 192.168.0.0/24
 
+        elb_target_group_info_names:
+          "{{ elb_target_group_list |
+              d([]) |
+              map(attribute='name') }}"
+
         elb_target_group_list:
           - name: molecule-tg-info-8080
             health_check_interval: 10

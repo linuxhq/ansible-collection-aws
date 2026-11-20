@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_pricing_info
+      ec2_pricing_info_filters: []
+
     - ec2_pricing_info
 ...

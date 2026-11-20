@@ -3,5 +3,8 @@
   hosts: all
 
   roles:
+    - role: ec2_vpc_prefix_list_info
+      ec2_vpc_prefix_list_info_filters: {}
+
     - ec2_vpc_prefix_list_info
 ...

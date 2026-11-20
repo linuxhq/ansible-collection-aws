@@ -6,6 +6,12 @@ provisioner:
         ec2_transit_gateway_list:
           - name: molecule-ec2-transit-gateway-vpc-attachment-info
 
+        ec2_transit_gateway_vpc_attachment_info_filters:
+          tag:Name:
+            "{{ ec2_transit_gateway_vpc_attachment_list |
+                d([]) |
+                map(attribute='name') }}"
+
         ec2_transit_gateway_vpc_attachment_list:
           - name: molecule-ec2-transit-gateway-vpc-attachment-info
             tags:

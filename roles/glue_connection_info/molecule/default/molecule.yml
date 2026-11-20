@@ -27,6 +27,8 @@ provisioner:
                 az: us-east-1a
                 cidr: 192.168.0.0/24
 
+        glue_connection_info_name: "{{ glue_connection_list.0.name }}"
+
         glue_connection_list:
           - name: molecule-glue-connection-info
             availability_zone: us-east-1a

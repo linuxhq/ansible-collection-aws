@@ -26,6 +26,14 @@ provisioner:
             vpc_subnet_id: "{{ _ec2_vpc_subnet_info_dict['molecule-ec2-vol-info-c'].id |
                                d(omit) }}"
 
+        ec2_vol_info_filters:
+          tag:Name:
+            "{{ ec2_vol_list |
+                d([]) |
+                map(attribute='volumes') |
+                flatten |
+                map(attribute='name') }}"
+
         ec2_vol_list:
           - instance: "{{ _ec2_instance_info_dict['molecule-ec2-vol-info-a'].instance_id |
                           d(omit) }}"

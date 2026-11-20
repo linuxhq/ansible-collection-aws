@@ -3,6 +3,11 @@ provisioner:
   inventory:
     group_vars:
       all:
+        ecs_ecr_info_repository_names:
+          "{{ ecs_ecr_list |
+              d([]) |
+              map(attribute='name') }}"
+
         ecs_ecr_list:
           - name: molecule-ecs-ecr-info-00
             image_tag_mutability: immutable
