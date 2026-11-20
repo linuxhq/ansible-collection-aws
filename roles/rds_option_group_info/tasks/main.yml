@@ -4,7 +4,7 @@
     - rds_option_group_info
   amazon.aws.rds_option_group_info:
     engine_name: "{{ rds_option_group_info_engine_name or omit }}"
-    engine_version: "{{ rds_option_group_info_major_engine_version or omit }}"
+    major_engine_version: "{{ rds_option_group_info_major_engine_version or omit }}"
     marker: "{{ rds_option_group_info_marker or omit }}"
     max_records: "{{ rds_option_group_info_max_records }}"
     option_group_name: "{{ rds_option_group_info_option_group_name or omit }}"
