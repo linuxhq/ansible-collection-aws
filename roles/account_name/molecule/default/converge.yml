@@ -5,8 +5,6 @@
   roles:
     - role: account_name
       account_name_name: null
-      tags:
-        - molecule-idempotence-notest
 
     - account_name
 ...

@@ -3,13 +3,11 @@
   hosts: all
 
   roles:
-    - role: aws_region_info
-      check_mode: false
+    - aws_region_info
 
-    - role: ec2_instance_metadata
-      tags:
-        - molecule-idempotence-notest
-      check_mode: false
+    - role: ec2_instance_metadata_info
+      ec2_instance_metadata_info_regions:
+        - us-east-1
 
     - ec2_instance_metadata_info
 ...

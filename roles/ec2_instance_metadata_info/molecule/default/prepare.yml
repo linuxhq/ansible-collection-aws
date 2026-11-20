@@ -1,0 +1,8 @@
+---
+- name: Prepare
+  hosts: all
+
+  roles:
+    - aws_region_info
+    - ec2_instance_metadata
+...

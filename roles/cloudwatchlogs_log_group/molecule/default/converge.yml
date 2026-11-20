@@ -5,8 +5,6 @@
   roles:
     - role: cloudwatchlogs_log_group
       cloudwatchlogs_log_group_list: []
-      tags:
-        - molecule-idempotence-notest
 
     - cloudwatchlogs_log_group
 ...
