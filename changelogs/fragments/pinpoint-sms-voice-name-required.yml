@@ -10,4 +10,8 @@ minor_changes:
     ``Name`` tag equals ``name``, and fails without changes when several phone numbers have that tag.
   - pinpoint_sms_voice_phone_pool - ``state=absent`` without ``pool_id`` now deletes the pool whose ``Name`` tag
     equals ``name``, and fails without changes when several pools have that tag.
+  - pinpoint_sms_voice_phone_number role - an item with ``state=absent`` now needs only ``name``. The fields used to
+    request a number are passed only when set, and the module requires them when ``state=present``.
+  - pinpoint_sms_voice_phone_pool role - an item with ``state=absent`` now needs only ``name``. ``message_type`` and
+    ``origination_identity`` are passed only when set, and the module requires them when ``state=present``.
 ...
