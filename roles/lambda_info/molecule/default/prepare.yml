@@ -5,5 +5,13 @@
   roles:
     - aws_caller_info
     - iam_role
-    - lambda
+
+  tasks:
+    - name: Ensure iam role is propagated to lambda
+      ansible.builtin.pause:
+        seconds: 30
+
+    - name: Ensure lambda role is included
+      ansible.builtin.include_role:
+        name: lambda
 ...
