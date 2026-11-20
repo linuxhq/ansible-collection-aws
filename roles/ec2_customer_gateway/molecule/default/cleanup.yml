@@ -11,5 +11,4 @@
 
   roles:
     - ec2_customer_gateway
-
 ...
