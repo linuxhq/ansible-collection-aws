@@ -3,5 +3,10 @@
   hosts: all
 
   roles:
+    - role: ssm_session
+      ssm_session_kms_key_consumers: []
+      ssm_session_shell_profile_linux: null
+      tags: molecule-idempotence-notest
+
     - ssm_session
 ...
