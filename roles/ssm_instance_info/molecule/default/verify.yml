@@ -21,6 +21,7 @@
       ansible.builtin.include_role:
         name: ssm_instance_info
       vars:
+        ssm_instance_info_connection_status: false
         ssm_instance_info_instance_ids:
           - "{{ _ec2_instance_info_dict['molecule-ssm-instance-info'].instance_id }}"
 

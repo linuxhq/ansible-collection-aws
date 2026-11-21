@@ -28,6 +28,7 @@
       ansible.builtin.include_role:
         name: ec2_instance_type_info
       vars:
+        ec2_instance_type_info_instance_types: []
         ec2_instance_type_info_filters:
           current-generation: true
           instance-type:
