@@ -18,7 +18,8 @@
   tags:
     - lambda_event
   amazon.aws.lambda_info:
-    function_name: "{{ _function }}"
+    # lambda_info accepts a function name of at most 64 characters, not a function ARN.
+    function_name: "{{ _function.split(':function:') | last }}"
     query: mappings
     validate_certs: true
   register: __lambda_event_mappings
