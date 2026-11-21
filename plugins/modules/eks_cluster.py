@@ -382,6 +382,8 @@ options:
         cluster configuration update to complete before the next update or a version update, and for
         in-progress cluster updates to complete before deleting the cluster. These waits use
         O(wait_delay) and are bounded by O(wait_timeout).
+      - The module retries a cluster update or deletion that EKS rejects because an update is in progress,
+        every O(wait_delay) seconds within O(wait_timeout), even when O(wait=false).
     type: bool
   wait_delay:
     default: 15
@@ -1001,9 +1003,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     wait_deadline,
 )
 
-# EKS can run an internal update right after a cluster becomes active, and rejects new updates until it finishes.
-UPDATE_RETRY = AWSRetry.jittered_backoff(catch_extra_error_codes=["ResourceInUseException"])
-
 CREATE_FIELDS = [
     "access_config",
     "bootstrap_self_managed_addons",
@@ -1370,6 +1369,22 @@ def describe_update(client, module, update_id, changed=False):
         )
 
     return response["update"]
+
+
+def retry_while_in_use(module, operation, deadline, **request):
+    """Call a cluster update or delete operation, retrying while EKS reports an update in progress.
+
+    EKS can run internal updates, which ListUpdates does not return, for several minutes after a cluster becomes
+    active, and rejects new updates and deletion until they finish. The retries share the run's wait_timeout budget.
+    """
+    while True:
+        try:
+            return AWSRetry.jittered_backoff()(operation)(**request)
+        except is_boto3_error_code("ResourceInUseException"):
+            if time.monotonic() >= deadline:
+                raise
+
+            sleep_until_next_poll(module, deadline)
 
 
 def wait_for_update(client, module, update_id, changed=False, deadline=None):
@@ -2024,19 +2039,14 @@ def ensure_present(client, module, deadline=None):
     else:
         update_requests = sorted(update_requests, key=lambda update_request: "upgradePolicy" not in update_request)
 
-    # EKS can run its own update on an active cluster for longer than the update retries cover, so wait for
-    # in-progress updates before the first one.
-    if update_requests or version_changed:
-        wait_for_cluster_updates(client, module, deadline=deadline)
-
     # Failures after the first successful change report changed=True.
     mutated = False
     for index, update_request in enumerate(update_requests):
         try:
             if update_request is encryption_request:
-                response = UPDATE_RETRY(client.associate_encryption_config)(**update_request)
+                response = retry_while_in_use(module, client.associate_encryption_config, deadline, **update_request)
             else:
-                response = UPDATE_RETRY(client.update_cluster_config)(**update_request)
+                response = retry_while_in_use(module, client.update_cluster_config, deadline, **update_request)
         except (BotoCoreError, ClientError) as e:
             if update_request is encryption_request:
                 module.fail_json_aws(e, changed=mutated, msg=f"Unable to associate encryption with EKS cluster {name}")
@@ -2053,7 +2063,7 @@ def ensure_present(client, module, deadline=None):
 
     if version_changed:
         try:
-            response = UPDATE_RETRY(client.update_cluster_version)(name=name, version=version)
+            response = retry_while_in_use(module, client.update_cluster_version, deadline, name=name, version=version)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name} version")
 
@@ -2066,7 +2076,7 @@ def ensure_present(client, module, deadline=None):
 
     for update_request in policy_requests:
         try:
-            response = UPDATE_RETRY(client.update_cluster_config)(**update_request)
+            response = retry_while_in_use(module, client.update_cluster_config, deadline, **update_request)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name} upgrade policy")
 
@@ -2164,7 +2174,7 @@ def ensure_absent(client, module):
         {"delete_cluster": ("name",)},
     )
     try:
-        client.delete_cluster(name=name, aws_retry=True)
+        retry_while_in_use(module, client.delete_cluster, deadline, name=name)
     except is_boto3_error_code("ResourceNotFoundException"):
         exit_result(module, False, {}, "absent")
     except (BotoCoreError, ClientError) as e:

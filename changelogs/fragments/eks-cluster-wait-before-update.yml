@@ -1,6 +1,0 @@
----
-bugfixes:
-  - eks_cluster - before updating an existing cluster, wait for in-progress cluster updates to finish, within
-    ``wait_timeout``. EKS can run its own update on an active cluster for longer than the module retried, and then
-    rejected the next update with ``ResourceInUseException``.
-...

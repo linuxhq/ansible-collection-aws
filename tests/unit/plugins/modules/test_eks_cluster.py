@@ -16,15 +16,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_contract,
 )
 
-# Updates first wait for in-progress cluster updates; the tests of that wait call the real function.
-wait_for_cluster_updates = plugin.wait_for_cluster_updates
-
-
-@pytest.fixture(autouse=True)
-def cluster_updates():
-    with patch.object(plugin, "wait_for_cluster_updates") as wait:
-        yield wait
-
 
 class FakeModule(utils.FakeModule):
     """Supply the wait bounds that the argument spec always sets, unless a test overrides them."""
@@ -198,6 +189,29 @@ def test_log_type_repeated_with_the_same_state_is_accepted():
     ensure_present.assert_called_once_with(None, module)
 
 
+def test_absent_retries_delete_while_an_unlisted_update_is_in_progress():
+    in_use = plugin.ClientError(
+        {"Error": {"Code": "ResourceInUseException", "Message": "update in progress"}},
+        "DeleteCluster",
+    )
+    client = Mock()
+    # ListUpdates can return no in-progress updates while EKS still rejects the delete.
+    client.delete_cluster.side_effect = [in_use] * 20 + [{}]
+    module = FakeModule({"name": "example", "wait": False})
+    cluster = {"arn": "arn:example", "name": "example", "status": "ACTIVE"}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=cluster),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_cluster_updates", return_value=True),
+        patch.object(plugin.time, "sleep"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert client.delete_cluster.call_count == 21
+
+
 def test_absent_tolerates_cluster_disappearing_during_delete():
     client = Mock()
     client.delete_cluster.side_effect = plugin.ClientError(
@@ -228,7 +242,6 @@ def test_absent_reports_unchanged_when_the_cluster_disappears_before_listing_upd
     module = FakeModule({"name": "example", "wait": True, "wait_delay": 1, "wait_timeout": 60})
     with (
         patch.object(plugin, "describe_cluster", return_value={"name": "example", "status": "ACTIVE"}),
-        patch.object(plugin, "wait_for_cluster_updates", wait_for_cluster_updates),
         patch.object(plugin, "require_client_methods"),
         patch.object(
             plugin,
@@ -297,7 +310,8 @@ def test_update_retries_while_another_update_is_in_progress(method, updates, cur
         "UpdateClusterConfig",
     )
     client = Mock()
-    getattr(client, method).side_effect = [in_use, {"update": {"id": "update-1", "status": "InProgress"}}]
+    # More rejections than a jittered backoff retries: EKS internal updates can last several minutes.
+    getattr(client, method).side_effect = [in_use] * 20 + [{"update": {"id": "update-1", "status": "InProgress"}}]
     params = dict.fromkeys(plugin.CREATE_FIELDS)
     params.update({"name": "example", "purge_tags": True, "tags": None, "version": "1.34", "wait": False})
     params.update(updates)
@@ -321,7 +335,32 @@ def test_update_retries_while_another_update_is_in_progress(method, updates, cur
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"]
-    assert getattr(client, method).call_count == 2
+    assert getattr(client, method).call_count == 21
+
+
+def test_update_in_progress_rejection_is_raised_once_the_wait_budget_ends():
+    in_use = plugin.ClientError(
+        {"Error": {"Code": "ResourceInUseException", "Message": "update in progress"}},
+        "AssociateEncryptionConfig",
+    )
+    operation = Mock(side_effect=in_use)
+    with patch.object(plugin.time, "sleep") as sleep, pytest.raises(plugin.ClientError):
+        plugin.retry_while_in_use(FakeModule({}), operation, plugin.time.monotonic() - 1, name="example")
+
+    operation.assert_called_once_with(name="example")
+    sleep.assert_not_called()
+
+
+def test_update_does_not_retry_other_errors():
+    denied = plugin.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "UpdateClusterConfig"
+    )
+    operation = Mock(side_effect=denied)
+    with patch.object(plugin.time, "sleep") as sleep, pytest.raises(plugin.ClientError):
+        plugin.retry_while_in_use(FakeModule({}), operation, plugin.time.monotonic() + 1200, name="example")
+
+    operation.assert_called_once_with(name="example")
+    sleep.assert_not_called()
 
 
 def test_changed_request_contains_only_differences():
@@ -872,7 +911,7 @@ def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status, 
     client.tag_resource.assert_not_called()
 
 
-def run_present(module, described, client=None, wait_for_update=None, wait_for_updates=None):
+def run_present(module, described, client=None, wait_for_update=None):
     """Run ensure_present with describe results and waits mocked; return the client and the result."""
     client = client or Mock()
     client.update_cluster_config.return_value = {"update": {"id": "update-1", "status": "InProgress"}}
@@ -882,7 +921,6 @@ def run_present(module, described, client=None, wait_for_update=None, wait_for_u
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "require_nested_request_parameters"),
         patch.object(plugin, "wait_for_cluster"),
-        patch.object(plugin, "wait_for_cluster_updates", wait_for_updates or Mock()),
         patch.object(plugin, "wait_for_update", wait_for_update or Mock()),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1236,7 +1274,6 @@ def test_delete_waits_for_in_progress_cluster_updates_first():
     ]
     with (
         patch.object(plugin, "describe_cluster", return_value={"name": "example", "status": "ACTIVE"}),
-        patch.object(plugin, "wait_for_cluster_updates", wait_for_cluster_updates),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "paginated_query_with_retries", return_value={"updateIds": ["old", "auto"]}) as query,
         patch.object(plugin.time, "sleep"),
@@ -1425,37 +1462,6 @@ def test_encryption_is_associated_with_an_unencrypted_cluster(wait):
     assert check_client.mock_calls == []
     assert check["changed"] is True
     assert check["cluster"]["encryption_config"] == real["cluster"]["encryption_config"]
-
-
-def test_in_progress_updates_are_awaited_before_the_first_update():
-    client = Mock(associate_encryption_config=Mock(return_value={"update": {"id": "update-3", "status": "InProgress"}}))
-    events = Mock()
-    client.attach_mock(events, "events")
-    wait_for_updates = Mock(side_effect=lambda *args, **kwargs: events.wait_for_updates())
-    client, result = run_present(
-        FakeModule(eks_params(**ENCRYPTION_PARAMS)),
-        [UNENCRYPTED_CLUSTER] * 2,
-        client,
-        wait_for_updates=wait_for_updates,
-    )
-
-    calls = [entry[0] for entry in client.mock_calls]
-    assert calls[:2] == ["events.wait_for_updates", "associate_encryption_config"]
-    wait_for_updates.assert_called_once_with(client, ANY, deadline=ANY)
-    assert result["changed"] is True
-
-
-def test_unchanged_cluster_does_not_wait_for_updates():
-    stored = dict(UNENCRYPTED_CLUSTER, encryptionConfig=STORED_ENCRYPTION)
-    wait_for_updates = Mock()
-    client, result = run_present(
-        FakeModule(eks_params(**ENCRYPTION_PARAMS)), [stored], wait_for_updates=wait_for_updates
-    )
-
-    wait_for_updates.assert_not_called()
-    client.associate_encryption_config.assert_not_called()
-    client.update_cluster_config.assert_not_called()
-    assert result["changed"] is False
 
 
 @pytest.mark.parametrize("wait", [True, False])
@@ -1934,7 +1940,7 @@ def test_absent_deletes_a_cluster_that_fails_while_waiting(status):
         plugin.ensure_absent(client, module)
 
     stubber.assert_no_pending_responses()
-    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    client.delete_cluster.assert_called_once_with(name="example")
     assert raised.value.values["changed"] is True
     assert raised.value.values["cluster"]["status"] == "DELETING"
 
@@ -2239,7 +2245,7 @@ def test_cluster_updates_describe_history_once_and_poll_only_in_progress_updates
         patch.object(plugin, "paginated_query_with_retries", return_value={"updateIds": ["old", "first", "second"]}),
         patch.object(plugin.time, "sleep") as sleep,
     ):
-        wait_for_cluster_updates(client, module)
+        plugin.wait_for_cluster_updates(client, module)
 
     require.assert_called_once_with(
         module,
@@ -2272,7 +2278,7 @@ def test_cluster_updates_share_one_deadline():
         patch.object(plugin.time, "sleep"),
         pytest.raises(ModuleFail) as raised,
     ):
-        wait_for_cluster_updates(client, module)
+        plugin.wait_for_cluster_updates(client, module)
 
     assert raised.value.values["msg"] == "Timed out waiting for AWS EKS cluster updates first, second for example"
     assert client.describe_update.call_count == 4
@@ -2300,7 +2306,7 @@ def test_absent_with_wait_returns_an_empty_cluster_after_deletion():
         {"wait": True}, [{"name": "example", "status": "ACTIVE"}]
     )
 
-    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    client.delete_cluster.assert_called_once_with(name="example")
     wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted", changed=True, deadline=ANY)
     assert result["changed"] is True
     assert result["cluster"] == {}
@@ -2318,7 +2324,7 @@ def test_absent_without_wait_returns_the_cluster_as_it_is_being_deleted(reread, 
         {"wait": False}, [{"name": "example", "status": "ACTIVE"}, reread]
     )
 
-    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    client.delete_cluster.assert_called_once_with(name="example")
     wait_for_cluster.assert_not_called()
     assert describe.call_args_list[1].kwargs == {"changed": True}
     assert result["changed"] is True
@@ -4136,7 +4142,6 @@ def test_absent_waits_share_one_wait_timeout_budget():
     updating = {"arn": "arn:example", "name": "example", "status": "UPDATING"}
     with (
         patch.object(plugin, "describe_cluster", side_effect=[updating, dict(updating, status="ACTIVE")]),
-        patch.object(plugin, "wait_for_cluster_updates", wait_for_cluster_updates),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "paginated_query_with_retries", return_value={"updateIds": ["update-1"]}),
         patch.object(
