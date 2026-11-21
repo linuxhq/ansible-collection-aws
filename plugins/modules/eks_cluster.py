@@ -382,7 +382,7 @@ options:
         cluster configuration update to complete before the next update or a version update, and for
         in-progress cluster updates to complete before deleting the cluster. These waits use
         O(wait_delay) and are bounded by O(wait_timeout).
-      - The module retries a cluster update that EKS rejects because another update is in progress,
+      - The module retries a cluster update or deletion that EKS rejects because an update is in progress,
         every O(wait_delay) seconds within O(wait_timeout), even when O(wait=false).
     type: bool
   wait_delay:
@@ -1371,11 +1371,11 @@ def describe_update(client, module, update_id, changed=False):
     return response["update"]
 
 
-def request_update(module, operation, deadline, **request):
-    """Call a cluster update operation, retrying while EKS reports another update in progress.
+def retry_while_in_use(module, operation, deadline, **request):
+    """Call a cluster update or delete operation, retrying while EKS reports an update in progress.
 
     EKS can run internal updates, which ListUpdates does not return, for several minutes after a cluster becomes
-    active, and rejects new updates until they finish. The retries share the run's wait_timeout budget.
+    active, and rejects new updates and deletion until they finish. The retries share the run's wait_timeout budget.
     """
     while True:
         try:
@@ -2044,9 +2044,9 @@ def ensure_present(client, module, deadline=None):
     for index, update_request in enumerate(update_requests):
         try:
             if update_request is encryption_request:
-                response = request_update(module, client.associate_encryption_config, deadline, **update_request)
+                response = retry_while_in_use(module, client.associate_encryption_config, deadline, **update_request)
             else:
-                response = request_update(module, client.update_cluster_config, deadline, **update_request)
+                response = retry_while_in_use(module, client.update_cluster_config, deadline, **update_request)
         except (BotoCoreError, ClientError) as e:
             if update_request is encryption_request:
                 module.fail_json_aws(e, changed=mutated, msg=f"Unable to associate encryption with EKS cluster {name}")
@@ -2063,7 +2063,7 @@ def ensure_present(client, module, deadline=None):
 
     if version_changed:
         try:
-            response = request_update(module, client.update_cluster_version, deadline, name=name, version=version)
+            response = retry_while_in_use(module, client.update_cluster_version, deadline, name=name, version=version)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name} version")
 
@@ -2076,7 +2076,7 @@ def ensure_present(client, module, deadline=None):
 
     for update_request in policy_requests:
         try:
-            response = request_update(module, client.update_cluster_config, deadline, **update_request)
+            response = retry_while_in_use(module, client.update_cluster_config, deadline, **update_request)
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to update EKS cluster {name} upgrade policy")
 
@@ -2174,7 +2174,7 @@ def ensure_absent(client, module):
         {"delete_cluster": ("name",)},
     )
     try:
-        client.delete_cluster(name=name, aws_retry=True)
+        retry_while_in_use(module, client.delete_cluster, deadline, name=name)
     except is_boto3_error_code("ResourceNotFoundException"):
         exit_result(module, False, {}, "absent")
     except (BotoCoreError, ClientError) as e:

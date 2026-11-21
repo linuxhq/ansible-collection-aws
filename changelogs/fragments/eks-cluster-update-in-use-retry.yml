@@ -1,6 +1,7 @@
 ---
 bugfixes:
-  - eks_cluster - retry a cluster update that EKS rejects with ``ResourceInUseException`` every ``wait_delay``
-    seconds within ``wait_timeout``. EKS can run internal updates, which ``ListUpdates`` does not return, for
-    several minutes after a cluster becomes active, longer than the module previously retried.
+  - eks_cluster - retry a cluster update or deletion that EKS rejects with ``ResourceInUseException`` every
+    ``wait_delay`` seconds within ``wait_timeout``. EKS can run internal updates, which ``ListUpdates`` does not
+    return, for several minutes after a cluster becomes active, longer than the module previously retried updates.
+    Deletion was not retried.
 ...

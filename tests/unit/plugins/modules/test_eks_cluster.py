@@ -189,6 +189,29 @@ def test_log_type_repeated_with_the_same_state_is_accepted():
     ensure_present.assert_called_once_with(None, module)
 
 
+def test_absent_retries_delete_while_an_unlisted_update_is_in_progress():
+    in_use = plugin.ClientError(
+        {"Error": {"Code": "ResourceInUseException", "Message": "update in progress"}},
+        "DeleteCluster",
+    )
+    client = Mock()
+    # ListUpdates can return no in-progress updates while EKS still rejects the delete.
+    client.delete_cluster.side_effect = [in_use] * 20 + [{}]
+    module = FakeModule({"name": "example", "wait": False})
+    cluster = {"arn": "arn:example", "name": "example", "status": "ACTIVE"}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=cluster),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_cluster_updates", return_value=True),
+        patch.object(plugin.time, "sleep"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is True
+    assert client.delete_cluster.call_count == 21
+
+
 def test_absent_tolerates_cluster_disappearing_during_delete():
     client = Mock()
     client.delete_cluster.side_effect = plugin.ClientError(
@@ -322,7 +345,7 @@ def test_update_in_progress_rejection_is_raised_once_the_wait_budget_ends():
     )
     operation = Mock(side_effect=in_use)
     with patch.object(plugin.time, "sleep") as sleep, pytest.raises(plugin.ClientError):
-        plugin.request_update(FakeModule({}), operation, plugin.time.monotonic() - 1, name="example")
+        plugin.retry_while_in_use(FakeModule({}), operation, plugin.time.monotonic() - 1, name="example")
 
     operation.assert_called_once_with(name="example")
     sleep.assert_not_called()
@@ -334,7 +357,7 @@ def test_update_does_not_retry_other_errors():
     )
     operation = Mock(side_effect=denied)
     with patch.object(plugin.time, "sleep") as sleep, pytest.raises(plugin.ClientError):
-        plugin.request_update(FakeModule({}), operation, plugin.time.monotonic() + 1200, name="example")
+        plugin.retry_while_in_use(FakeModule({}), operation, plugin.time.monotonic() + 1200, name="example")
 
     operation.assert_called_once_with(name="example")
     sleep.assert_not_called()
@@ -1917,7 +1940,7 @@ def test_absent_deletes_a_cluster_that_fails_while_waiting(status):
         plugin.ensure_absent(client, module)
 
     stubber.assert_no_pending_responses()
-    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    client.delete_cluster.assert_called_once_with(name="example")
     assert raised.value.values["changed"] is True
     assert raised.value.values["cluster"]["status"] == "DELETING"
 
@@ -2283,7 +2306,7 @@ def test_absent_with_wait_returns_an_empty_cluster_after_deletion():
         {"wait": True}, [{"name": "example", "status": "ACTIVE"}]
     )
 
-    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    client.delete_cluster.assert_called_once_with(name="example")
     wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted", changed=True, deadline=ANY)
     assert result["changed"] is True
     assert result["cluster"] == {}
@@ -2301,7 +2324,7 @@ def test_absent_without_wait_returns_the_cluster_as_it_is_being_deleted(reread, 
         {"wait": False}, [{"name": "example", "status": "ACTIVE"}, reread]
     )
 
-    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    client.delete_cluster.assert_called_once_with(name="example")
     wait_for_cluster.assert_not_called()
     assert describe.call_args_list[1].kwargs == {"changed": True}
     assert result["changed"] is True
