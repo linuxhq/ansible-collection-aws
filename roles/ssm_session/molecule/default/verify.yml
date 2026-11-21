@@ -50,6 +50,19 @@
           - __ssm_send_command_result.command.parameters.commands == ['touch /tmp/molecule']
           - __ssm_send_command_result.command_id == __ssm_send_command_result.command.command_id
 
+    - name: Ensure aws systems manager instance is connected
+      linuxhq.aws.ssm_instance_info:
+        connection_status: true
+        instance_ids:
+          - "{{ _ec2_instance_info_dict[ec2_instance_list.0.name].instance_id }}"
+        validate_certs: true
+      register: __ssm_session_connection
+      until:
+        - __ssm_session_connection.instances.0.connection_status |
+          d('') == 'connected'
+      retries: 30
+      delay: 10
+
     - name: Ensure command result is gathered
       ansible.builtin.stat:
         path: /tmp/molecule
