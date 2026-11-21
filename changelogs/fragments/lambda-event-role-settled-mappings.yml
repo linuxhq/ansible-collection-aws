@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - lambda_event role - wait until the event source mappings of each function stop changing state. Before, the role
+    returned while a new mapping was still ``Creating``, and an immediate second run failed with
+    ``ResourceInUseException`` because ``amazon.aws.lambda_event`` tried to enable it.
+...
