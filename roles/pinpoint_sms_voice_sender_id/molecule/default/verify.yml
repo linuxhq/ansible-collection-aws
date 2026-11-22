@@ -67,8 +67,7 @@
         validate_certs: true
       register: __pinpoint_sms_voice_sender_id_protected
       failed_when:
-        - "'deletion protection is enabled' not in
-           __pinpoint_sms_voice_sender_id_protected.msg | d('')"
+        - __pinpoint_sms_voice_sender_id_protected.reason | d('') != 'DELETION_PROTECTION_ENABLED'
 
     - name: Ensure deletion protection is disabled and extra tags are purged
       ansible.builtin.include_role:
