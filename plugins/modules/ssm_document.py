@@ -546,7 +546,12 @@ def ensure_present(client, module):
 
             resource_changed = False
 
-    # DescribeDocument reports the default version, so the default version itself need not be read.
+    # DescribeDocument reports the default version, so the default version itself need not be read; a description
+    # read before current_document waited for a transitional version is read again, since another writer may have
+    # promoted it meanwhile.
+    if current is not None and (description or {}).get("Status") in TRANSITIONAL_STATUSES:
+        description = describe_ssm_document(module, client, module.params["name"], DocumentVersion="$LATEST")
+
     if (
         current is not None
         and not resource_changed

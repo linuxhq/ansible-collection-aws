@@ -1307,3 +1307,25 @@ def test_latest_promotion_uses_the_described_default_version(default_version, pr
         )
     else:
         client.update_document_default_version.assert_not_called()
+
+
+def test_default_version_is_read_again_after_waiting_for_the_latest_version():
+    # Another writer may promote the latest version while this run waits for it to settle.
+    content = {"schemaVersion": "2.2"}
+    current = document(content, DocumentVersion="2")
+    client = Mock()
+    descriptions = [
+        described(DefaultVersion="1", DocumentVersion="2", Status="Updating"),
+        described(DefaultVersion="2", DocumentVersion="2"),
+    ]
+    with (
+        patch.object(plugin, "describe_ssm_document", side_effect=descriptions) as describe,
+        patch.object(plugin, "get_document", side_effect=[current, current]),
+        patch.object(plugin, "wait_for_document"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params(content=content)))
+
+    assert raised.value.values["changed"] is False
+    assert describe.call_count == 2
+    client.update_document_default_version.assert_not_called()

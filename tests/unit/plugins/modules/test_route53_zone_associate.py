@@ -115,6 +115,17 @@ def test_empty_or_blank_zone_id_is_rejected_before_aws_calls(check_mode, state, 
     module.client.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("vpc_id", ["", " "])
+def test_blank_vpc_id_is_rejected_before_a_removal(check_mode, vpc_id):
+    # A blank VPC ID matches no association, so a removal would report success without calling Route 53.
+    module = FakeModule(params(state="absent", vpc_id=vpc_id), check_mode=check_mode)
+    module.client = Mock()
+
+    assert run_main(module) == "vpc_id must not be empty"
+    module.client.assert_not_called()
+
+
 def test_every_modeled_vpc_region_is_accepted():
     regions = Session().get_service_model("route53").shape_for("VPCRegion").enum
     for region in regions:

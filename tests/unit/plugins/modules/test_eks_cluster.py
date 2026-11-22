@@ -433,11 +433,16 @@ def test_update_in_progress_rejection_is_raised_once_the_wait_budget_ends():
         "AssociateEncryptionConfig",
     )
     operation = Mock(side_effect=in_use)
+    on_in_use = Mock()
     with patch.object(plugin.time, "sleep") as sleep, pytest.raises(plugin.ClientError):
-        plugin.retry_while_in_use(FakeModule({}), operation, plugin.time.monotonic() - 1, name="example")
+        plugin.retry_while_in_use(
+            FakeModule({}), operation, plugin.time.monotonic() - 1, on_in_use=on_in_use, name="example"
+        )
 
     operation.assert_called_once_with(name="example", aws_retry=True)
     sleep.assert_not_called()
+    # The rejection check reads AWS, so it runs only while the wait budget remains.
+    on_in_use.assert_not_called()
 
 
 def test_update_does_not_retry_other_errors():

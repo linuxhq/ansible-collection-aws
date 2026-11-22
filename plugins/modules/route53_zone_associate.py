@@ -35,6 +35,7 @@ options:
   vpc_id:
     description:
       - The VPC ID to associate with the hosted zone.
+      - When O(state=absent), this must not be empty.
     required: true
     type: str
   vpc_region:
@@ -360,6 +361,10 @@ def main():
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
     if not hosted_zone_id.strip():
         module.fail_json(msg="hosted_zone_id must identify a hosted zone")
+
+    # A blank VPC ID matches no association, so a removal would report success without calling Route 53.
+    if state == "absent" and not module.params["vpc_id"].strip():
+        module.fail_json(msg="vpc_id must not be empty")
 
     require_positive_wait_bounds(module)
 

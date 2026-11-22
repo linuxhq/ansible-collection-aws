@@ -903,6 +903,12 @@ def main():
         # updating the rule.
         require_non_blank(module, module.params["resolver_endpoint_id"], "resolver_endpoint_id")
 
+        for target_ip in module.params["target_ips"]:
+            # ansible-core counts an explicit null as set for required_one_of, and a target without an address would
+            # match any current target on its port, so the rule would never be sent to AWS.
+            if target_ip.get("ip") is None and target_ip.get("ipv6") is None:
+                module.fail_json(msg="target_ips entries must set ip or ipv6")
+
         normalized_targets = [
             json.dumps(comparable_target_ip(target_ip), sort_keys=True) for target_ip in module.params["target_ips"]
         ]

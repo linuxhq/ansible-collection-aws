@@ -201,14 +201,24 @@ def test_omitted_tags_do_not_gate_create_tags_parameter():
     assert "Tags" not in methods["create_resolver_rule"]
 
 
-@pytest.mark.parametrize(
-    "target_ips",
-    [[], [{"ip": None, "ipv6": None, "port": 53, "protocol": None, "server_name_indication": None}]],
-    ids=["empty", "no-address"],
-)
-def test_target_ips_that_aws_rejects_reach_the_provider(target_ips):
-    # AWS rejects an empty target list and a target without an address before changing anything.
-    module = FakeModule(rule_params(target_ips=target_ips))
+def test_target_without_an_address_is_rejected_before_aws():
+    # A target without an address would match any current target on its port, so AWS would never see it.
+    module = FakeModule(
+        rule_params(
+            target_ips=[{"ip": None, "ipv6": None, "port": 53, "protocol": None, "server_name_indication": None}]
+        )
+    )
+    module.client = Mock()
+    with patch.object(plugin, "AnsibleAWSModule", return_value=module), pytest.raises(ModuleFail) as raised:
+        plugin.main()
+
+    assert raised.value.values["msg"] == "target_ips entries must set ip or ipv6"
+    module.client.assert_not_called()
+
+
+def test_empty_target_ips_reach_the_provider():
+    # botocore rejects an empty target list before anything changes.
+    module = FakeModule(rule_params(target_ips=[]))
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),

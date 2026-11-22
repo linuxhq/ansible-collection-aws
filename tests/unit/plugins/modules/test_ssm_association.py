@@ -395,7 +395,6 @@ def test_association_name_requires_sdk_support_on_create():
         {"targets": [{"key": f"tag:Role{index}", "values": ["web"]} for index in range(6)]},
         {"targets": [{"key": " ", "values": ["web"]}]},
         {"targets": [{"key": "tag:Role", "values": []}]},
-        {"targets": []},
     ],
     ids=[
         "association-name",
@@ -405,7 +404,6 @@ def test_association_name_requires_sdk_support_on_create():
         "target-count",
         "target-key",
         "target-values",
-        "empty-targets",
     ],
 )
 def test_values_aws_validates_reach_the_association_lookup(overrides):
@@ -413,6 +411,24 @@ def test_values_aws_validates_reach_the_association_lookup(overrides):
     result, _require_client_methods = run_main(FakeModule(params(**overrides), client=Mock(), check_mode=True), [])
 
     assert isinstance(result, ModuleExit)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_targets_are_rejected_before_aws(check_mode):
+    # An empty list compares equal to an association that uses TargetMaps, so SSM would never see it.
+    module = FakeModule(params(targets=[]), check_mode=check_mode)
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "changed": False,
+        "msg": "targets must contain at least one entry; omit targets to keep the current targets",
+    }
+    module.client.assert_not_called()
 
 
 def test_longest_schedule_and_target_key_are_accepted():

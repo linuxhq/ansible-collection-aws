@@ -1385,11 +1385,11 @@ def retry_while_in_use(module, operation, deadline, on_in_use=None, **request):
         try:
             return operation(**request, aws_retry=True)
         except is_boto3_error_code("ResourceInUseException") as e:
-            if on_in_use is not None:
-                on_in_use(e)
-
             if time.monotonic() >= deadline:
                 raise
+
+            if on_in_use is not None:
+                on_in_use(e)
 
             sleep_until_next_poll(module, deadline)
 

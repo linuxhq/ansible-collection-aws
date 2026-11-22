@@ -47,6 +47,7 @@ options:
   targets:
     description:
       - The targets for the association.
+      - This must contain at least one target when specified.
       - When omitted, an existing association keeps its current targets, and a
         new association is created without targets.
     elements: dict
@@ -815,6 +816,14 @@ def main():
     tags = module.params["tags"]
 
     if state == "present":
+        # An empty list compares equal to an association without Targets, such as one using TargetMaps, so SSM would
+        # never see it; omitting targets is the way to keep them.
+        if module.params["targets"] == []:
+            module.fail_json(
+                changed=False,
+                msg="targets must contain at least one entry; omit targets to keep the current targets",
+            )
+
         require_valid_tags(module, tags, restricted_characters=True)
 
     client = module.client(
