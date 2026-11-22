@@ -122,6 +122,20 @@ def test_content_is_sent_compared_and_returned_unchanged():
     assert not result.values["changed"]
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_with_empty_tags_returns_empty_tags(check_mode):
+    # CreateDocument may omit Tags, and the module returns tags whenever O(tags) is set.
+    content = {"schemaVersion": "2.2"}
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    result, _wait, _get = run_present(
+        client, FakeModule(params(content=content, tags={}), check_mode=check_mode), [None, document(content)]
+    )
+
+    assert result.values["document"]["tags"] == {}
+    client.add_tags_to_resource.assert_not_called()
+
+
 def test_snake_case_content_is_not_converted():
     client = Mock()
     client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}

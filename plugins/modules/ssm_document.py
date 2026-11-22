@@ -594,9 +594,9 @@ def ensure_present(client, module):
                 wait_for_document(client, module, "active", current["DocumentVersion"], changed=True, deadline=deadline)
 
             current["Content"] = desired_content
-            if tags:
-                current["Tags"] = request["Tags"]
-            elif tags is None:
+            if tags is not None:
+                current["Tags"] = request.get("Tags", [])
+            else:
                 # CreateDocument returns Tags even when none were sent; tags are returned only when O(tags) is set.
                 current.pop("Tags", None)
 
