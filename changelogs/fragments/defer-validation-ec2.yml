@@ -13,9 +13,6 @@ minor_changes:
     is now left to EC2, which creates a connection attached to no gateway.
   - ec2_vpc_vpn - creating an IPv6 connection without a transit gateway or VPN concentrator is now left to EC2
     instead of being rejected by the module.
-bugfixes:
-  - ec2_transit_gateway_route_table_info - return a route table once when O(transit_gateway_route_table_ids)
-    spans several requests and a wildcard ID matches the same route table in more than one of them.
 trivial:
   - ec2_flow_log - check that the SDK supports C(DeleteFlowLogs) once before deleting flow logs with
     O(state=absent), and report a failed delete in one place.
