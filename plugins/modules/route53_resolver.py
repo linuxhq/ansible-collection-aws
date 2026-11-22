@@ -1003,7 +1003,12 @@ def ip_address_changes(listed_ip_addresses, desired_ip_addresses):
         [comparable_ip_address(ip_address) for ip_address in current_ip_addresses],
         [comparable_ip_address(ip_address) for ip_address in desired_ip_addresses],
     )
-    ip_addresses_to_add = [ip_address for ip_address, match in zip(desired_ip_addresses, matches) if match is None]
+    # Explicit addresses are added first, so an automatic assignment cannot take one that a later entry requests.
+    ip_addresses_to_add = sorted(
+        (ip_address for ip_address, match in zip(desired_ip_addresses, matches) if match is None),
+        key=lambda item: len(comparable_ip_address(item)),
+        reverse=True,
+    )
     remaining = [ip_address for index, ip_address in enumerate(current_ip_addresses) if index not in matches]
 
     # Replace failed addresses as well as unwanted ones; additions run first so the endpoint keeps capacity.

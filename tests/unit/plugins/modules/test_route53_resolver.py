@@ -2847,6 +2847,25 @@ def test_ip_address_changes_pair_entries_with_the_shared_matching():
     assert plugin.ip_address_changes(listed, [{"subnet_id": "subnet-1"}, {"ip": "10.0.0.10"}]) == []
 
 
+def test_ip_address_changes_add_explicit_addresses_before_automatic_ones():
+    # Resolver assigns an address for a subnet-only entry, which could take one that a later entry requests.
+    listed = [
+        {"Ip": "10.0.0.10", "IpId": "rni-a", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+        {"Ip": "10.0.0.20", "IpId": "rni-b", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+    ]
+    desired = [
+        {"ip": "10.0.0.10", "subnet_id": "subnet-1"},
+        {"ip": "10.0.0.20", "subnet_id": "subnet-1"},
+        {"subnet_id": "subnet-1"},
+        {"ip": "10.0.0.30", "subnet_id": "subnet-1"},
+    ]
+
+    assert plugin.ip_address_changes(listed, desired) == [
+        ("add", {"ip": "10.0.0.30", "subnet_id": "subnet-1"}),
+        ("add", {"subnet_id": "subnet-1"}),
+    ]
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_reused_address_on_an_endpoint_with_two_addresses_fails_before_any_write(check_mode):
     # Live: DisassociateResolverEndpointIpAddress refuses to leave fewer than 2 addresses with
