@@ -291,11 +291,21 @@ def test_list_cluster_compute_treats_a_deleted_cluster_as_without_compute():
 def test_list_cluster_compute_stops_reading_at_the_deadline():
     # The scan only explains a rejection, so it ends with the wait budget instead of extending it.
     client = compute_client([["ng-1", "ng-2"], ["ng-3"]], [["fp-1"]])
-    with patch.object(plugin.time, "monotonic", side_effect=[99, 101]):
+    with patch.object(plugin.time, "monotonic", side_effect=[99, 99, 101]):
         assert plugin.list_cluster_compute(client, FakeModule({"name": "example"}), deadline=100) == (["ng-1"], [])
 
     client.describe_nodegroup.assert_called_once_with(clusterName="example", nodegroupName="ng-1")
     client.describe_fargate_profile.assert_not_called()
+
+
+def test_list_cluster_compute_starts_no_listing_after_the_deadline():
+    denied = plugin.ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "ListNodegroups")
+    client = Mock()
+    client.get_paginator.return_value.paginate.side_effect = denied
+    with patch.object(plugin.time, "monotonic", side_effect=[99, 101]):
+        assert plugin.list_cluster_compute(client, FakeModule({"name": "example"}), deadline=100) == ([], [])
+
+    client.get_paginator.assert_called_once_with("list_nodegroups")
 
 
 def test_list_cluster_compute_keeps_confirmed_blockers_when_another_listing_fails():

@@ -1416,6 +1416,9 @@ def list_cluster_compute(client, module, deadline=None):
     )
     compute = ([], [])
     for (list_method, list_key, describe_method, describe_key, name_key), active in zip(listings, compute):
+        if deadline is not None and time.monotonic() >= deadline:
+            return compute
+
         try:
             for page in client.get_paginator(list_method).paginate(clusterName=name):
                 for item in page.get(list_key, []):
