@@ -387,7 +387,7 @@ options:
       - When EKS rejects a deletion because the cluster has managed node groups or Fargate profiles that are not being
         deleted, the module fails at once and names them; it keeps retrying while they are being deleted. It reads
         them with C(eks:ListNodegroups), C(eks:ListFargateProfiles), C(eks:DescribeNodegroup), and
-        C(eks:DescribeFargateProfile).
+        C(eks:DescribeFargateProfile), and keeps retrying when it cannot read them.
     type: bool
   wait_delay:
     default: 15
@@ -1419,11 +1419,10 @@ def list_cluster_compute(client, module):
             )
             not in (None, "DELETING")
         ]
-    except is_boto3_error_code("ResourceNotFoundException"):
-        # The cluster was deleted after the rejection; the next DeleteCluster call reports it.
+    except (BotoCoreError, ClientError):
+        # The listing only explains the rejection: when the cluster is gone or the caller cannot read its compute,
+        # DeleteCluster keeps being retried within the wait budget, as before the listing existed.
         return [], []
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to list node groups and Fargate profiles of EKS cluster {name}")
 
     return nodegroups, fargate_profiles
 

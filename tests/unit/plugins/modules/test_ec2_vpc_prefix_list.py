@@ -369,6 +369,28 @@ def test_empty_entries_reach_ec2(check_mode):
     ensure_present.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"entries": None}, "state is present but all of the following are missing: entries"),
+        ({"entries": [], "max_entries": 0}, "max_entries must be at least 1"),
+    ],
+    ids=["null-entries", "zero-size"],
+)
+def test_inputs_that_would_fail_after_a_write_are_rejected_before_aws(overrides, message):
+    # A zero size fails only in the resize, after the entries of an existing prefix list are removed.
+    module = FakeModule(main_params(**overrides), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == message
+    ensure_present.assert_not_called()
+
+
 def test_empty_entries_remove_every_entry_of_an_existing_prefix_list():
     client = Mock()
     module = FakeModule(present_params([]))

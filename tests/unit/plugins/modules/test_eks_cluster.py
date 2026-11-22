@@ -283,15 +283,11 @@ def test_list_cluster_compute_treats_a_deleted_cluster_as_without_compute():
         assert plugin.list_cluster_compute("client", FakeModule({"name": "example"})) == ([], [])
 
 
-def test_list_cluster_compute_reports_other_errors():
+def test_list_cluster_compute_is_best_effort_when_it_cannot_read_compute():
+    # A caller allowed to delete the cluster but not to list its compute keeps the delete retries it had before.
     denied = plugin.ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "ListNodegroups")
-    with (
-        patch.object(plugin, "paginated_query_with_retries", side_effect=denied),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.list_cluster_compute("client", FakeModule({"name": "example"}))
-
-    assert raised.value.values["msg"] == "Unable to list node groups and Fargate profiles of EKS cluster example"
+    with patch.object(plugin, "paginated_query_with_retries", side_effect=denied):
+        assert plugin.list_cluster_compute("client", FakeModule({"name": "example"})) == ([], [])
 
 
 def test_absent_tolerates_cluster_disappearing_during_delete():

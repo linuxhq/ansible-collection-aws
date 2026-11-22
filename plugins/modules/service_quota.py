@@ -45,6 +45,7 @@ options:
     description:
       - The desired quota value.
       - AWS accepts values from 0 to 10000000000.
+      - A NaN or negative infinite value fails before AWS is called, because it never exceeds the current quota.
     required: true
     type: float
 extends_documentation_fragment:
@@ -454,9 +455,10 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
-    # A NaN value compares as never larger than the current quota, so the run would silently request nothing.
-    if math.isnan(module.params["value"]):
-        module.fail_json(msg="value must be a number")
+    # A NaN or negative infinite value is never larger than the current quota, so the run would silently request
+    # nothing.
+    if math.isnan(module.params["value"]) or module.params["value"] == -math.inf:
+        module.fail_json(msg="value must be a finite number or infinity")
 
     # An empty context ID would silently turn a resource-level request into an account-level one.
     if module.params["context_id"] == "":

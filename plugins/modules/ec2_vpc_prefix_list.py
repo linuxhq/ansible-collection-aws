@@ -59,7 +59,7 @@ options:
       - When set, the prefix list is resized to this value, including shrinking it.
       - Set this above the number of O(entries) to leave headroom, so entry changes do not
         resize the prefix list.
-      - This must be at least the number of O(entries).
+      - This must be at least 1 and at least the number of O(entries).
     type: int
     version_added: "2.6.0"
   name:
@@ -981,7 +981,15 @@ def main():
     tags = module.params["tags"]
 
     if state == "present":
+        # required_if counts only supplied keys, so an explicit null passes it.
+        if entries is None:
+            module.fail_json(msg="state is present but all of the following are missing: entries")
+
         max_entries = module.params.get("max_entries")
+        # EC2 rejects a zero size only in the resize, after the entries of an existing prefix list are written.
+        if max_entries is not None and max_entries < 1:
+            module.fail_json(msg="max_entries must be at least 1")
+
         if max_entries is not None and max_entries < len(entries):
             module.fail_json(msg="max_entries must be at least the number of entries")
 

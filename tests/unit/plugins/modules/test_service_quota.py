@@ -57,14 +57,15 @@ def test_module_contract():
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-def test_rejects_a_nan_quota_value():
+@pytest.mark.parametrize("value", [float("nan"), float("-inf")], ids=["nan", "negative-infinity"])
+def test_rejects_a_quota_value_that_never_exceeds_the_current_one(value):
     with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(value=float("nan")))),
+        patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(value=value))),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "value must be a number"
+    assert raised.value.values["msg"] == "value must be a finite number or infinity"
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
