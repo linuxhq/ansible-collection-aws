@@ -1401,46 +1401,45 @@ def list_cluster_compute(client, module, deadline=None):
     """Return the names of the cluster's managed node groups and Fargate profiles that are not being deleted.
 
     Compute that is being deleted blocks DeleteCluster only until it is gone, so the delete keeps retrying for it. The
-    reads stop once deadline passes, and then report no compute, so the delete retries end within the wait budget.
+    reads only explain a rejection, so each is made once without retries, and they stop once deadline passes.
     """
     name = module.params["name"]
+    # EKS allows at most 30 managed node groups and 10 Fargate profiles per cluster, so one page holds every name.
     listings = (
-        ("list_nodegroups", "nodegroups", client.describe_nodegroup, "nodegroup", "nodegroupName"),
+        ("list_nodegroups", "nodegroups", "describe_nodegroup", "nodegroup", "nodegroupName"),
         (
             "list_fargate_profiles",
             "fargateProfileNames",
-            client.describe_fargate_profile,
+            "describe_fargate_profile",
             "fargateProfile",
             "fargateProfileName",
         ),
     )
     compute = ([], [])
-    for (list_method, list_key, describe, describe_key, name_key), active in zip(listings, compute):
-        if deadline is not None and time.monotonic() >= deadline:
-            return [], []
-
+    for (list_method, list_key, describe_method, describe_key, name_key), active in zip(listings, compute):
         try:
-            for item in paginated_query_with_retries(client, list_method, clusterName=name)[list_key]:
-                if deadline is not None and time.monotonic() >= deadline:
-                    return [], []
+            if deadline is not None and time.monotonic() >= deadline:
+                break
 
-                status = compute_status(describe, describe_key, clusterName=name, **{name_key: item})
-                if status not in (None, "DELETING"):
+            for item in getattr(client, list_method)(clusterName=name, maxResults=100).get(list_key, []):
+                if deadline is not None and time.monotonic() >= deadline:
+                    break
+
+                try:
+                    status = getattr(client, describe_method)(clusterName=name, **{name_key: item})[describe_key][
+                        "status"
+                    ]
+                except is_boto3_error_code("ResourceNotFoundException"):
+                    continue
+
+                if status != "DELETING":
                     active.append(item)
         except (BotoCoreError, ClientError):
-            # The listing only explains the rejection: compute the caller cannot read, or of a cluster that is gone,
-            # is not reported, and DeleteCluster keeps being retried within the wait budget.
+            # Compute the caller cannot read, or of a cluster that is gone, is not reported, and DeleteCluster keeps
+            # being retried within the wait budget.
             continue
 
     return compute
-
-
-def compute_status(operation, result_key, **request):
-    """Return a node group's or Fargate profile's status, or None once it is gone."""
-    try:
-        return operation(**request, aws_retry=True)[result_key]["status"]
-    except is_boto3_error_code("ResourceNotFoundException"):
-        return None
 
 
 def require_no_cluster_compute(client, module, error, deadline=None):
@@ -2238,8 +2237,8 @@ def ensure_absent(client, module):
             "delete_cluster": ("name",),
             "describe_fargate_profile": ("clusterName", "fargateProfileName"),
             "describe_nodegroup": ("clusterName", "nodegroupName"),
-            "list_fargate_profiles": ("clusterName", "maxResults", "nextToken"),
-            "list_nodegroups": ("clusterName", "maxResults", "nextToken"),
+            "list_fargate_profiles": ("clusterName", "maxResults"),
+            "list_nodegroups": ("clusterName", "maxResults"),
         },
     )
     try:
