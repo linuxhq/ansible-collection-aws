@@ -232,39 +232,49 @@ def test_absent_fails_at_once_when_attached_compute_blocks_the_delete(nodegroups
     sleep.assert_not_called()
 
 
-def compute_client(nodegroups=(), fargate_profiles=()):
+def compute_client(nodegroups=((),), fargate_profiles=((),)):
+    """Return a client whose listings return the given pages of names."""
+    pages = {
+        "list_nodegroups": [{"nodegroups": list(page)} for page in nodegroups],
+        "list_fargate_profiles": [{"fargateProfileNames": list(page)} for page in fargate_profiles],
+    }
     client = Mock()
-    client.list_nodegroups.return_value = {"nodegroups": list(nodegroups)}
-    client.list_fargate_profiles.return_value = {"fargateProfileNames": list(fargate_profiles)}
+    client.get_paginator.side_effect = lambda method: Mock(paginate=Mock(return_value=iter(pages[method])))
     client.describe_nodegroup.return_value = {"nodegroup": {"status": "ACTIVE"}}
     client.describe_fargate_profile.return_value = {"fargateProfile": {"status": "ACTIVE"}}
     return client
 
 
-def test_list_cluster_compute_reads_node_groups_and_fargate_profiles_once_without_retries():
-    client = compute_client(["ng-1", "ng-2"], ["fp-1"])
+def test_list_cluster_compute_reads_every_page_without_retries():
+    client = compute_client([["ng-1"], ["ng-2"]], [["fp-1"]])
     assert plugin.list_cluster_compute(client, FakeModule({"name": "example"})) == (["ng-1", "ng-2"], ["fp-1"])
 
-    client.list_nodegroups.assert_called_once_with(clusterName="example", maxResults=100)
-    client.list_fargate_profiles.assert_called_once_with(clusterName="example", maxResults=100)
+    assert [args.args[0] for args in client.get_paginator.call_args_list] == [
+        "list_nodegroups",
+        "list_fargate_profiles",
+    ]
     client.describe_nodegroup.assert_any_call(clusterName="example", nodegroupName="ng-2")
     client.describe_fargate_profile.assert_called_once_with(clusterName="example", fargateProfileName="fp-1")
 
 
 def test_list_cluster_compute_treats_an_omitted_list_as_empty():
     # Both result lists are optional in the EKS model.
-    client = compute_client(fargate_profiles=["fp-1"])
-    client.list_nodegroups.return_value = {}
+    client = compute_client(fargate_profiles=[["fp-1"]])
+    client.get_paginator.side_effect = lambda method: Mock(
+        paginate=Mock(return_value=iter([{}] if method == "list_nodegroups" else [{"fargateProfileNames": ["fp-1"]}]))
+    )
     assert plugin.list_cluster_compute(client, FakeModule({"name": "example"})) == ([], ["fp-1"])
 
 
-def test_list_cluster_compute_omits_compute_that_is_being_deleted_or_gone():
+def test_list_cluster_compute_omits_compute_that_is_being_deleted_gone_or_unreadable():
     # DeleteCluster stays rejected only until compute that is being deleted is gone, so the delete keeps retrying.
     missing = plugin.ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}}, "Describe")
-    client = compute_client(["deleting", "gone", "active"], ["deleting"])
+    denied = plugin.ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "Describe")
+    client = compute_client([["deleting", "gone", "denied", "active"]], [["deleting"]])
     client.describe_nodegroup.side_effect = [
         {"nodegroup": {"status": "DELETING"}},
         missing,
+        denied,
         {"nodegroup": {"status": "DEGRADED"}},
     ]
     client.describe_fargate_profile.return_value = {"fargateProfile": {"status": "DELETING"}}
@@ -273,21 +283,19 @@ def test_list_cluster_compute_omits_compute_that_is_being_deleted_or_gone():
 
 def test_list_cluster_compute_treats_a_deleted_cluster_as_without_compute():
     missing = plugin.ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}}, "ListNodegroups")
-    client = compute_client()
-    client.list_nodegroups.side_effect = missing
-    client.list_fargate_profiles.side_effect = missing
+    client = Mock()
+    client.get_paginator.return_value.paginate.side_effect = missing
     assert plugin.list_cluster_compute(client, FakeModule({"name": "example"})) == ([], [])
 
 
 def test_list_cluster_compute_stops_reading_at_the_deadline():
     # The scan only explains a rejection, so it ends with the wait budget instead of extending it.
-    client = compute_client(["ng-1", "ng-2"], ["fp-1"])
-    with patch.object(plugin.time, "monotonic", side_effect=[99, 101, 101]):
-        assert plugin.list_cluster_compute(client, FakeModule({"name": "example"}), deadline=100) == ([], [])
+    client = compute_client([["ng-1", "ng-2"], ["ng-3"]], [["fp-1"]])
+    with patch.object(plugin.time, "monotonic", side_effect=[99, 101]):
+        assert plugin.list_cluster_compute(client, FakeModule({"name": "example"}), deadline=100) == (["ng-1"], [])
 
-    client.list_nodegroups.assert_called_once()
-    client.describe_nodegroup.assert_not_called()
-    client.list_fargate_profiles.assert_not_called()
+    client.describe_nodegroup.assert_called_once_with(clusterName="example", nodegroupName="ng-1")
+    client.describe_fargate_profile.assert_not_called()
 
 
 def test_list_cluster_compute_keeps_confirmed_blockers_when_another_listing_fails():
@@ -296,14 +304,13 @@ def test_list_cluster_compute_keeps_confirmed_blockers_when_another_listing_fail
     denied = plugin.ClientError(
         {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "ListFargateProfiles"
     )
-    client = compute_client(["ng-1"])
-    client.list_fargate_profiles.side_effect = denied
+    client = compute_client([["ng-1"]])
+    paginators = {
+        "list_nodegroups": Mock(paginate=Mock(return_value=iter([{"nodegroups": ["ng-1"]}]))),
+        "list_fargate_profiles": Mock(paginate=Mock(side_effect=denied)),
+    }
+    client.get_paginator.side_effect = paginators.__getitem__
     assert plugin.list_cluster_compute(client, FakeModule({"name": "example"})) == (["ng-1"], [])
-
-    client = compute_client()
-    client.list_nodegroups.side_effect = denied
-    client.list_fargate_profiles.side_effect = denied
-    assert plugin.list_cluster_compute(client, FakeModule({"name": "example"})) == ([], [])
 
 
 def test_absent_tolerates_cluster_disappearing_during_delete():
@@ -334,8 +341,8 @@ def test_absent_tolerates_cluster_disappearing_during_delete():
             "delete_cluster": ("name",),
             "describe_fargate_profile": ("clusterName", "fargateProfileName"),
             "describe_nodegroup": ("clusterName", "nodegroupName"),
-            "list_fargate_profiles": ("clusterName", "maxResults"),
-            "list_nodegroups": ("clusterName", "maxResults"),
+            "list_fargate_profiles": ("clusterName", "maxResults", "nextToken"),
+            "list_nodegroups": ("clusterName", "maxResults", "nextToken"),
         },
     )
     assert raised.value.values["changed"] is False

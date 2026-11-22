@@ -1404,7 +1404,6 @@ def list_cluster_compute(client, module, deadline=None):
     reads only explain a rejection, so each is made once without retries, and they stop once deadline passes.
     """
     name = module.params["name"]
-    # EKS allows at most 30 managed node groups and 10 Fargate profiles per cluster, so one page holds every name.
     listings = (
         ("list_nodegroups", "nodegroups", "describe_nodegroup", "nodegroup", "nodegroupName"),
         (
@@ -1418,25 +1417,25 @@ def list_cluster_compute(client, module, deadline=None):
     compute = ([], [])
     for (list_method, list_key, describe_method, describe_key, name_key), active in zip(listings, compute):
         try:
-            if deadline is not None and time.monotonic() >= deadline:
-                break
+            for page in client.get_paginator(list_method).paginate(clusterName=name):
+                for item in page.get(list_key, []):
+                    if deadline is not None and time.monotonic() >= deadline:
+                        return compute
 
-            for item in getattr(client, list_method)(clusterName=name, maxResults=100).get(list_key, []):
+                    try:
+                        response = getattr(client, describe_method)(clusterName=name, **{name_key: item})
+                    except (BotoCoreError, ClientError):
+                        # Compute that is gone, or that the caller cannot read, is not reported.
+                        continue
+
+                    if response[describe_key]["status"] != "DELETING":
+                        active.append(item)
+
                 if deadline is not None and time.monotonic() >= deadline:
-                    break
-
-                try:
-                    status = getattr(client, describe_method)(clusterName=name, **{name_key: item})[describe_key][
-                        "status"
-                    ]
-                except is_boto3_error_code("ResourceNotFoundException"):
-                    continue
-
-                if status != "DELETING":
-                    active.append(item)
+                    return compute
         except (BotoCoreError, ClientError):
-            # Compute the caller cannot read, or of a cluster that is gone, is not reported, and DeleteCluster keeps
-            # being retried within the wait budget.
+            # A listing of a cluster that is gone, or that the caller cannot read, reports no compute, and DeleteCluster
+            # keeps being retried within the wait budget.
             continue
 
     return compute
@@ -2237,8 +2236,8 @@ def ensure_absent(client, module):
             "delete_cluster": ("name",),
             "describe_fargate_profile": ("clusterName", "fargateProfileName"),
             "describe_nodegroup": ("clusterName", "nodegroupName"),
-            "list_fargate_profiles": ("clusterName", "maxResults"),
-            "list_nodegroups": ("clusterName", "maxResults"),
+            "list_fargate_profiles": ("clusterName", "maxResults", "nextToken"),
+            "list_nodegroups": ("clusterName", "maxResults", "nextToken"),
         },
     )
     try:
