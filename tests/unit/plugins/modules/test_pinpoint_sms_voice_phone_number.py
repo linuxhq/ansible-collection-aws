@@ -3,6 +3,7 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 from botocore.session import get_session
+from botocore.stub import Stubber
 
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 
@@ -217,6 +218,42 @@ def test_null_iso_country_code_is_rejected_before_any_aws_call(check_mode):
     assert raised.value.values == {"msg": "state is present but all of the following are missing: iso_country_code"}
     connect.assert_not_called()
     ensure_present.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_number_capabilities_are_rejected_by_botocore_before_any_write(check_mode):
+    # The phone number search sends them as a filter, which botocore rejects in both modes before any request.
+    client = get_session().create_client(
+        "pinpoint-sms-voice-v2", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x"
+    )
+    stubber = Stubber(client)
+    stubber.add_response("describe_phone_numbers", {"PhoneNumbers": []})
+    module = FakeModule(
+        phone_number_params(number_capabilities=[], wait_delay=5, wait_timeout=600),
+        check_mode=check_mode,
+        client=client,
+    )
+
+    def fail_json_aws(exception, **values):
+        raise ModuleFail(dict(values, exception=type(exception).__name__))
+
+    with (
+        stubber,
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(module, "fail_json_aws", fail_json_aws),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "changed": False,
+        "exception": "ParamValidationError",
+        "msg": "Unable to describe Pinpoint SMS Voice V2 phone numbers",
+    }
+    # The stubbed search was never sent, and no other request, such as RequestPhoneNumber, was made.
+    with pytest.raises(AssertionError):
+        stubber.assert_no_pending_responses()
 
 
 @pytest.mark.parametrize("option", ["message_type", "number_capabilities", "number_type"])

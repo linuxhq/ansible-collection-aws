@@ -112,17 +112,14 @@ def main():
     if arn:
         require_client_methods(module, client, "NotificationsContacts", {"get_email_contact": ("arn",)})
         try:
-            response = client.get_email_contact(arn=arn, aws_retry=True)
+            email_contacts = [client.get_email_contact(arn=arn, aws_retry=True)["emailContact"]]
         except is_boto3_error_code("ResourceNotFoundException"):
-            response = {"emailContact": None}
+            email_contacts = []
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(
                 e,
                 msg=f"Unable to get AWS Notifications contact {arn}",
             )
-
-        contact = response["emailContact"]
-        email_contacts = [contact] if contact is not None else []
     else:
         require_client_methods(
             module, client, "NotificationsContacts", {"list_email_contacts": ("maxResults", "nextToken")}

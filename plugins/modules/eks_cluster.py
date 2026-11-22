@@ -1820,16 +1820,12 @@ def ensure_present(client, module, deadline=None):
 
     config_request = {field: desired[field] for field in UPDATE_CONFIG_FIELDS if field in desired}
 
-    access_config = config_request.get("access_config")
-
-    if access_config is not None:
-        access_config = {
-            "authentication_mode": access_config.get("authentication_mode"),
-        }
-        if access_config["authentication_mode"] is not None:
-            config_request["access_config"] = access_config
-        else:
-            config_request.pop("access_config")
+    # Only the authentication mode of access_config can be updated; the update order stays as listed.
+    authentication_mode = (config_request.get("access_config") or {}).get("authentication_mode")
+    if authentication_mode is None:
+        config_request.pop("access_config", None)
+    else:
+        config_request["access_config"] = {"authentication_mode": authentication_mode}
 
     config_request = snake_dict_to_camel_dict(config_request, capitalize_first=False)
 

@@ -361,7 +361,9 @@ def test_existing_document_type_is_immutable():
         client, FakeModule(params(document_type="Session")), [document({"schemaVersion": "2.2"})]
     )
 
-    assert "immutable fields differ" in result.values["msg"]
+    assert result.values["msg"] == (
+        "Unable to update AWS Systems Manager document example: document_type cannot be changed from Command to Session"
+    )
     client.update_document.assert_not_called()
 
 
@@ -563,19 +565,6 @@ def test_absent_sends_force_when_requested():
     run_absent(client, FakeModule(params(state="absent", force=True, wait=False)), {"Name": "example"})
 
     client.delete_document.assert_called_once_with(Name="example", Force=True, aws_retry=True)
-
-
-def test_absent_explains_documents_used_by_associations():
-    client = Mock()
-    client.delete_document.side_effect = ClientError(
-        {"Error": {"Code": "AssociatedInstances", "Message": "in use"}}, "DeleteDocument"
-    )
-    result, _wait = run_absent(client, FakeModule(params(state="absent")), {"Name": "example"})
-
-    assert result.values["msg"] == (
-        "Unable to delete AWS Systems Manager document example because associations use it; "
-        "delete the associations first"
-    )
 
 
 def test_absent_waits_on_a_document_already_deleting_without_deleting_again():

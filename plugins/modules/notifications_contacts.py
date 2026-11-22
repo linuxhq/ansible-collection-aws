@@ -92,7 +92,7 @@ email_contact:
       type: str
     status:
       description: The contact activation status.
-      returned: when provided by AWS
+      returned: always
       type: str
     tags:
       description: The contact tags.
@@ -226,6 +226,8 @@ def ensure_present(client, module):
         )
         # Live: User Notifications Contacts rejects these keys, after any tag removal of the same run.
         require_no_reserved_tag_keys(module, tags_to_set)
+        # Live: TagResource rejects a resulting tag set over 50 user tags with BadRequestException, although the API
+        # model allows 200 tags in one request.
         require_resulting_tag_limit(
             module, contact["tags"], tags_to_set, tag_keys_to_unset, 50, "AWS Notifications contact"
         )
@@ -259,22 +261,18 @@ def ensure_present(client, module):
             contact_arn = create_response["arn"]
 
             try:
-                get_response = client.get_email_contact(
+                contact = client.get_email_contact(
                     arn=contact_arn,
                     aws_retry=True,
-                )
+                )["emailContact"]
             except is_boto3_error_code("ResourceNotFoundException"):
-                get_response = {"emailContact": None}
+                contact = dict(desired_contact, arn=contact_arn)
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(
                     e,
                     changed=True,
                     msg=f"Unable to get AWS Notifications contact {contact_arn}",
                 )
-
-            contact = get_response["emailContact"]
-            if contact is None:
-                contact = dict(desired_contact, arn=contact_arn)
 
             if tags is not None:
                 contact["tags"] = tags

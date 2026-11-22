@@ -1295,13 +1295,22 @@ def test_ipv6_creation_accepts_a_vpn_concentrator(params):
 
 
 @pytest.mark.parametrize("check_mode", [True, False])
-def test_ipv6_creation_without_a_transit_gateway_fails_before_any_aws_call(params, check_mode):
+def test_ipv6_creation_on_a_virtual_private_gateway_fails_before_any_aws_call(params, check_mode):
+    # Live: EC2 rejects it with InvalidParameterCombination.
     params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", tunnel_inside_ip_version="ipv6")
     client = Mock()
     with pytest.raises(ModuleFail) as raised:
         plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), None)
 
-    assert raised.value.values == {"changed": False, "msg": "IPv6 VPN connections require a transit gateway"}
+    assert raised.value.values == {"changed": False, "msg": "IPv6 VPN connections cannot use a virtual private gateway"}
+    assert client.mock_calls == []
+
+
+def test_ipv6_creation_without_a_gateway_is_left_to_ec2(params):
+    # Live: EC2 creates an IPv6 connection attached to no gateway, which Cloud WAN can attach later.
+    params.update(customer_gateway_id="cgw-123", tunnel_inside_ip_version="ipv6")
+    client = Mock()
+    assert ensure(client, FakeModule(params, check_mode=True), None) == {"changed": True, "vpn_connection": {}}
     assert client.mock_calls == []
 
 

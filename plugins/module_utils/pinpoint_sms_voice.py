@@ -54,8 +54,7 @@ def unique_resource_ids(identifiers):
 
 def is_phone_number_identity(origination):
     """Return whether a ListPoolOriginationIdentities item is a phone number rather than a sender ID."""
-    arn = origination.get("OriginationIdentityArn")
-    return isinstance(origination.get("PhoneNumber"), str) or (isinstance(arn, str) and ":phone-number/" in arn)
+    return origination.get("PhoneNumber") is not None or ":phone-number/" in origination["OriginationIdentityArn"]
 
 
 def is_phone_number_reference(origination_identity):
@@ -76,19 +75,12 @@ def identity_matches(origination, identities):
     requested as AuP2Mix in uppercase, puts AUP2MIX in its ARN, and lists the ID in a pool in the case it was associated
     with. So a sender ID and its ARN match without letter case, as pinpoint_sms_voice_sender_id compares them.
     """
+    keys = ("OriginationIdentity", "OriginationIdentityArn")
     if is_phone_number_identity(origination):
-        return any(
-            origination.get(key) in identities
-            for key in ("OriginationIdentity", "OriginationIdentityArn")
-            if origination.get(key)
-        )
+        return any(origination[key] in identities for key in keys)
 
-    wanted = {identity.upper() for identity in identities if isinstance(identity, str)}
-    return any(
-        origination[key].upper() in wanted
-        for key in ("OriginationIdentity", "OriginationIdentityArn")
-        if isinstance(origination.get(key), str)
-    )
+    wanted = {identity.upper() for identity in identities}
+    return any(origination[key].upper() in wanted for key in keys)
 
 
 def predicted_origination_identity(origination_identity, iso_country_code):

@@ -715,6 +715,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_valid_tags,
     updated_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     custom_waiter,
     require_positive_wait_bounds,
@@ -1337,9 +1338,8 @@ def require_endpoint_configuration_parameters(module, client, method_name, opera
         if parameter_name not in available_parameters:
             module.fail_json(
                 msg=(
-                    "Installed botocore does not support Global Accelerator "
-                    f"{method_name} EndpointConfigurations parameter "
-                    f"{parameter_name}"
+                    f"Installed botocore does not support Global Accelerator {method_name} EndpointConfigurations "
+                    f"parameter {parameter_name}"
                 )
             )
 
@@ -1813,16 +1813,13 @@ def unmanaged_port_overrides(client, module, current, desired, endpoint_groups, 
     return unmanaged
 
 
-def require_compatible_retained_listeners(client, module, current_listeners, endpoint_groups=None, changed=False):
+def require_compatible_retained_listeners(client, module, matched, updates, creates, endpoint_groups, changed=False):
     """Fail when a listener this run keeps would make AWS reject a requested listener or endpoint group.
 
-    endpoint_groups maps listener ARNs to their listed endpoint groups, and gains those this check lists. changed
-    reports whether the accelerator was already modified, for failure results.
+    matched, updates, and creates are the listener plan from reconcile_listeners. endpoint_groups maps listener ARNs to
+    their listed endpoint groups, and gains those this check lists. changed reports whether the accelerator was already
+    modified, for failure results.
     """
-    if endpoint_groups is None:
-        endpoint_groups = {}
-
-    matched, updates, creates = reconcile_listeners(module, current_listeners)[:3]
     desired_changes = [desired for current, desired in updates] + creates
     retained = [current for current, desired in matched if desired is None]
     for current, unused_desired in matched:
@@ -1920,9 +1917,8 @@ def plan_listener_writes(client, module, current_listeners, endpoint_groups, cha
     run. endpoint_groups maps listener ARNs to their listed endpoint groups, and gains those this plan lists. changed
     reports whether the accelerator was already modified, for failure results.
     """
-    require_compatible_retained_listeners(client, module, current_listeners, endpoint_groups, changed=changed)
-
     matched, updates, creates, deletes = reconcile_listeners(module, current_listeners)
+    require_compatible_retained_listeners(client, module, matched, updates, creates, endpoint_groups, changed=changed)
     updates = ordered_listener_updates(module, updates, changed=changed)
 
     # Endpoint groups are reconciled per listener after the listener writes, in the order of their result entries: the
@@ -2718,8 +2714,7 @@ def main():
 
                 # Ansible turns a null required string into "". AWS rejects an empty or blank region only after earlier
                 # changes.
-                if not region.strip():
-                    module.fail_json(msg="endpoint_group_region must not be empty")
+                require_non_blank(module, region, "endpoint_group_region")
 
                 if len(region) > 255:
                     module.fail_json(msg="endpoint_group_region must contain at most 255 characters")

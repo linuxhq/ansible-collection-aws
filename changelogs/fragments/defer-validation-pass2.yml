@@ -1,0 +1,39 @@
+---
+minor_changes:
+  - ec2_vpc_vpn - creating an IPv6 connection attached to no gateway is now sent to EC2, which accepts it, instead
+    of failing with "IPv6 VPN connections require a transit gateway". Creating one with O(vpn_gateway_id), which EC2
+    rejects, still fails before any change, including in check mode, now with "IPv6 VPN connections cannot use a
+    virtual private gateway".
+  - pinpoint_sms_voice_phone_number - an empty O(number_capabilities) list is now left to botocore, which rejects
+    the phone number search in both modes before any change, instead of being rejected by the module.
+  - pinpoint_sms_voice_phone_pool_associate - O(iso_country_code) is checked for two uppercase letters only with
+    O(state=present). With O(state=absent), another value matches no association, so the run reports no change.
+  - route53_zone_associate - O(vpc_id) is checked for an empty value only with O(state=present). With
+    O(state=absent), an empty value matches no association, so the run reports no change, also for a hosted zone
+    owned by another account.
+  - service_quota - failure messages for a missing quota value name the O(context_id) when it is set.
+  - service_quota, service_quota_info - failure messages for a mismatched quota context name the O(context_id).
+  - ssm_document - a failed delete of a document that associations use reports the AWS error with the generic
+    delete message.
+  - ssm_document - changing O(document_type) on an existing document fails naming the current and requested types.
+trivial:
+  - ec2_flow_log - check C(DescribeFlowLogs) C(FlowLogIds) support once before any change, and merge O(name) into
+    O(tags) only in main(); drop a dead fallback for the required O(resource_ids).
+  - ec2_transit_gateway_route_table - drop a dead guard in the route table describe helper.
+  - eks_cluster - build the C(accessConfig) update in one step.
+  - global_accelerator - plan listener changes once per run, use the shared blank-value check for
+    O(listeners[].endpoint_groups[].endpoint_group_region), and join a split failure message.
+  - glue_connection_info - check the SDK for the request parameters in the order they are built.
+  - iam_oidc_provider - apply tag changes to a check-mode prediction only for an existing provider.
+  - iam_oidc_provider_info - check C(GetOpenIDConnectProvider) support once before describing listed providers.
+  - notifications_contacts - note the live 50-tag limit, and handle a contact not yet visible after creation
+    directly.
+  - notifications_contacts, notifications_hub - document the contact C(status) and hub C(status_summary) as always
+    returned.
+  - notifications_contacts_info - handle a missing contact directly.
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool - wait for an ACTIVE resource in one branch.
+  - pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate - rely on the model-required origination
+    identity fields of listed pool identities.
+  - sqs_queue_info - derive the queue name from its URL.
+  - tests - rename the serial console helper tests, fold duplicate Notifications tests, and return the sent SMS
+    spend limit in the SNS SMS attributes test.

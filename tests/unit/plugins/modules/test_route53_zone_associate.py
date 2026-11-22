@@ -96,18 +96,14 @@ def test_null_required_ids_are_rejected_before_aws_calls():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("state", ["absent", "present"])
 @pytest.mark.parametrize(
-    ("overrides", "message"),
+    ("state", "overrides", "message"),
     [
-        ({"hosted_zone_id": ""}, "hosted_zone_id must identify a hosted zone"),
-        ({"hosted_zone_id": " "}, "hosted_zone_id must identify a hosted zone"),
-        ({"hosted_zone_id": "/hostedzone/"}, "hosted_zone_id must identify a hosted zone"),
-        ({"hosted_zone_id": "/hostedzone/ "}, "hosted_zone_id must identify a hosted zone"),
-        ({"vpc_id": ""}, "vpc_id must not be empty"),
-        ({"vpc_id": " "}, "vpc_id must not be empty"),
-        ({"vpc_id": "\t"}, "vpc_id must not be empty"),
-    ],
+        (state, {"hosted_zone_id": hosted_zone_id}, "hosted_zone_id must identify a hosted zone")
+        for state in ("absent", "present")
+        for hosted_zone_id in ("", " ", "/hostedzone/", "/hostedzone/ ")
+    ]
+    + [("present", {"vpc_id": vpc_id}, "vpc_id must not be empty") for vpc_id in ("", " ", "\t")],
 )
 def test_empty_or_blank_zone_or_vpc_id_is_rejected_before_aws_calls(check_mode, state, overrides, message):
     # No hosted zone or VPC has a blank ID, so check mode must not predict an association that AWS rejects.
@@ -116,6 +112,49 @@ def test_empty_or_blank_zone_or_vpc_id_is_rejected_before_aws_calls(check_mode, 
 
     assert run_main(module) == message
     module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("vpc_id", ["", " ", "\t"])
+def test_absent_with_a_blank_vpc_id_reports_no_change(check_mode, vpc_id):
+    # No association has a blank VPC ID, so the real run removes nothing.
+    client = Mock()
+    module = FakeModule(params(state="absent", vpc_id=vpc_id), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_hosted_zone", return_value=zone([VPC_1, VPC_2])),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["vpcs"] == [
+        {"vpc_id": "vpc-1", "vpc_region": "us-east-1"},
+        {"vpc_id": "vpc-2", "vpc_region": "us-west-2"},
+    ]
+    client.disassociate_vpc_from_hosted_zone.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("vpc_id", ["", " "])
+def test_absent_with_a_blank_vpc_id_on_another_accounts_zone_reports_no_change(check_mode, vpc_id):
+    # The VPC owner cannot read the zone, and ListHostedZonesByVPC rejects a blank VPC ID, so it is not called.
+    client = Mock()
+    client.get_hosted_zone.side_effect = client_error("AccessDenied", "GetHostedZone")
+    module = FakeModule(params(state="absent", vpc_id=vpc_id), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list") as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["vpcs"] == []
+    query.assert_not_called()
+    client.disassociate_vpc_from_hosted_zone.assert_not_called()
 
 
 def test_every_modeled_vpc_region_is_accepted():

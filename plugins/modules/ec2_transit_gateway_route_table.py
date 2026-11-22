@@ -376,9 +376,6 @@ def route_sort_key(route):
 
 def get_route_table_by_id(client, module, transit_gateway_route_table_id, changed=False):
     """Describe a route table; changed reports earlier modifications, for failure results."""
-    if not transit_gateway_route_table_id:
-        return None
-
     try:
         response = paginated_query_with_retries(
             client,

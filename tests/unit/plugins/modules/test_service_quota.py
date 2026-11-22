@@ -99,7 +99,7 @@ def test_empty_context_id_fails_before_any_aws_call(check_mode):
 
 def test_validate_current_quota_rejects_a_missing_value():
     with pytest.raises(ModuleFail) as raised:
-        plugin.validate_current_quota(FakeModule({}), {"Adjustable": True}, "ec2", "L-1")
+        plugin.validate_current_quota(FakeModule({}), {"Adjustable": True}, "ec2/L-1")
 
     assert raised.value.values["msg"] == "AWS service quota ec2/L-1 did not return a valid value"
 
@@ -118,13 +118,13 @@ def test_validate_current_quota_rejects_a_missing_value():
 )
 def test_validate_current_quota_names_the_error_reason(error_reason, suffix):
     with pytest.raises(ModuleFail) as raised:
-        plugin.validate_current_quota(FakeModule({}), {"ErrorReason": error_reason}, "ec2", "L-1")
+        plugin.validate_current_quota(FakeModule({}), {"ErrorReason": error_reason}, "ec2/L-1")
 
     assert raised.value.values["msg"] == f"AWS service quota ec2/L-1 did not return a valid value{suffix}"
 
 
 def test_validate_current_quota_accepts_large_integer_without_crashing():
-    plugin.validate_current_quota(FakeModule({}), {"Value": 10**400}, "ec2", "L-1")
+    plugin.validate_current_quota(FakeModule({}), {"Value": 10**400}, "ec2/L-1")
 
 
 def test_check_mode_reports_the_quota_request():
@@ -241,7 +241,7 @@ def test_mismatched_quota_context_fails_before_requesting():
     result = run(FakeModule(params(context_id="arn:resource"), client=client))[0]
 
     assert isinstance(result, ModuleFail)
-    assert result.values["msg"] == "AWS Service Quotas returned a mismatched quota context for ec2/L-1"
+    assert result.values["msg"] == "AWS Service Quotas returned a mismatched quota context for ec2/L-1 for arn:resource"
     client.request_service_quota_increase.assert_not_called()
 
 

@@ -416,14 +416,6 @@ def ensure_absent(client, module):
                 client.delete_document(**request, aws_retry=True)
             except is_boto3_error_code("InvalidDocument"):
                 pass
-            except is_boto3_error_code("AssociatedInstances") as e:
-                module.fail_json_aws(
-                    e,
-                    msg=(
-                        f"Unable to delete AWS Systems Manager document {name} because associations use it; "
-                        "delete the associations first"
-                    ),
-                )
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to delete AWS Systems Manager document {name}")
 
@@ -507,7 +499,12 @@ def ensure_present(client, module):
         resource_changed = True
     else:
         if current_comparable["document_type"] != desired_comparable["document_type"]:
-            module.fail_json(msg=f"Unable to update AWS Systems Manager document {name}: immutable fields differ")
+            module.fail_json(
+                msg=(
+                    f"Unable to update AWS Systems Manager document {name}: document_type cannot be changed from "
+                    f"{current_comparable['document_type']} to {desired_comparable['document_type']}"
+                )
+            )
 
         changed = not same_json(current_comparable, desired_comparable)
         if changed and document_version not in UPDATABLE_DOCUMENT_VERSIONS:

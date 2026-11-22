@@ -29,7 +29,7 @@ def error(code, operation):
 )
 def test_quota_from_response_rejects_invalid_response(response, context_id, message):
     with pytest.raises(ModuleFail) as raised:
-        quota_from_response(FakeModule({}), response, "ec2", "L-1", context_id)
+        quota_from_response(FakeModule({}), response, "ec2/L-1 for expected", context_id)
 
     assert message in raised.value.values["msg"]
 
@@ -38,7 +38,7 @@ def test_quota_from_response_rejects_invalid_response(response, context_id, mess
 def test_quota_from_response_rejects_a_non_resource_scope(scope):
     response = {"Quota": {"Value": 5.0, "QuotaContext": {"ContextScope": scope}}}
     with pytest.raises(ModuleFail) as raised:
-        quota_from_response(FakeModule({}), response, "ec2", "L-1", resource_scope=True)
+        quota_from_response(FakeModule({}), response, "ec2/L-1", resource_scope=True)
 
     assert "mismatched quota context" in raised.value.values["msg"]
 
@@ -47,13 +47,13 @@ def test_quota_from_response_rejects_a_non_resource_scope(scope):
 def test_quota_from_response_accepts_a_resource_scope(quota):
     response = {"Quota": quota}
 
-    assert quota_from_response(FakeModule({}), response, "ec2", "L-1", resource_scope=True) == quota
+    assert quota_from_response(FakeModule({}), response, "ec2/L-1", resource_scope=True) == quota
 
 
 def test_quota_from_response_accepts_matching_context():
     quota = {"Value": 5.0, "QuotaContext": {"ContextId": "arn:context"}}
 
-    assert quota_from_response(FakeModule({}), {"Quota": quota}, "ec2", "L-1", "arn:context") == quota
+    assert quota_from_response(FakeModule({}), {"Quota": quota}, "ec2/L-1 for arn:context", "arn:context") == quota
 
 
 def test_get_quota_returns_the_applied_quota():

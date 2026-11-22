@@ -50,7 +50,7 @@ def test_sdk_validation_matches_flow_log_requests():
     ):
         plugin.main()
 
-    assert require.call_args.args[3] == {"describe_flow_logs": ("Filter", "MaxResults", "NextToken")}
+    assert require.call_args.args[3] == {"describe_flow_logs": ("Filter", "MaxResults", "NextToken", "FlowLogIds")}
 
 
 @pytest.mark.parametrize(
@@ -149,7 +149,7 @@ def test_identical_tag_changes_are_batched_across_flow_logs():
             "resource_ids": ["vpc-1", "vpc-2"],
             "resource_type": "VPC",
             "state": "present",
-            "tags": {"Environment": "prod"},
+            "tags": {"Environment": "prod", "Name": "main"},
             "traffic_type": None,
         }
     )
@@ -389,6 +389,7 @@ def test_create_result_keeps_ids_missing_from_eventually_consistent_describe():
 
 
 def present_params(**overrides):
+    """Return present parameters as main() hands them to ensure_present, with O(name) as the Name tag of any tags."""
     params = dict(dict.fromkeys(plugin.PRESENT_MATCH_FIELDS), name="main")
     params.update(
         {
@@ -404,6 +405,9 @@ def present_params(**overrides):
         }
     )
     params.update(overrides)
+    if params["tags"] is not None:
+        params["tags"] = dict(params["tags"], Name=params["name"])
+
     return params
 
 
@@ -427,6 +431,28 @@ def run_present(client, module, flow_logs):
         pytest.raises(ModuleExit) as result,
     ):
         plugin.ensure_present(client, module)
+
+    return result.value.values
+
+
+def run_main_present(client, tags, flow_logs, check_mode=False):
+    """Run main() with tags as the task gives them, before main() adds O(name) as their Name tag."""
+    params = present_params(name="main", purge_tags=True)
+    params["tags"] = tags
+    return run_main(client, FakeModule(params, check_mode=check_mode, client=client), flow_logs)
+
+
+def run_main(client, module, flow_logs):
+    client.create_flow_logs.return_value = {"FlowLogIds": ["fl-new"]}
+    client.delete_flow_logs.return_value = {}
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "get_flow_logs", return_value=flow_logs),
+        patch.object(plugin, "query_list", return_value=[{"FlowLogId": "fl-new", "ResourceId": "vpc-1"}]),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
 
     return result.value.values
 
@@ -1281,12 +1307,14 @@ def test_delete_skips_flow_logs_already_gone_when_ec2_rejects_the_request(remain
     client = Mock()
     client.delete_flow_logs.side_effect = [not_found_error(), {}]
     with (
-        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_client_methods") as require,
         patch.object(plugin, "query_list", return_value=remaining) as query,
     ):
         removed = plugin.delete_flow_logs(client, FakeModule({}), ["fl-gone", "fl-live"])
 
     assert removed == expected_removed
+    # main() gates FlowLogIds before any write, so a delete never fails on it partway through.
+    require.assert_not_called()
     assert query.call_args.kwargs["FlowLogIds"] == ["fl-gone", "fl-live"]
     assert client.delete_flow_logs.call_count == delete_calls
     if delete_calls == 2:
@@ -1437,10 +1465,9 @@ def test_name_fails_when_several_flow_logs_with_that_name_match_on_a_resource(ch
 @pytest.mark.parametrize("tags", [None, {"Name": "other", "Environment": "prod"}])
 def test_name_overrides_the_name_tag_and_omitted_tags_purge_nothing(tags, check_mode):
     client = Mock()
-    module = FakeModule(present_params(name="main", tags=tags, purge_tags=True), check_mode=check_mode)
     existing_tags = [{"Key": "Name", "Value": "main"}, {"Key": "Environment", "Value": "test"}]
 
-    result = run_present(client, module, [dict(NAMED_MATCHING_FLOW_LOG, Tags=existing_tags)])
+    result = run_main_present(client, tags, [dict(NAMED_MATCHING_FLOW_LOG, Tags=existing_tags)], check_mode)
 
     client.delete_tags.assert_not_called()
     assert result["flow_logs"][0]["name"] == "main"
@@ -1463,8 +1490,7 @@ def test_name_overrides_the_name_tag_and_omitted_tags_purge_nothing(tags, check_
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_name_is_the_name_tag_of_a_new_flow_log_whatever_tags_set(check_mode):
     client = Mock()
-    params = present_params(name="main", tags={"Name": "other", "Environment": "prod"})
-    result = run_present(client, FakeModule(params, check_mode=check_mode), [])
+    result = run_main_present(client, {"Name": "other", "Environment": "prod"}, [], check_mode)
 
     assert result["changed"] is True
     if check_mode:
@@ -2200,4 +2226,4 @@ def test_tags_are_normalized_for_the_rest_of_the_run():
     ):
         plugin.main()
 
-    assert plugin.desired_tags(module) == {"1": "2", "Name": "main"}
+    assert module.params["tags"] == {"1": "2", "Name": "main"}

@@ -430,9 +430,10 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import 
 )
 
 
-def validate_current_quota(module, quota, service_code, quota_code):
+def validate_current_quota(module, quota, identifier):
+    """Fail when the quota has no value; identifier is the quota_identifier that the message names."""
     if quota.get("Value") is None:
-        msg = f"AWS service quota {service_code}/{quota_code} did not return a valid value"
+        msg = f"AWS service quota {identifier} did not return a valid value"
         # ErrorReason explains why Service Quotas could not read the value from the owning service.
         error_reason = quota.get("ErrorReason")
         if error_reason:
@@ -489,7 +490,7 @@ def main():
     if current_quota is None:
         module.fail_json(msg=f"AWS service quota {identifier} does not exist")
 
-    validate_current_quota(module, current_quota, service_code, quota_code)
+    validate_current_quota(module, current_quota, identifier)
 
     pending_requests = []
 

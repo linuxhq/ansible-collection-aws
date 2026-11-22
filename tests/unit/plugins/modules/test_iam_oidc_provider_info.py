@@ -37,6 +37,31 @@ def test_empty_listing_does_not_require_provider_get():
     )
 
 
+def test_listing_requires_provider_get_once_before_describing():
+    client = Mock()
+    client.get_open_id_connect_provider.side_effect = lambda OpenIDConnectProviderArn, aws_retry: {
+        "Url": OpenIDConnectProviderArn.partition(":oidc-provider/")[2]
+    }
+    module = FakeModule({"arn": None, "url": None}, client=client)
+    require_client_methods = Mock()
+    summaries = [{"Arn": f"arn:aws:iam::1:oidc-provider/example{index}.com"} for index in range(3)]
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "list_provider_summaries", return_value=summaries),
+        patch.object(plugin, "require_client_methods", require_client_methods),
+        patch.object(iam_oidc, "require_client_methods") as per_call,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert [call.args[3] for call in require_client_methods.call_args_list] == [
+        {"list_open_id_connect_providers": ()},
+        {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
+    ]
+    per_call.assert_not_called()
+    assert len(raised.value.values["open_id_connect_providers"]) == 3
+
+
 def test_url_filter_ignores_the_scheme_case_and_other_arns():
     module = FakeModule({"arn": None, "url": "HTTPS://example.com/id"}, client=Mock())
     provider = {

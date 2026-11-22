@@ -235,8 +235,8 @@ def get_queue(client, module, queue_url, read_tags=True):
         # ListQueueTags omits Tags for an untagged queue.
         queue["tags"] = response.get("Tags", {})
 
-    queue_arn = queue.get("queue_arn")
-    queue["name"] = (queue_arn or queue_url.rsplit("/", 1)[-1]).split(":")[-1]
+    # A queue URL ends with the queue name.
+    queue["name"] = queue_url.rsplit("/", 1)[-1]
     queue["queue_url"] = queue_url
     return queue
 

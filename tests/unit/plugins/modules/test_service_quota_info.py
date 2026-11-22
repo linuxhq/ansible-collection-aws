@@ -87,7 +87,10 @@ def test_mismatched_quota_context_fails():
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "AWS Service Quotas returned a mismatched quota context for ec2/L-1"
+    assert (
+        raised.value.values["msg"]
+        == "AWS Service Quotas returned a mismatched quota context for ec2/L-1 for arn:context"
+    )
 
 
 def test_context_without_applied_value_returns_the_resource_scope_quota():

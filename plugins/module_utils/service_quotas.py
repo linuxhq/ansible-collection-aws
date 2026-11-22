@@ -30,14 +30,15 @@ def quota_parameters(service_code, quota_code, context_id=None):
     return parameters
 
 
-def quota_from_response(module, response, service_code, quota_code, context_id=None, resource_scope=False):
+def quota_from_response(module, response, identifier, context_id=None, resource_scope=False):
+    """Return the quota in a response; identifier is the quota_identifier that failure messages name."""
     quota = response["Quota"]
     quota_context = quota.get("QuotaContext")
     if context_id and (quota_context is None or quota_context.get("ContextId") != context_id):
-        module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {service_code}/{quota_code}")
+        module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {identifier}")
 
     if resource_scope and (quota_context or {}).get("ContextScope", "RESOURCE") != "RESOURCE":
-        module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {service_code}/{quota_code}")
+        module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {identifier}")
 
     return quota
 
@@ -87,8 +88,7 @@ def get_quota(client, module, service_code, quota_code, context_id=None):
         return quota_from_response(
             module,
             response,
-            service_code,
-            quota_code,
+            identifier,
             lookup_context_id,
             resource_scope=bool(context_id) and not lookup_context_id,
         )

@@ -476,7 +476,7 @@ S3_DESTINATION_OPTION_DEFAULTS = {
 
 
 def normalized_resource_ids(module):
-    return list(dict.fromkeys(module.params["resource_ids"] or []))
+    return list(dict.fromkeys(module.params["resource_ids"]))
 
 
 def comparable_destination_options(module):
@@ -500,15 +500,6 @@ def desired_match_fields(module, fields):
         desired["destination_options"] = destination_options
 
     return desired
-
-
-def desired_tags(module):
-    """Return the tags to converge on matching flow logs, with O(name) as the Name tag; None leaves tags unchanged."""
-    tags = module.params["tags"]
-    if tags is None:
-        return None
-
-    return dict(tags, Name=module.params["name"])
 
 
 def replacement_settings(settings, replaced):
@@ -621,13 +612,6 @@ def delete_flow_logs(client, module, flow_log_ids, changed=False):
         response = delete_flow_log_batch(client, module, batch, changed or bool(removed), missing_ok=True)
         if response is None:
             # EC2 rejects the whole request when any flow log is already gone, so delete only those that remain.
-            require_client_methods(
-                module,
-                client,
-                "EC2",
-                {"describe_flow_logs": ("FlowLogIds",)},
-                changed=changed or bool(removed),
-            )
             remaining = query_list(
                 module,
                 client,
@@ -753,7 +737,8 @@ def ensure_present(client, module):
     resource_ids = normalized_resource_ids(module)
     resource_type = module.params["resource_type"]
     name = module.params["name"]
-    tags = desired_tags(module)
+    # main() normalized the tags with O(name) as their Name tag; None leaves tags unchanged.
+    tags = module.params["tags"]
     desired = {
         "log_destination_type": module.params["log_destination_type"] or "cloud-watch-logs",
     }
@@ -1149,15 +1134,12 @@ def main():
             module.params["tags"] = named_tags
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
-    describe_parameters = ["Filter", "MaxResults", "NextToken"]
-    if state == "present":
-        describe_parameters.append("FlowLogIds")
-
+    # Deletes in both states describe the flow logs that remain by ID when EC2 rejects a batch.
     require_client_methods(
         module,
         client,
         "EC2",
-        {"describe_flow_logs": tuple(describe_parameters)},
+        {"describe_flow_logs": ("Filter", "MaxResults", "NextToken", "FlowLogIds")},
     )
 
     if state == "present":

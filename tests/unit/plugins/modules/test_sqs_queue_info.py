@@ -67,12 +67,12 @@ def test_module_contract():
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-def test_queue_name_is_derived_from_arn():
-    client = queue_client({"QueueArn": "arn:aws:sqs:us-east-1:1:main"})
-    queue = plugin.get_queue(client, Mock(), "https://sqs.example/other")
+def test_queue_name_is_derived_from_the_url():
+    client = queue_client({"QueueArn": "arn:aws:sqs:us-east-1:1:main.fifo"})
+    queue = plugin.get_queue(client, Mock(), "https://sqs.us-east-1.amazonaws.com/1/main.fifo")
 
-    assert queue["name"] == "main"
-    assert queue["queue_url"] == "https://sqs.example/other"
+    assert queue["name"] == "main.fifo"
+    assert queue["queue_url"] == "https://sqs.us-east-1.amazonaws.com/1/main.fifo"
 
 
 def test_tags_are_returned_with_their_case():

@@ -31,7 +31,7 @@ options:
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
-      - When provided, this must be exactly two uppercase letters.
+      - When provided with O(state=present), this must be exactly two uppercase letters.
       - This is optional for origination identities that are not
         country-specific.
       - Without this, associating an origination identity, or disassociating
@@ -419,13 +419,14 @@ def main():
     )
     state = module.params["state"]
 
-    if module.params["iso_country_code"] is not None and not re.fullmatch(
-        r"[A-Z]{2}", module.params["iso_country_code"]
-    ):
-        module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
-
-    # AWS rejects an empty origination identity, which check mode would otherwise predict as a new association.
     if state == "present":
+        # With state=absent, another value matches no association, so the real run changes nothing.
+        if module.params["iso_country_code"] is not None and not re.fullmatch(
+            r"[A-Z]{2}", module.params["iso_country_code"]
+        ):
+            module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
+
+        # AWS rejects an empty origination identity, which check mode would otherwise predict as a new association.
         require_non_blank(module, module.params["origination_identity"], "origination_identity")
 
     client = module.client(
