@@ -1397,37 +1397,47 @@ def retry_while_in_use(module, operation, deadline, on_in_use=None, **request):
             sleep_until_next_poll(module, deadline)
 
 
-def list_cluster_compute(client, module):
+def list_cluster_compute(client, module, deadline=None):
     """Return the names of the cluster's managed node groups and Fargate profiles that are not being deleted.
 
-    Compute that is being deleted blocks DeleteCluster only until it is gone, so the delete keeps retrying for it.
+    Compute that is being deleted blocks DeleteCluster only until it is gone, so the delete keeps retrying for it. The
+    reads stop once deadline passes, and then report no compute, so the delete retries end within the wait budget.
     """
     name = module.params["name"]
+    listings = (
+        ("list_nodegroups", "nodegroups", client.describe_nodegroup, "nodegroup", "nodegroupName"),
+        (
+            "list_fargate_profiles",
+            "fargateProfileNames",
+            client.describe_fargate_profile,
+            "fargateProfile",
+            "fargateProfileName",
+        ),
+    )
+    compute = []
     try:
-        nodegroups = paginated_query_with_retries(client, "list_nodegroups", clusterName=name)["nodegroups"]
-        fargate_profiles = paginated_query_with_retries(client, "list_fargate_profiles", clusterName=name)[
-            "fargateProfileNames"
-        ]
-        nodegroups = [
-            nodegroup
-            for nodegroup in nodegroups
-            if compute_status(client.describe_nodegroup, "nodegroup", clusterName=name, nodegroupName=nodegroup)
-            not in (None, "DELETING")
-        ]
-        fargate_profiles = [
-            profile
-            for profile in fargate_profiles
-            if compute_status(
-                client.describe_fargate_profile, "fargateProfile", clusterName=name, fargateProfileName=profile
-            )
-            not in (None, "DELETING")
-        ]
+        for list_method, list_key, describe, describe_key, name_key in listings:
+            if deadline is not None and time.monotonic() >= deadline:
+                return [], []
+
+            active = []
+            for item in paginated_query_with_retries(client, list_method, clusterName=name)[list_key]:
+                if deadline is not None and time.monotonic() >= deadline:
+                    return [], []
+
+                if compute_status(describe, describe_key, clusterName=name, **{name_key: item}) not in (
+                    None,
+                    "DELETING",
+                ):
+                    active.append(item)
+
+            compute.append(active)
     except (BotoCoreError, ClientError):
         # The listing only explains the rejection: when the cluster is gone or the caller cannot read its compute,
         # DeleteCluster keeps being retried within the wait budget, as before the listing existed.
         return [], []
 
-    return nodegroups, fargate_profiles
+    return compute[0], compute[1]
 
 
 def compute_status(operation, result_key, **request):
@@ -1438,9 +1448,9 @@ def compute_status(operation, result_key, **request):
         return None
 
 
-def require_no_cluster_compute(client, module, error):
+def require_no_cluster_compute(client, module, error, deadline=None):
     """Fail on a DeleteCluster rejection caused by managed node groups or Fargate profiles, which is not transient."""
-    nodegroups, fargate_profiles = list_cluster_compute(client, module)
+    nodegroups, fargate_profiles = list_cluster_compute(client, module, deadline=deadline)
     if nodegroups or fargate_profiles:
         module.fail_json_aws(
             error,
@@ -2242,7 +2252,7 @@ def ensure_absent(client, module):
             module,
             client.delete_cluster,
             deadline,
-            on_in_use=lambda error: require_no_cluster_compute(client, module, error),
+            on_in_use=lambda error: require_no_cluster_compute(client, module, error, deadline=deadline),
             name=name,
         )
     except is_boto3_error_code("ResourceNotFoundException"):

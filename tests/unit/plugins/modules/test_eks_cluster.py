@@ -280,14 +280,27 @@ def test_list_cluster_compute_omits_compute_that_is_being_deleted_or_gone():
 def test_list_cluster_compute_treats_a_deleted_cluster_as_without_compute():
     missing = plugin.ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}}, "ListNodegroups")
     with patch.object(plugin, "paginated_query_with_retries", side_effect=missing):
-        assert plugin.list_cluster_compute("client", FakeModule({"name": "example"})) == ([], [])
+        assert plugin.list_cluster_compute(Mock(), FakeModule({"name": "example"})) == ([], [])
+
+
+def test_list_cluster_compute_stops_reading_at_the_deadline():
+    # The scan only explains a rejection, so it ends with the wait budget instead of extending it.
+    client = Mock()
+    with (
+        patch.object(plugin, "paginated_query_with_retries", return_value={"nodegroups": ["ng-1", "ng-2"]}) as query,
+        patch.object(plugin.time, "monotonic", side_effect=[99, 101]),
+    ):
+        assert plugin.list_cluster_compute(client, FakeModule({"name": "example"}), deadline=100) == ([], [])
+
+    query.assert_called_once_with(client, "list_nodegroups", clusterName="example")
+    client.describe_nodegroup.assert_not_called()
 
 
 def test_list_cluster_compute_is_best_effort_when_it_cannot_read_compute():
     # A caller allowed to delete the cluster but not to list its compute keeps the delete retries it had before.
     denied = plugin.ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "ListNodegroups")
     with patch.object(plugin, "paginated_query_with_retries", side_effect=denied):
-        assert plugin.list_cluster_compute("client", FakeModule({"name": "example"})) == ([], [])
+        assert plugin.list_cluster_compute(Mock(), FakeModule({"name": "example"})) == ([], [])
 
 
 def test_absent_tolerates_cluster_disappearing_during_delete():
