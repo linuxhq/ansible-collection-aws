@@ -752,12 +752,6 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
                 "matcher": "path",
                 "state": "success",
             },
-            {
-                "argument": "Accelerator.Status",
-                "expected": "IN_PROGRESS",
-                "matcher": "path",
-                "state": "retry",
-            },
         ],
     },
     "accelerator_deleted": {
@@ -769,12 +763,6 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
                 "expected": "AcceleratorNotFoundException",
                 "matcher": "error",
                 "state": "success",
-            },
-            {
-                "argument": "Accelerator.Status",
-                "expected": "IN_PROGRESS",
-                "matcher": "path",
-                "state": "retry",
             },
         ],
     },
@@ -794,12 +782,6 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
                 "expected": "AcceleratorNotFoundException",
                 "matcher": "error",
                 "state": "success",
-            },
-            {
-                "argument": "Accelerator.Status",
-                "expected": "IN_PROGRESS",
-                "matcher": "path",
-                "state": "retry",
             },
         ],
     },
@@ -1141,6 +1123,16 @@ def normalized_port_overrides(port_overrides):
     )
 
 
+def endpoint_group_result(endpoint_group):
+    """Return an SDK endpoint group as a module result."""
+    return boto3_resource_to_ansible_dict(endpoint_group, transform_tags=False, force_tags=False)
+
+
+def port_overrides_request(port_overrides):
+    """Return port_overrides entries as an SDK PortOverrides list."""
+    return [{"EndpointPort": item["endpoint_port"], "ListenerPort": item["listener_port"]} for item in port_overrides]
+
+
 def get_endpoint_groups(client, module, listener_arn, changed=False):
     """List endpoint groups; changed reports whether the accelerator was already modified, for failure results."""
     require_client_methods(
@@ -1160,14 +1152,7 @@ def get_endpoint_groups(client, module, listener_arn, changed=False):
         ListenerArn=listener_arn,
     )
 
-    normalized = [
-        boto3_resource_to_ansible_dict(
-            endpoint_group,
-            transform_tags=False,
-            force_tags=False,
-        )
-        for endpoint_group in endpoint_groups
-    ]
+    normalized = [endpoint_group_result(endpoint_group) for endpoint_group in endpoint_groups]
 
     return sorted(normalized, key=lambda item: item["endpoint_group_region"])
 
@@ -1184,6 +1169,17 @@ def ec2_endpoint_arn(endpoint_id, resource_types=("elastic-ip", "instance")):
     return None
 
 
+EC2_ENDPOINT_ID_PREFIXES = {"elastic-ip": "eipalloc-", "instance": "i-"}
+
+
+def is_ec2_endpoint(endpoint_id, resource_type):
+    """Return whether an endpoint ID names an EC2 resource of resource_type, by resource ID or by ARN."""
+    return (
+        endpoint_id.startswith(EC2_ENDPOINT_ID_PREFIXES[resource_type])
+        or ec2_endpoint_arn(endpoint_id, (resource_type,)) is not None
+    )
+
+
 def require_dual_stack_endpoints(module, ip_address_type):
     """Fail for the requested endpoints AWS refuses on a dual-stack accelerator."""
     if ip_address_type != "DUAL_STACK":
@@ -1195,7 +1191,7 @@ def require_dual_stack_endpoints(module, ip_address_type):
             for configuration in endpoint_group.get("endpoint_configurations") or []:
                 endpoint_id = configuration["endpoint_id"]
                 # Live: AWS rejects both at the endpoint group write, which follows any accelerator and listener writes.
-                if endpoint_id.startswith("eipalloc-") or ec2_endpoint_arn(endpoint_id, ("elastic-ip",)) is not None:
+                if is_ec2_endpoint(endpoint_id, "elastic-ip"):
                     module.fail_json(
                         msg=(
                             f"Endpoint group {region} endpoint {endpoint_id} is an Elastic IP address, "
@@ -1321,13 +1317,7 @@ def endpoint_group_request(desired):
             request[request_field] = desired[field]
 
     if desired["port_overrides"] is not None:
-        request["PortOverrides"] = [
-            {
-                "EndpointPort": item["endpoint_port"],
-                "ListenerPort": item["listener_port"],
-            }
-            for item in desired["port_overrides"]
-        ]
+        request["PortOverrides"] = port_overrides_request(desired["port_overrides"])
 
     return request
 
@@ -1580,13 +1570,7 @@ def ensure_endpoint_groups(
             mutated = True
             endpoint_group = require_expected_endpoint_group(module, response["EndpointGroup"], expected_region=region)
 
-            results.append(
-                boto3_resource_to_ansible_dict(
-                    endpoint_group,
-                    transform_tags=False,
-                    force_tags=False,
-                )
-            )
+            results.append(endpoint_group_result(endpoint_group))
         elif endpoint_group_requires_update(current, desired, scope):
             changed = True
             if module.check_mode:
@@ -1614,13 +1598,7 @@ def ensure_endpoint_groups(
                 module, response["EndpointGroup"], expected_arn=endpoint_group_arn
             )
 
-            results.append(
-                boto3_resource_to_ansible_dict(
-                    endpoint_group,
-                    transform_tags=False,
-                    force_tags=False,
-                )
-            )
+            results.append(endpoint_group_result(endpoint_group))
         else:
             results.append(current)
 
@@ -1699,9 +1677,7 @@ def release_port_overrides(client, module, current_groups, releases, changed=Fal
         try:
             response = client.update_endpoint_group(
                 EndpointGroupArn=endpoint_group_arn,
-                PortOverrides=[
-                    {"EndpointPort": item["endpoint_port"], "ListenerPort": item["listener_port"]} for item in kept
-                ],
+                PortOverrides=port_overrides_request(kept),
                 aws_retry=True,
             )
         except (BotoCoreError, ClientError) as e:
@@ -1715,7 +1691,7 @@ def release_port_overrides(client, module, current_groups, releases, changed=Fal
         endpoint_group = require_expected_endpoint_group(
             module, response["EndpointGroup"], expected_arn=endpoint_group_arn
         )
-        current_groups[index] = boto3_resource_to_ansible_dict(endpoint_group, transform_tags=False, force_tags=False)
+        current_groups[index] = endpoint_group_result(endpoint_group)
 
     return changed
 
@@ -2141,6 +2117,8 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
         listener = response["Listener"]
         result["client_affinity"] = listener["ClientAffinity"]
         result["listener_arn"] = listener["ListenerArn"]
+        # A new listener has no endpoint groups to list.
+        endpoint_groups[listener["ListenerArn"]] = []
         result_listeners.append((result, desired, desired["port_ranges"][0]["from_port"]))
 
     if not module.check_mode:
@@ -2193,6 +2171,14 @@ def ensure_absent(client, module):
     accelerator = get_accelerator(client, module)
     changed = accelerator is not None
 
+    if changed:
+        # Check mode fails where the real run would, before the first change.
+        accelerator_methods = {"delete_accelerator": ("AcceleratorArn",)}
+        if accelerator.get("Enabled"):
+            accelerator_methods["update_accelerator"] = ("AcceleratorArn", "Enabled")
+
+        require_client_methods(module, client, "Global Accelerator", accelerator_methods)
+
     if changed and not module.check_mode:
         accelerator_arn = accelerator["AcceleratorArn"]
         if accelerator.get("Status") and accelerator.get("Status") != "DEPLOYED":
@@ -2203,12 +2189,6 @@ def ensure_absent(client, module):
                 module.exit_json(changed=False, state="absent")
 
         listeners = get_listeners(client, module, accelerator_arn)
-
-        accelerator_methods = {"delete_accelerator": ("AcceleratorArn",)}
-        if accelerator.get("Enabled"):
-            accelerator_methods["update_accelerator"] = ("AcceleratorArn", "Enabled")
-
-        require_client_methods(module, client, "Global Accelerator", accelerator_methods)
 
         # Failures after the first deletion report changed=True.
         mutated = False
@@ -2381,21 +2361,21 @@ def ensure_present(client, module, deadline=None):
         # A real run waits for the accelerator to deploy and checks it again.
         accelerator = dict(accelerator, Status="DEPLOYED")
 
-    if not module.check_mode:
-        # Later writes are checked before the first change, so an older botocore fails without modifying anything.
-        tag_methods = {}
-        if not created and tag_keys_to_unset:
-            tag_methods["untag_resource"] = ("ResourceArn", "TagKeys")
+    # Later writes are checked before the first change, so an older botocore fails without modifying anything, and
+    # check mode fails where the real run would.
+    tag_methods = {}
+    if not created and tag_keys_to_unset:
+        tag_methods["untag_resource"] = ("ResourceArn", "TagKeys")
 
-        if not created and tags_to_set:
-            tag_methods["tag_resource"] = ("ResourceArn", "Tags")
+    if not created and tags_to_set:
+        tag_methods["tag_resource"] = ("ResourceArn", "Tags")
 
-        if tag_methods:
-            require_client_methods(module, client, "Global Accelerator", tag_methods)
+    if tag_methods:
+        require_client_methods(module, client, "Global Accelerator", tag_methods)
 
-        if module.params["listeners"] is not None:
-            require_listener_writes(module, client)
-            require_endpoint_group_writes(module, client)
+    if module.params["listeners"] is not None:
+        require_listener_writes(module, client)
+        require_endpoint_group_writes(module, client)
 
     # The listener and endpoint group writes, including the listeners this run keeps and their stored port overrides it
     # does not manage, are checked before the accelerator is updated.
@@ -2405,7 +2385,7 @@ def ensure_present(client, module, deadline=None):
         current_listeners = get_listeners(client, module, accelerator["AcceleratorArn"])
         listener_plan = plan_listener_writes(client, module, current_listeners, endpoint_groups)
 
-    if created and not module.check_mode:
+    if created:
         # A fixed token would replay an earlier create, even one renamed since; AWSRetry reuses this one.
         token = module.params["idempotency_token"]
         if token is None:
@@ -2431,38 +2411,39 @@ def ensure_present(client, module, deadline=None):
             "Global Accelerator",
             {"create_accelerator": tuple(request)},
         )
-        try:
-            response = client.create_accelerator(
-                **request,
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to create AWS Global Accelerator {desired['name']}",
-            )
+        if module.check_mode:
+            # Predict the AWS creation defaults for omitted settings and the status a real run returns after waiting.
+            accelerator = {
+                "Enabled": desired.get("enabled", True),
+                "IpAddressType": desired.get("ip_address_type", "IPV4"),
+                "Name": desired["name"],
+                "Status": "DEPLOYED" if module.params["wait"] else "IN_PROGRESS",
+            }
+            if ip_addresses is not None:
+                accelerator["IpSets"] = [{"IpAddresses": ip_addresses}]
+        else:
+            try:
+                response = client.create_accelerator(
+                    **request,
+                    aws_retry=True,
+                )
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e,
+                    msg=f"Unable to create AWS Global Accelerator {desired['name']}",
+                )
 
-        accelerator = response["Accelerator"]
-        if accelerator["Name"] != desired["name"]:
-            # Live: a reused token answers with the accelerator it created, under its current name.
-            module.fail_json(
-                msg=(
-                    f"idempotency_token {token} was already used to create AWS Global Accelerator "
-                    f"{accelerator['AcceleratorArn']} (now named {accelerator['Name']}), "
-                    f"not {desired['name']}; use a new idempotency_token or omit it"
-                ),
-            )
-    elif created and module.check_mode:
-        # Predict the AWS creation defaults for omitted settings and the status a real run returns after waiting.
-        accelerator = {
-            "Enabled": desired.get("enabled", True),
-            "IpAddressType": desired.get("ip_address_type", "IPV4"),
-            "Name": desired["name"],
-            "Status": "DEPLOYED" if module.params["wait"] else "IN_PROGRESS",
-        }
-        if ip_addresses is not None:
-            accelerator["IpSets"] = [{"IpAddresses": ip_addresses}]
-    elif resource_changed and not module.check_mode:
+            accelerator = response["Accelerator"]
+            if accelerator["Name"] != desired["name"]:
+                # Live: a reused token answers with the accelerator it created, under its current name.
+                module.fail_json(
+                    msg=(
+                        f"idempotency_token {token} was already used to create AWS Global Accelerator "
+                        f"{accelerator['AcceleratorArn']} (now named {accelerator['Name']}), "
+                        f"not {desired['name']}; use a new idempotency_token or omit it"
+                    ),
+                )
+    elif resource_changed:
         request = scrub_none_parameters(
             snake_dict_to_camel_dict(
                 {
@@ -2481,43 +2462,45 @@ def ensure_present(client, module, deadline=None):
             "Global Accelerator",
             {"update_accelerator": tuple(request)},
         )
-        try:
-            response = client.update_accelerator(
-                **request,
-                aws_retry=True,
-            )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to update AWS Global Accelerator {request['AcceleratorArn']}",
-            )
 
-        accelerator = response["Accelerator"]
-        if accelerator["AcceleratorArn"] != request["AcceleratorArn"]:
-            module.fail_json(changed=True, msg="Global Accelerator returned an invalid accelerator")
-    elif resource_changed and module.check_mode:
-        accelerator = dict(accelerator)
-        # Without a wait, a real run returns the UpdateAccelerator response, which reports the change deploying.
-        if not module.params["wait"]:
-            accelerator["Status"] = "IN_PROGRESS"
+        if module.check_mode:
+            accelerator = dict(accelerator)
+            # Without a wait, a real run returns the UpdateAccelerator response, which reports the change deploying.
+            if not module.params["wait"]:
+                accelerator["Status"] = "IN_PROGRESS"
 
-        accelerator["Name"] = desired["name"]
-        if "enabled" in desired:
-            accelerator["Enabled"] = desired["enabled"]
+            accelerator["Name"] = desired["name"]
+            if "enabled" in desired:
+                accelerator["Enabled"] = desired["enabled"]
 
-        if "ip_address_type" in desired:
-            accelerator["IpAddressType"] = desired["ip_address_type"]
+            if "ip_address_type" in desired:
+                accelerator["IpAddressType"] = desired["ip_address_type"]
 
-        # A change to IPV4 removes the dual-stack DNS name and the IPv6 addresses; live, the UpdateAccelerator response
-        # and the deployed accelerator both omit them.
-        if desired.get("ip_address_type") == "IPV4":
-            accelerator.pop("DualStackDnsName", None)
-            if accelerator.get("IpSets"):
-                accelerator["IpSets"] = [
-                    ip_set
-                    for ip_set in accelerator["IpSets"]
-                    if "IPv6" not in (ip_set.get("IpAddressFamily"), ip_set.get("IpFamily"))
-                ]
+            # A change to IPV4 removes the dual-stack DNS name and the IPv6 addresses; live, the UpdateAccelerator
+            # response and the deployed accelerator both omit them.
+            if desired.get("ip_address_type") == "IPV4":
+                accelerator.pop("DualStackDnsName", None)
+                if accelerator.get("IpSets"):
+                    accelerator["IpSets"] = [
+                        ip_set
+                        for ip_set in accelerator["IpSets"]
+                        if "IPv6" not in (ip_set.get("IpAddressFamily"), ip_set.get("IpFamily"))
+                    ]
+        else:
+            try:
+                response = client.update_accelerator(
+                    **request,
+                    aws_retry=True,
+                )
+            except (BotoCoreError, ClientError) as e:
+                module.fail_json_aws(
+                    e,
+                    msg=f"Unable to update AWS Global Accelerator {request['AcceleratorArn']}",
+                )
+
+            accelerator = response["Accelerator"]
+            if accelerator["AcceleratorArn"] != request["AcceleratorArn"]:
+                module.fail_json(changed=True, msg="Global Accelerator returned an invalid accelerator")
 
     # Failures after the accelerator was created or updated report changed=True.
     mutated = not module.check_mode and (created or resource_changed)
@@ -2808,9 +2791,8 @@ def main():
 
                     # AWS rejects this endpoint group write, reached after accelerator and listener changes, for an
                     # Elastic IP address given by allocation ID or by ARN.
-                    if configuration.get("client_ip_preservation_enabled") and (
-                        endpoint_id.startswith("eipalloc-")
-                        or ec2_endpoint_arn(endpoint_id, ("elastic-ip",)) is not None
+                    if configuration.get("client_ip_preservation_enabled") and is_ec2_endpoint(
+                        endpoint_id, "elastic-ip"
                     ):
                         module.fail_json(
                             msg=(
@@ -2820,8 +2802,8 @@ def main():
                         )
 
                     # Likewise for false on an EC2 instance given by instance ID or by ARN.
-                    if configuration.get("client_ip_preservation_enabled") is False and (
-                        endpoint_id.startswith("i-") or ec2_endpoint_arn(endpoint_id, ("instance",)) is not None
+                    if configuration.get("client_ip_preservation_enabled") is False and is_ec2_endpoint(
+                        endpoint_id, "instance"
                     ):
                         module.fail_json(
                             msg=(
@@ -2847,10 +2829,7 @@ def main():
                     override_listener_ports.add(port_override["listener_port"])
 
                     # AWS rejects this endpoint group write, reached after accelerator and listener changes.
-                    if not any(
-                        port_range["from_port"] <= port_override["listener_port"] <= port_range["to_port"]
-                        for port_range in listener["port_ranges"]
-                    ):
+                    if not port_in_ranges(port_override["listener_port"], listener["port_ranges"]):
                         module.fail_json(
                             msg=(
                                 f"Endpoint group {region} port_overrides listener_port "
@@ -2864,10 +2843,7 @@ def main():
                         f"Endpoint group {region} port_overrides listener_port {port_override['listener_port']} "
                         f"endpoint_port {port_override['endpoint_port']}"
                     )
-                    if any(
-                        port_range["from_port"] <= port_override["endpoint_port"] <= port_range["to_port"]
-                        for port_range in all_port_ranges
-                    ):
+                    if port_in_ranges(port_override["endpoint_port"], all_port_ranges):
                         module.fail_json(msg=f"{override} must not be within any listener's port_ranges")
 
                     endpoint_ports = region_endpoint_ports.setdefault(region, set())
@@ -2878,7 +2854,7 @@ def main():
 
                     endpoint_ports.add(port_override["endpoint_port"])
 
-        require_valid_tags(module, module.params["tags"], 50, restricted_characters=True)
+        require_valid_tags(module, module.params["tags"], restricted_characters=True)
 
     # Some ansible-core versions let an explicit null past required_if and required_one_of; fail as if it were omitted.
     if module.params.get("arn") is None and module.params.get("name") is None:

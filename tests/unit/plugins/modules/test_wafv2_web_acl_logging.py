@@ -71,6 +71,12 @@ def test_module_contract():
     ("resource_arn", "region", "web_acl"),
     [
         (ARN, "us-east-1", WEB_ACL),
+        # AWS WAFv2 rejects a web ACL ARN from another region with WAFInvalidParameterException on the first read.
+        (
+            "arn:aws:wafv2:us-west-2:123456789012:regional/webacl/main/acl-1",
+            "us-east-1",
+            {"Id": "acl-1", "Name": "main", "Scope": "REGIONAL"},
+        ),
         (
             "arn:aws:wafv2:us-east-1:123456789012:global/webacl/edge/acl-2",
             "us-east-1",
@@ -90,22 +96,6 @@ def test_web_acl_identity_is_read_from_the_arn(resource_arn, region, web_acl):
 @pytest.mark.parametrize(
     ("resource_arn", "region", "message"),
     [
-        (
-            "arn:aws:wafv2:us-west-2:123456789012:regional/webacl/main/acl-1",
-            "us-east-1",
-            (
-                "AWS WAFv2 web ACL arn:aws:wafv2:us-west-2:123456789012:regional/webacl/main/acl-1 "
-                "requires the us-west-2 region, not us-east-1"
-            ),
-        ),
-        (
-            "arn:aws:wafv2:us-east-1:123456789012:global/webacl/edge/acl-2",
-            "us-west-2",
-            (
-                "AWS WAFv2 web ACL arn:aws:wafv2:us-east-1:123456789012:global/webacl/edge/acl-2 "
-                "requires the us-east-1 region, not us-west-2"
-            ),
-        ),
         ("arn:web-acl", "us-east-1", "resource_arn must be an AWS WAFv2 web ACL ARN, not arn:web-acl"),
         ("", "us-east-1", "resource_arn must be an AWS WAFv2 web ACL ARN, not "),
         (

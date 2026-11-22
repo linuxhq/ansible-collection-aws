@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - service_quota_info - fail with C(context_id must not be empty) for an empty O(context_id), like service_quota,
+    instead of returning the account-level quota.
+trivial:
+  - service_quota and service_quota_info - rely on the Service Quotas response shape instead of checking the service
+    code, quota code, value type, and request fields that it echoes, and share the quota identifier and request
+    parameter builders.
+  - ses_credential - drop the separate empty O(region) check; the region name format check already rejects it.

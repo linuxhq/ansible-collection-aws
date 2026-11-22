@@ -152,6 +152,43 @@ def pool_is_deleting(client, module, pool_id):
     return not pools or pools[0]["Status"] == "DELETING"
 
 
+def describe_each(client, module, operation, result_key, request, id_key, describe):
+    """Describe the identifiers in request[id_key] one per call, so a missing one skips only itself.
+
+    describe names an identifier in failure messages, such as "pool pool-1".
+    """
+    found = []
+    for identifier in request[id_key]:
+        try:
+            response = paginated_query_with_retries(client, operation, **dict(request, **{id_key: [identifier]}))
+        except is_boto3_error_code("ResourceNotFoundException"):
+            continue
+        except (BotoCoreError, ClientError) as e:
+            module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 {describe(identifier)}")
+
+        found.extend(response.get(result_key, []))
+
+    return found
+
+
+def list_pool_origination_identities(client, module, pool_id, changed=False, missing_ok=False):
+    """Return a pool's ListPoolOriginationIdentities response; a shared pool must be given by its ARN.
+
+    changed reports whether a resource was already modified, for failure results. With missing_ok, a missing pool
+    returns None instead of failing.
+    """
+    msg = f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
+    try:
+        return paginated_query_with_retries(client, "list_pool_origination_identities", PoolId=pool_id)
+    except is_boto3_error_code("ResourceNotFoundException") as e:
+        if missing_ok:
+            return None
+
+        module.fail_json_aws(e, changed=changed, msg=msg)
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, changed=changed, msg=msg)
+
+
 def list_tags(client, module, arn, resource, changed=False, missing_ok=False):
     """Return a resource's tag list; resource names it in messages, such as "pool".
 

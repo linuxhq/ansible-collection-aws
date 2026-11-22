@@ -59,6 +59,24 @@ def test_context_id_is_forwarded_to_service_quotas():
     assert client.get_service_quota.call_args.kwargs["ContextId"] == "arn:context"
 
 
+def test_empty_context_id_fails_before_any_aws_call():
+    # An empty context ID would otherwise return the account-level quota for a resource-level lookup.
+    client = Mock()
+    module = FakeModule({"context_id": "", "quota_code": "L-1", "service_code": "ec2"}, client=client)
+    module.client = Mock(return_value=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require_client_methods,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {"msg": "context_id must not be empty"}
+    module.client.assert_not_called()
+    require_client_methods.assert_not_called()
+    assert client.method_calls == []
+
+
 def test_mismatched_quota_context_fails():
     client = Mock(get_service_quota=Mock(return_value={"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "x"}}}))
     module = FakeModule({"context_id": "arn:context", "quota_code": "L-1", "service_code": "ec2"}, client=client)

@@ -122,6 +122,20 @@ def test_content_is_sent_compared_and_returned_unchanged():
     assert not result.values["changed"]
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_with_empty_tags_returns_empty_tags(check_mode):
+    # CreateDocument may omit Tags, and the module returns tags whenever O(tags) is set.
+    content = {"schemaVersion": "2.2"}
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    result, _wait, _get = run_present(
+        client, FakeModule(params(content=content, tags={}), check_mode=check_mode), [None, document(content)]
+    )
+
+    assert result.values["document"]["tags"] == {}
+    client.add_tags_to_resource.assert_not_called()
+
+
 def test_snake_case_content_is_not_converted():
     client = Mock()
     client.update_document.return_value = {"DocumentDescription": {"DocumentVersion": "2"}}
@@ -490,14 +504,9 @@ def test_waiters_stop_on_terminal_states():
         for acceptor in plugin.SSM_DOCUMENT_WAITER_MODEL_DATA["document_deleted"]["acceptors"]
     }
 
-    assert active == {
-        "Active": "success",
-        "Failed": "success",
-        "Creating": "retry",
-        "Updating": "retry",
-        "Deleting": "failure",
-    }
-    assert deleted == {"InvalidDocument": "success", "Deleting": "retry"}
+    # Botocore keeps polling a response no acceptor matches, so transitional statuses need no acceptor.
+    assert active == {"Active": "success", "Failed": "success", "Deleting": "failure"}
+    assert deleted == {"InvalidDocument": "success"}
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1049,18 +1058,18 @@ def test_resulting_50_tags_update_the_document():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_more_than_50_tags_are_rejected_before_aws(check_mode):
+def test_more_than_50_tags_are_rejected_before_the_create(check_mode):
     # AWS rejects a 51st document tag with ValidationException on create and TooManyTagsError when tagging.
-    module = FakeModule(params(tags={f"key{index}": "" for index in range(51)}), check_mode=check_mode)
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
+    client = Mock()
+    result, _wait, _get = run_present(
+        client,
+        FakeModule(params(tags={f"key{index}": "" for index in range(51)}), check_mode=check_mode),
+        [None],
+        description=None,
+    )
 
-    assert raised.value.values == {"msg": "tags must contain at most 50 entries"}
-    module.client.assert_not_called()
+    assert result.values["msg"] == "The resulting AWS Systems Manager document tags must contain at most 50 entries"
+    client.create_document.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

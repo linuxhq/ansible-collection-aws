@@ -2,12 +2,10 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 import ipaddress
-import re
 
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import boto3_resource_to_ansible_dict
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import query_list
-from ansible_collections.linuxhq.aws.plugins.module_utils.tags import reconcile_arn_tags
 
 # The OwnerId of rules that Route 53 Resolver creates, such as the Internet Resolver rule.
 AWS_OWNED_RULE_OWNER = "Route 53 Resolver"
@@ -81,41 +79,6 @@ def comparable_ips_matches(current, desired):
     return matches
 
 
-def reconcile_resolver_arn_tags(module, client, resource, label, tags_to_set, tag_keys_to_unset, changed=False):
-    """Reconcile a resolver resource's tags by ARN; changed reports whether it was already modified."""
-    if not tags_to_set and not tag_keys_to_unset:
-        return
-
-    reconcile_arn_tags(
-        module,
-        client,
-        resource["Arn"],
-        tags_to_set,
-        tag_keys_to_unset,
-        f"AWS Route53 Resolver {label}",
-        changed=changed,
-    )
-
-
-def require_ip_versions(module, entry, option):
-    for field, version in (("ip", 4), ("ipv6", 6)):
-        value = entry.get(field)
-        if value is None:
-            continue
-
-        try:
-            valid = ipaddress.ip_address(value).version == version
-        except ValueError:
-            valid = False
-
-        if not valid:
-            module.fail_json(msg=f"{option}[].{field} must be a valid IPv{version} address")
-
-
-def valid_resolver_name(name):
-    return len(name) <= 64 and not name.isdigit() and re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is not None
-
-
 def resolver_resource_with_tags(client, module, resource, resource_type, changed=False):
     """Add listed tags; changed reports whether the resource was already modified, for failure results."""
     if not resource:
@@ -133,27 +96,3 @@ def resolver_resource_with_tags(client, module, resource, resource_type, changed
     )
 
     return resource
-
-
-def validate_resolver_endpoint(module, endpoint, operation, expected_id=None, expected_name=None, changed=False):
-    """Fail when AWS returns a different resolver endpoint than the one requested."""
-    if expected_id is not None and endpoint["Id"] != expected_id:
-        module.fail_json(
-            changed=changed, msg=f"{operation}: AWS returned an unexpected resolver endpoint ID {endpoint['Id']}"
-        )
-
-    if expected_name is not None and endpoint.get("Name") != expected_name:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver endpoint name")
-
-    return endpoint
-
-
-def validate_resolver_rule(module, rule, operation, expected_id=None, expected_name=None, changed=False):
-    """Fail when AWS returns a different resolver rule than the one requested."""
-    if expected_id is not None and rule["Id"] != expected_id:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule ID {rule['Id']}")
-
-    if expected_name is not None and rule.get("Name") != expected_name:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule name")
-
-    return rule

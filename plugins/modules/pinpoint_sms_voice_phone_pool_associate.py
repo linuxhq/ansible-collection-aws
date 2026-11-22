@@ -169,10 +169,7 @@ except ImportError:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-    paginated_query_with_retries,
-)
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -187,6 +184,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     is_phone_number_identity,
     is_phone_number_reference,
     last_phone_number_message,
+    list_pool_origination_identities,
     pool_is_deleting,
     predicted_origination_identity,
 )
@@ -204,25 +202,16 @@ def current_associations(client, module, changed=False):
 
     changed reports whether the pool was already modified, for failure results.
     """
-    try:
-        response = paginated_query_with_retries(
-            client,
-            "list_pool_origination_identities",
-            PoolId=module.params["pool_id"],
-        )
-    except is_boto3_error_code("ResourceNotFoundException"):
+    response = list_pool_origination_identities(
+        client, module, module.params["pool_id"], changed=changed, missing_ok=True
+    )
+    if response is None:
         if module.params["state"] == "present":
             module.fail_json(
                 changed=changed, msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist"
             )
 
         return {}, []
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            changed=changed,
-            msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {module.params['pool_id']}",
-        )
 
     associations = response.get("OriginationIdentities", [])
 
@@ -235,19 +224,6 @@ def current_associations(client, module, changed=False):
     )
 
     return pool, [dict(association, **pool) for association in associations]
-
-
-def validate_association(module, association, changed=False):
-    expected_pool_id = module.params["pool_id"].rsplit("/", 1)[-1]
-    if association["PoolId"] != expected_pool_id or not identity_matches(
-        association, (module.params["origination_identity"],)
-    ):
-        module.fail_json(
-            changed=changed,
-            msg="AWS returned the wrong Pinpoint SMS Voice V2 origination identity association",
-        )
-
-    return association
 
 
 def current_association(module, associations):
@@ -325,7 +301,6 @@ def ensure_present(client, module):
                 ),
             )
 
-        validate_association(module, association, changed=True)
         association.pop("ResponseMetadata", None)
         if module.params["client_token"] is not None and (
             current_association(module, current_associations(client, module, changed=True)[1]) is None
@@ -419,7 +394,6 @@ def ensure_absent(client, module):
             module.fail_json_aws(e, msg=disassociate_failure_message(module))
 
         if response is not None:
-            validate_association(module, response, changed=True)
             response.pop("ResponseMetadata", None)
             association = response
 

@@ -152,13 +152,13 @@ def test_enable_waits_for_disabling_region_even_without_final_wait():
             "get_region_opt_status",
             side_effect=["DISABLING", "ENABLING"],
         ),
-        patch.object(plugin, "wait_for_status") as wait_for_status,
+        patch.object(plugin, "wait_for_region") as wait_for_region,
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleExit),
     ):
         plugin.ensure_present(client, module)
 
-    wait_for_status.assert_called_once_with(client, module, "region_disabled", plugin.ABSENT_STEADY_STATUSES)
+    wait_for_region.assert_called_once_with(client, module, "region_disabled", plugin.ABSENT_STEADY_STATUSES)
     client.enable_region.assert_called_once_with(RegionName="af-south-1", aws_retry=True)
     assert require.call_args.args[3] == {"enable_region": ("RegionName",)}
 
@@ -172,13 +172,13 @@ def test_disable_waits_for_enabling_region_even_without_final_wait():
             "get_region_opt_status",
             side_effect=["ENABLING", "DISABLING"],
         ),
-        patch.object(plugin, "wait_for_status") as wait_for_status,
+        patch.object(plugin, "wait_for_region") as wait_for_region,
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleExit),
     ):
         plugin.ensure_absent(client, module)
 
-    wait_for_status.assert_called_once_with(client, module, "region_enabled", plugin.PRESENT_STEADY_STATUSES)
+    wait_for_region.assert_called_once_with(client, module, "region_enabled", plugin.PRESENT_STEADY_STATUSES)
     client.disable_region.assert_called_once_with(RegionName="af-south-1", aws_retry=True)
     assert require.call_args.args[3] == {"disable_region": ("RegionName",)}
 
@@ -263,8 +263,8 @@ def test_status_failure_after_mutation_reports_changed(state, previous, mutation
 @pytest.mark.parametrize(
     ("state", "statuses"),
     [
-        ("present", ["DISABLING", "DISABLED", "ENABLED"]),
-        ("absent", ["ENABLING", "ENABLED", "DISABLED"]),
+        ("present", ["DISABLING", "ENABLED"]),
+        ("absent", ["ENABLING", "DISABLED"]),
     ],
 )
 def test_final_wait_receives_the_remaining_wait_budget(state, statuses):
@@ -283,12 +283,14 @@ def test_final_wait_receives_the_remaining_wait_budget(state, statuses):
         wait_utils.custom_waiter_config(1800, default_pause=30),
         wait_utils.custom_waiter_config(1200, default_pause=30),
     ]
+    # The wait for the opposite transition does not read the status again.
+    assert client.get_region_opt_status.call_count == 2
     assert raised.value.values["region_opt_status"] == statuses[-1]
 
 
 @pytest.mark.parametrize(
     ("state", "statuses"),
-    [("present", ["DISABLING", "DISABLED"]), ("absent", ["ENABLING", "ENABLED"])],
+    [("present", ["DISABLING"]), ("absent", ["ENABLING"])],
 )
 def test_final_wait_times_out_when_the_opposite_transition_spent_the_budget(state, statuses):
     module = FakeModule({"name": "af-south-1", "state": state, "wait": True, "wait_delay": 30, "wait_timeout": 1800})
@@ -303,6 +305,7 @@ def test_final_wait_times_out_when_the_opposite_transition_spent_the_budget(stat
         getattr(plugin, f"ensure_{state}")(client, module)
 
     custom_waiter.return_value.wait.assert_called_once()
+    client.get_region_opt_status.assert_called_once()
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"].startswith("Timed out waiting for AWS account region af-south-1")
 

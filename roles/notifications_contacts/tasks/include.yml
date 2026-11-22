@@ -17,8 +17,8 @@
   async: "{{ ansible_check_mode | ternary(0, notifications_contacts_async) }}"
   poll: "{{ notifications_contacts_poll }}"
   changed_when:
-    - ansible_check_mode | bool
     - __notifications_contacts_result.changed | bool
+    - __notifications_contacts_result.finished | d(true) | bool
   when:
     - _emailcontact.email_address is defined
     - _emailcontact.name is defined
@@ -37,5 +37,6 @@
   retries: "{{ notifications_contacts_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __notifications_contacts_status.finished | bool

@@ -372,12 +372,14 @@ def main():
             accelerators.append(response["Accelerator"])
 
     if accelerators:
-        require_client_methods(
-            module,
-            client,
-            "Global Accelerator",
-            {"list_tags_for_resource": ("ResourceArn",)},
-        )
+        methods = {"list_tags_for_resource": ("ResourceArn",)}
+        if include_listeners:
+            methods["list_listeners"] = ("AcceleratorArn", "MaxResults", "NextToken")
+
+        if include_endpoint_groups:
+            methods["list_endpoint_groups"] = ("ListenerArn", "MaxResults", "NextToken")
+
+        require_client_methods(module, client, "Global Accelerator", methods)
 
     available_accelerators = []
     for accelerator in accelerators:
@@ -393,12 +395,6 @@ def main():
             available_accelerators.append(accelerator)
             continue
 
-        require_client_methods(
-            module,
-            client,
-            "Global Accelerator",
-            {"list_listeners": ("AcceleratorArn", "MaxResults", "NextToken")},
-        )
         try:
             response = paginated_query_with_retries(
                 client,
@@ -424,19 +420,6 @@ def main():
                 continue
 
             listener_arn = listener["ListenerArn"]
-
-            require_client_methods(
-                module,
-                client,
-                "Global Accelerator",
-                {
-                    "list_endpoint_groups": (
-                        "ListenerArn",
-                        "MaxResults",
-                        "NextToken",
-                    )
-                },
-            )
             try:
                 response = paginated_query_with_retries(
                     client,

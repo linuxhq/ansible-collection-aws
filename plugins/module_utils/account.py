@@ -23,10 +23,5 @@ def get_account(module, client, params):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg=f"Unable to get account information for {target}")
 
-    result = {
-        key: response[key]
-        for key in ("AccountName", "AccountId", "AccountCreatedDate", "AccountState")
-        if key in response
-    }
-
-    return boto3_resource_to_ansible_dict(result, transform_tags=False, force_tags=False)
+    response.pop("ResponseMetadata", None)
+    return boto3_resource_to_ansible_dict(response, transform_tags=False, force_tags=False)

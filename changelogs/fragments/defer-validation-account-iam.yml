@@ -1,0 +1,11 @@
+---
+minor_changes:
+  - account_name and aws_account_info - return every field of the AWS Account C(GetAccountInformation) response
+    instead of a fixed list of fields.
+  - iam_oidc_provider - O(thumbprint_list) entries now only need to be 40 characters long; IAM accepts thumbprints
+    that are not hexadecimal.
+trivial:
+  - account_region - the wait for a pending opposite transition no longer reads the region status again before
+    the region is enabled or disabled.
+  - iam_oidc_provider - compute the client ID and thumbprint lists to write once and rely on the lists that
+    reading the provider always sets.

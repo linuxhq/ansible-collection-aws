@@ -42,8 +42,8 @@
     - _loadbalancer.subnets is defined
     - _loadbalancer.subnets | length > 0
   changed_when:
-    - ansible_check_mode | bool
     - __elb_application_lb_result.changed | bool
+    - __elb_application_lb_result.finished | d(true) | bool
 
 - name: Ensure managed aws application load balancer jobs are complete
   tags:
@@ -59,6 +59,7 @@
   retries: "{{ elb_application_lb_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __elb_application_lb_status.finished | bool
 ...

@@ -195,15 +195,6 @@ phone_numbers:
       type: bool
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -214,6 +205,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    describe_each,
     list_tags,
     unique_resource_ids,
 )
@@ -221,25 +213,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-
-
-def describe_phone_numbers_by_id(module, client, request):
-    phone_numbers = []
-    for phone_number_id in request["PhoneNumberIds"]:
-        try:
-            response = paginated_query_with_retries(
-                client,
-                "describe_phone_numbers",
-                **dict(request, PhoneNumberIds=[phone_number_id]),
-            )
-        except is_boto3_error_code("ResourceNotFoundException"):
-            continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 phone number {phone_number_id}")
-
-        phone_numbers.extend(response.get("PhoneNumbers", []))
-
-    return phone_numbers
 
 
 def main():
@@ -284,7 +257,15 @@ def main():
     )
 
     if phone_number_ids:
-        phone_numbers = describe_phone_numbers_by_id(module, client, request)
+        phone_numbers = describe_each(
+            client,
+            module,
+            "describe_phone_numbers",
+            "PhoneNumbers",
+            request,
+            "PhoneNumberIds",
+            lambda phone_number_id: f"phone number {phone_number_id}",
+        )
     else:
         phone_numbers = query_list(
             module,

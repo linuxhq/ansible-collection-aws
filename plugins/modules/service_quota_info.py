@@ -23,6 +23,7 @@ options:
         quota, so its C(quota_context.context_id) is C(*) or absent.
       - This option requires AWS SDK support for the C(ContextId) request
         parameter.
+      - This must not be empty when specified.
     type: str
   quota_code:
     description:
@@ -221,8 +222,13 @@ def main():
     }
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
+
+    # An empty context ID would silently turn a resource-level lookup into an account-level one.
+    if module.params["context_id"] == "":
+        module.fail_json(msg="context_id must not be empty")
+
     client = module.client("service-quotas", retry_decorator=AWSRetry.jittered_backoff())
-    context_id = module.params["context_id"] or None
+    context_id = module.params["context_id"]
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
 

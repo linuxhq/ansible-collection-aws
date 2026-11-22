@@ -33,8 +33,9 @@ options:
       - The prefix list entries to manage.
       - Each entry must include O(entries[].cidr) and may include O(entries[].description).
       - This is required when O(state=present).
-      - This list must contain at least one entry, and entry CIDR blocks must
-        be unique.
+      - Entry CIDR blocks must be unique.
+      - An empty list removes every entry of an existing prefix list. Creating a prefix list without entries
+        requires O(max_entries), since O(max_entries) defaults to the number of O(entries).
       - Entries without O(entries[].description) have no description.
       - An empty O(entries[].description), or one made only of whitespace, is the
         same as omitting it, since EC2 does not store such descriptions.
@@ -58,7 +59,7 @@ options:
       - When set, the prefix list is resized to this value, including shrinking it.
       - Set this above the number of O(entries) to leave headroom, so entry changes do not
         resize the prefix list.
-      - This must be at least the number of O(entries).
+      - This must be at least 1 and at least the number of O(entries).
     type: int
     version_added: "2.6.0"
   name:
@@ -311,24 +312,6 @@ EC2_WAITER_MODEL_DATA = {
             },
             {
                 "argument": "PrefixLists[0].State",
-                "expected": "create-in-progress",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "PrefixLists[0].State",
-                "expected": "modify-in-progress",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "PrefixLists[0].State",
-                "expected": "restore-in-progress",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "PrefixLists[0].State",
                 "expected": "create-failed",
                 "matcher": "path",
                 "state": "failure",
@@ -381,12 +364,6 @@ EC2_WAITER_MODEL_DATA = {
                 "expected": "delete-complete",
                 "matcher": "path",
                 "state": "success",
-            },
-            {
-                "argument": "PrefixLists[0].State",
-                "expected": "delete-in-progress",
-                "matcher": "path",
-                "state": "retry",
             },
             {
                 "argument": "PrefixLists[0].State",
@@ -589,6 +566,10 @@ def ensure_present(client, module, owner_id, deadline=None):
         max_entries = len(desired_entries)
         if current is not None:
             max_entries = max(current["MaxEntries"], max_entries)
+
+    # EC2 rejects creating a prefix list that holds no entries, which check mode would otherwise predict.
+    if current is None and max_entries < 1:
+        module.fail_json(msg="max_entries is required to create an EC2 VPC managed prefix list without entries")
 
     desired_prefix_list = {
         "address_family": module.params["address_family"],
@@ -869,11 +850,8 @@ def wait_for_ready_state(client, module, prefix_list_id, changed=False, deadline
 
 def state_message_detail(prefix_list):
     """Return EC2's reason for a failed state, which names the blocking resources, as a message suffix."""
-    state_message = prefix_list.get("StateMessage") if isinstance(prefix_list, dict) else None
-    if not isinstance(state_message, str) or not state_message:
-        return ""
-
-    return f" ({state_message})"
+    state_message = (prefix_list or {}).get("StateMessage")
+    return f" ({state_message})" if state_message else ""
 
 
 def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, changed=False, deadline=None):
@@ -898,9 +876,9 @@ def wait_for_prefix_list_state(client, module, prefix_list_id, waiter_name, chan
         )
     except WaiterError as e:
         # A terminal failure state carries EC2's StateMessage only in the last DescribeManagedPrefixLists response.
-        prefix_lists = e.last_response.get("PrefixLists") if isinstance(e.last_response, dict) else None
-        prefix_list = prefix_lists[0] if isinstance(prefix_lists, list) and prefix_lists else None
-        module.fail_json_aws(e, changed=changed, msg=error_msg + state_message_detail(prefix_list))
+        # last_response is the error response, without PrefixLists, when the waiter stops on an error.
+        prefix_lists = e.last_response.get("PrefixLists") or [None]
+        module.fail_json_aws(e, changed=changed, msg=error_msg + state_message_detail(prefix_lists[0]))
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=error_msg)
 
@@ -1007,10 +985,15 @@ def main():
     tags = module.params["tags"]
 
     if state == "present":
-        if not entries:
-            module.fail_json(msg="entries must contain at least one item when state=present")
+        # required_if counts only supplied keys, so an explicit null passes it.
+        if entries is None:
+            module.fail_json(msg="state is present but all of the following are missing: entries")
 
         max_entries = module.params.get("max_entries")
+        # EC2 rejects a zero size only in the resize, after the entries of an existing prefix list are written.
+        if max_entries is not None and max_entries < 1:
+            module.fail_json(msg="max_entries must be at least 1")
+
         if max_entries is not None and max_entries < len(entries):
             module.fail_json(msg="max_entries must be at least the number of entries")
 

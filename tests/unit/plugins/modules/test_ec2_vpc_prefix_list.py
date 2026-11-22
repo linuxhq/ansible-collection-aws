@@ -319,13 +319,9 @@ def test_entry_replacement_is_one_request_before_shrinking():
     assert raised.value.values["prefix_list"]["entries"] == [{"cidr": "192.0.2.0/24"}]
 
 
-def test_present_entries_must_be_nonempty_and_unique():
+def test_present_entries_must_be_unique_and_fit():
     base = {"address_family": "IPv4", "name": "main", "state": "present", "tags": None}
     cases = [
-        (
-            dict(base, entries=[]),
-            "entries must contain at least one item when state=present",
-        ),
         (
             dict(base, entries=[{"cidr": "10.0.0.0/8"}, {"cidr": "192.0.2.0/24"}], max_entries=1),
             "max_entries must be at least the number of entries",
@@ -355,6 +351,78 @@ def test_present_entries_must_be_nonempty_and_unique():
     ]
     for params, message in cases:
         assert_module_rejects(plugin, params, message)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_empty_entries_reach_ec2(check_mode):
+    # Live: EC2 creates a prefix list without entries, and a modify may remove every entry.
+    client = Mock()
+    module = FakeModule(main_params(entries=[], max_entries=1), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_aws_account_id", return_value=OWNER),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"entries": None}, "state is present but all of the following are missing: entries"),
+        ({"entries": [], "max_entries": 0}, "max_entries must be at least 1"),
+    ],
+    ids=["null-entries", "zero-size"],
+)
+def test_inputs_that_would_fail_after_a_write_are_rejected_before_aws(overrides, message):
+    # A zero size fails only in the resize, after the entries of an existing prefix list are removed.
+    module = FakeModule(main_params(**overrides), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == message
+    ensure_present.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_without_entries_or_max_entries_fails_before_any_write(check_mode):
+    # max_entries defaults to the number of entries, and EC2 rejects a prefix list that holds none.
+    client = Mock()
+    module = FakeModule(present_params([]), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_current", return_value=(None, [])),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert raised.value.values["msg"] == (
+        "max_entries is required to create an EC2 VPC managed prefix list without entries"
+    )
+    client.create_managed_prefix_list.assert_not_called()
+
+
+def test_empty_entries_remove_every_entry_of_an_existing_prefix_list():
+    client = Mock()
+    module = FakeModule(present_params([]))
+    with (
+        patch.object(plugin, "get_current", return_value=(prefix_list(), [{"Cidr": "10.0.0.0/8"}])),
+        patch.object(plugin, "modify_prefix_list", return_value=prefix_list(Version=2)) as modify,
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert modify.call_args.kwargs["remove_entries"] == [{"cidr": "10.0.0.0/8"}]
+    assert not modify.call_args.kwargs.get("add_entries")
+    assert raised.value.values["changed"] is True
+    assert raised.value.values["prefix_list"]["entries"] == []
 
 
 def main_params(**overrides):
@@ -1376,11 +1444,17 @@ def test_prefix_list_waiter_stops_on_failed_state(name, state):
     operation.assert_called_once()
 
 
+POLLED_STATES = ("create-in-progress", "modify-in-progress", "restore-in-progress")
+
+
 def test_ready_waiter_handles_every_prefix_list_state():
     shapes = Loader().load_service_model("ec2", "service-2")["shapes"]
     acceptors = plugin.EC2_WAITER_MODEL_DATA["managed_prefix_list_ready"]["acceptors"]
 
-    assert {acceptor["expected"] for acceptor in acceptors} == set(shapes["PrefixListState"]["enum"])
+    # Botocore keeps polling a state no acceptor matches, so only the in-progress states being awaited have none.
+    assert {acceptor["expected"] for acceptor in acceptors} == set(shapes["PrefixListState"]["enum"]) - set(
+        POLLED_STATES
+    )
 
 
 def test_ready_wait_fails_immediately_when_the_prefix_list_is_deleting():
@@ -1509,7 +1583,7 @@ def test_wait_failure_includes_the_state_message(waiter_name, state):
 
 @pytest.mark.parametrize(
     "response",
-    [None, {}, {"PrefixLists": []}, {"PrefixLists": "bad"}, {"PrefixLists": ["bad"]}, {"PrefixLists": [{}]}],
+    [{}, {"Error": {"Code": "InternalError"}}, {"PrefixLists": []}, {"PrefixLists": [{}]}],
 )
 def test_wait_failure_without_a_state_message_keeps_the_plain_message(response):
     module = FakeModule({"wait_delay": 1, "wait_timeout": 60})
@@ -1547,8 +1621,8 @@ def test_tag_failure_reports_whether_entries_were_modified(description, changed)
 
 
 def failing_waiter(last_response=None):
-    """Return a waiter that fails as botocore does on a terminal failure state."""
-    return Mock(wait=Mock(side_effect=WaiterError("waiter", "terminal failure state", last_response)))
+    """Return a waiter that fails as botocore does on a terminal failure state, always with a response dict."""
+    return Mock(wait=Mock(side_effect=WaiterError("waiter", "terminal failure state", last_response or {})))
 
 
 def test_wait_failure_after_create_reports_changed():
@@ -1844,9 +1918,9 @@ def test_deletable_waiter_handles_every_prefix_list_state():
     shapes = Loader().load_service_model("ec2", "service-2")["shapes"]
     acceptors = plugin.EC2_WAITER_MODEL_DATA["managed_prefix_list_deletable"]["acceptors"]
 
-    assert {acceptor["expected"] for acceptor in acceptors} == set(shapes["PrefixListState"]["enum"]) | {
-        "InvalidPrefixListID.NotFound"
-    }
+    assert {acceptor["expected"] for acceptor in acceptors} == (
+        set(shapes["PrefixListState"]["enum"]) - set(POLLED_STATES)
+    ) | {"InvalidPrefixListID.NotFound"}
 
 
 @pytest.mark.parametrize(

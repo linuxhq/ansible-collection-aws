@@ -416,12 +416,12 @@ def find_route_table(client, module):
 
         return route_table
 
-    filters = {"state": ["available", "pending"]}
-    if transit_gateway_id:
-        filters["transit-gateway-id"] = transit_gateway_id
-
-    if name:
-        filters["tag:Name"] = escape_filter_value(name)
+    # main() requires name and transit_gateway_id when transit_gateway_route_table_id is omitted.
+    filters = {
+        "state": ["available", "pending"],
+        "transit-gateway-id": transit_gateway_id,
+        "tag:Name": escape_filter_value(name),
+    }
 
     route_tables = query_list(
         module,
@@ -432,9 +432,8 @@ def find_route_table(client, module):
         Filters=ansible_dict_to_boto3_filter_list(filters),
     )
 
-    if name:
-        # The filter value is escaped; still keep only the exact name.
-        route_tables = [route_table for route_table in route_tables if current_tags(route_table).get("Name") == name]
+    # The filter value is escaped; still keep only the exact name.
+    route_tables = [route_table for route_table in route_tables if current_tags(route_table).get("Name") == name]
 
     if len(route_tables) > 1:
         transit_gateway_route_table_ids = [route_table_id(route_table) for route_table in route_tables]
@@ -504,14 +503,10 @@ def wait_for_route_table(
 
 
 def search_routes(client, module, transit_gateway_route_table_id, filters, changed=False):
-    """Search routes; changed reports earlier modifications, for failure results."""
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {"search_transit_gateway_routes": SEARCH_ROUTES_PARAMETERS},
-        changed=changed,
-    )
+    """Search routes; changed reports earlier modifications, for failure results.
+
+    main() checks the SDK supports the search before any route is reconciled.
+    """
     routes = query_list(
         module,
         client,
@@ -1282,12 +1277,12 @@ def main():
         if name is not None and not name.strip(EC2_BLANK_TAG_VALUE_CHARACTERS):
             module.fail_json(msg="name must not be empty")
 
-        require_valid_tags(module, tags, 50, ec2=True)
+        require_valid_tags(module, tags, ec2=True)
         if name and tags is not None and tags.get("Name", name) != name:
             module.fail_json(msg="tags.Name must match name")
 
-        # The Name tag counts toward the EC2 tag limit.
-        require_valid_tags(module, desired_tags(module), 50, ec2=True)
+        # The Name tag must be a valid EC2 tag too.
+        require_valid_tags(module, desired_tags(module), ec2=True)
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 

@@ -16,8 +16,8 @@
   when:
     - _delegationset.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __route53_delegation_set_result.changed | bool
+    - __route53_delegation_set_result.finished | d(true) | bool
 
 - name: Ensure managed aws route53 delegation set jobs are complete
   tags:
@@ -33,6 +33,7 @@
   retries: "{{ route53_delegation_set_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __route53_delegation_set_status.finished | bool
 ...

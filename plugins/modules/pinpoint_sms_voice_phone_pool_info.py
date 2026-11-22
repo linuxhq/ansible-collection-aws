@@ -172,15 +172,6 @@ pools:
       type: bool
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -191,6 +182,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    describe_each,
+    list_pool_origination_identities,
     list_tags,
     unique_resource_ids,
 )
@@ -198,25 +191,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-
-
-def describe_pools_by_id(module, client, request):
-    pools = []
-    for pool_id in request["PoolIds"]:
-        try:
-            response = paginated_query_with_retries(
-                client,
-                "describe_pools",
-                **dict(request, PoolIds=[pool_id]),
-            )
-        except is_boto3_error_code("ResourceNotFoundException"):
-            continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(e, msg=f"Unable to describe Pinpoint SMS Voice V2 pool {pool_id}")
-
-        pools.extend(response.get("Pools", []))
-
-    return pools
 
 
 def main():
@@ -261,7 +235,9 @@ def main():
     )
 
     if pool_ids:
-        pools = describe_pools_by_id(module, client, request)
+        pools = describe_each(
+            client, module, "describe_pools", "Pools", request, "PoolIds", lambda pool_id: f"pool {pool_id}"
+        )
     else:
         pools = query_list(
             module,
@@ -289,22 +265,10 @@ def main():
 
     normalized_pools = []
     for pool in pools:
-        pool_id = pool["PoolId"]
-
-        try:
-            response = paginated_query_with_retries(
-                client,
-                "list_pool_origination_identities",
-                # A shared pool requires its full ARN.
-                PoolId=pool["PoolArn"],
-            )
-        except is_boto3_error_code("ResourceNotFoundException"):
+        # A shared pool requires its full ARN.
+        response = list_pool_origination_identities(client, module, pool["PoolArn"], missing_ok=True)
+        if response is None:
             continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}",
-            )
 
         tags = list_tags(client, module, pool["PoolArn"], "pool", missing_ok=True)
         if tags is None:

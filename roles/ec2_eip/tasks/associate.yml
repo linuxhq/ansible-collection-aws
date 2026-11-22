@@ -27,8 +27,8 @@
     - _eip.state is not defined or
       _eip.state == 'present'
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_eip_result_associate.changed | bool
+    - __ec2_eip_result_associate.finished | d(true) | bool
 
 - name: Ensure aws elastic ip address association jobs are complete
   tags:
@@ -44,6 +44,7 @@
   retries: "{{ ec2_eip_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_eip_status_associate.finished | bool
 ...

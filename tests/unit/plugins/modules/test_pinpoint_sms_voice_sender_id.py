@@ -596,15 +596,11 @@ def test_describe_error_is_reported(state):
     assert result.values == {"msg": "Unable to describe Pinpoint SMS Voice V2 sender ID EXAMPLE in DE"}
 
 
-def test_describe_rejects_another_sender_id():
+def test_describe_returns_the_described_sender_id_without_comparing_it():
     module = FakeModule(params(), client=model_client())
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"SenderIds": [described(SenderId="OTHER")]}),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_sender_id(module._client, module)
-
-    assert raised.value.values["msg"] == "AWS returned the wrong Pinpoint SMS Voice V2 sender ID while describing it"
+    other = described(SenderId="OTHER")
+    with patch.object(plugin, "paginated_query_with_retries", return_value={"SenderIds": [other]}):
+        assert plugin.get_sender_id(module._client, module) == other
 
 
 def test_describe_matches_without_letter_case():

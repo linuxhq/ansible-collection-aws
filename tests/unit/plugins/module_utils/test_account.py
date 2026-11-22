@@ -21,3 +21,16 @@ def test_complete_account_information():
         "account_created_date": "2020-01-02T00:00:00+00:00",
         "account_state": "ACTIVE",
     }
+
+
+def test_account_information_converts_the_whole_response():
+    client = Mock()
+    client.get_account_information.return_value = {
+        "AccountId": "123456789012",
+        "AdditionalField": "value",
+        "ResponseMetadata": {"RequestId": "ignored"},
+    }
+    assert account.get_account(FakeModule({}), client, {}) == {
+        "account_id": "123456789012",
+        "additional_field": "value",
+    }

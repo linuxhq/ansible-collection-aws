@@ -28,8 +28,8 @@
   when:
     - _key.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __kms_key_result.changed | bool
+    - __kms_key_result.finished | d(true) | bool
 
 - name: Ensure managed aws key management service key jobs are complete
   tags:
@@ -45,6 +45,7 @@
   retries: "{{ kms_key_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __kms_key_status.finished | bool
 ...

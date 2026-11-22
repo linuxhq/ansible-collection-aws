@@ -145,8 +145,6 @@ def main():
 
     email_contacts_with_tags = []
     for contact in email_contacts:
-        contact = dict(contact)
-
         tags = list_contact_tags(client, module, contact["arn"], missing_ok=True)
         if tags is None:
             continue

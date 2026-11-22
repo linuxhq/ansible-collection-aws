@@ -20,8 +20,8 @@
     - _pg.0.strategy is defined
     - _pg.1.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_placement_group_result.changed | bool
+    - __ec2_placement_group_result.finished | d(true) | bool
 
 - name: Ensure managed aws placement group jobs are complete
   tags:
@@ -37,6 +37,7 @@
   retries: "{{ ec2_placement_group_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_placement_group_status.finished | bool
 ...

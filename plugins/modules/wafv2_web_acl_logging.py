@@ -26,8 +26,7 @@ options:
     description:
       - The ARN of the WAFv2 web ACL to manage logging for.
       - A regional web ACL must be in the module's region, and a CloudFront
-        (C(global)) web ACL requires the C(us-east-1) region; any other region
-        fails before AWS is called.
+        (C(global)) web ACL requires the C(us-east-1) region.
       - When O(state=present), the web ACL must exist.
     required: true
     type: str
@@ -243,11 +242,7 @@ def ensure_present(client, module, web_acl):
             "ResourceArn": resource_arn,
         }
     )
-    changed = (
-        not current
-        or (current.get("LogDestinationConfigs") or []) != log_destination_configs
-        or current.get("ResourceArn") != resource_arn
-    )
+    changed = current is None or current["LogDestinationConfigs"] != log_destination_configs
 
     if changed and not module.check_mode:
         try:
@@ -290,7 +285,11 @@ def require_web_acl(client, module, web_acl):
 
 
 def web_acl_identity(module):
-    """Return the web ACL's GetWebACL parameters, failing when its ARN cannot be used from this region."""
+    """Return the web ACL's GetWebACL parameters, failing on an ARN that is not a WAFv2 web ACL.
+
+    AWS reports a non-web-ACL ARN only as a retryable internal failure, and a web ACL ARN from another region as
+    WAFInvalidParameterException on the first read.
+    """
     resource_arn = module.params["resource_arn"]
     arn = parse_aws_arn(resource_arn) or {}
     parts = (arn.get("resource") or "").split("/")
@@ -301,12 +300,6 @@ def web_acl_identity(module):
         or parts[1] != "webacl"
     ):
         module.fail_json(msg=f"resource_arn must be an AWS WAFv2 web ACL ARN, not {resource_arn}")
-
-    required_region = "us-east-1" if parts[0] == "global" else arn.get("region")
-    if module.region != required_region:
-        module.fail_json(
-            msg=f"AWS WAFv2 web ACL {resource_arn} requires the {required_region} region, not {module.region}"
-        )
 
     return {"Id": parts[3], "Name": parts[2], "Scope": "CLOUDFRONT" if parts[0] == "global" else "REGIONAL"}
 

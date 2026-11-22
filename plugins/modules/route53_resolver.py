@@ -333,6 +333,7 @@ state:
   type: str
 """
 
+import ipaddress
 import json
 import uuid
 
@@ -360,13 +361,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
-    comparable_ip_entry_matches,
     comparable_ip_fields,
     comparable_ips_match,
-    reconcile_resolver_arn_tags,
-    require_ip_versions,
+    comparable_ips_matches,
     resolver_resource_with_tags,
-    validate_resolver_endpoint,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -374,6 +372,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    reconcile_arn_tags,
     require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
@@ -402,24 +401,6 @@ ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA = {
                 "expected": "DELETING",
                 "matcher": "path",
                 "state": "failure",
-            },
-            {
-                "argument": "ResolverEndpoint.Status",
-                "expected": "CREATING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "ResolverEndpoint.Status",
-                "expected": "UPDATING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "ResolverEndpoint.Status",
-                "expected": "AUTO_RECOVERING",
-                "matcher": "path",
-                "state": "retry",
             },
             # Terminal: the waited write fails with the endpoint's StatusMessage instead of the waiter's error.
             {
@@ -454,24 +435,6 @@ ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA = {
                 "matcher": "path",
                 "state": "failure",
             },
-            {
-                "argument": "ResolverEndpoint.Status",
-                "expected": "CREATING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "ResolverEndpoint.Status",
-                "expected": "UPDATING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "ResolverEndpoint.Status",
-                "expected": "AUTO_RECOVERING",
-                "matcher": "path",
-                "state": "retry",
-            },
         ],
     },
     "resolver_endpoint_deleted": {
@@ -483,12 +446,6 @@ ROUTE53_RESOLVER_ENDPOINT_WAITER_MODEL_DATA = {
                 "expected": "ResourceNotFoundException",
                 "matcher": "error",
                 "state": "success",
-            },
-            {
-                "argument": "ResolverEndpoint.Status",
-                "expected": "DELETING",
-                "matcher": "path",
-                "state": "retry",
             },
             # A failed delete returns the endpoint to a settled state; wait_for_resolver_endpoint_status reports it.
             {
@@ -982,13 +939,13 @@ def ensure_present(client, module, deadline=None):
             if "Tags" not in endpoint:
                 endpoint = dict(endpoint, Tags=current_tags)
 
-            reconcile_resolver_arn_tags(
+            reconcile_arn_tags(
                 module,
                 client,
-                endpoint,
-                "endpoint",
+                endpoint["Arn"],
                 tags_to_set,
                 tag_keys_to_unset,
+                "AWS Route53 Resolver endpoint",
                 changed=resource_changed,
             )
 
@@ -1042,23 +999,17 @@ def ip_address_changes(listed_ip_addresses, desired_ip_addresses):
     ]
     current_ip_addresses = usable_ip_addresses(listed_ip_addresses)
 
-    remaining = list(current_ip_addresses)
-    ip_addresses_to_add = []
-    # Reserve explicit addresses before matching subnet-only requests.
-    for ip_address in sorted(desired_ip_addresses, key=lambda item: len(comparable_ip_address(item)), reverse=True):
-        desired_comparable = comparable_ip_address(ip_address)
-        match = next(
-            (
-                index
-                for index, current_ip_address in enumerate(remaining)
-                if comparable_ip_entry_matches(comparable_ip_address(current_ip_address), desired_comparable)
-            ),
-            None,
-        )
-        if match is None:
-            ip_addresses_to_add.append(ip_address)
-        else:
-            remaining.pop(match)
+    matches = comparable_ips_matches(
+        [comparable_ip_address(ip_address) for ip_address in current_ip_addresses],
+        [comparable_ip_address(ip_address) for ip_address in desired_ip_addresses],
+    )
+    # Explicit addresses are added first, so an automatic assignment cannot take one that a later entry requests.
+    ip_addresses_to_add = sorted(
+        (ip_address for ip_address, match in zip(desired_ip_addresses, matches) if match is None),
+        key=lambda item: len(comparable_ip_address(item)),
+        reverse=True,
+    )
+    remaining = [ip_address for index, ip_address in enumerate(current_ip_addresses) if index not in matches]
 
     # Replace failed addresses as well as unwanted ones; additions run first so the endpoint keeps capacity.
     ip_addresses_to_remove = failed_ip_addresses + remaining
@@ -1336,6 +1287,21 @@ def require_ip_address_families(module, ip_addresses, endpoint_type, detail=""):
             )
 
 
+def require_ip_versions(module, entry, option):
+    for field, version in (("ip", 4), ("ipv6", 6)):
+        value = entry.get(field)
+        if value is None:
+            continue
+
+        try:
+            valid = ipaddress.ip_address(value).version == version
+        except ValueError:
+            valid = False
+
+        if not valid:
+            module.fail_json(msg=f"{option}[].{field} must be a valid IPv{version} address")
+
+
 def usable_ip_addresses(ip_addresses):
     excluded = FAILED_IP_ADDRESS_STATUSES | DEPARTING_IP_ADDRESS_STATUSES
     return [ip_address for ip_address in ip_addresses or [] if ip_address_status(ip_address) not in excluded]
@@ -1368,6 +1334,19 @@ def comparable_endpoints_match(current, desired):
         return False
 
     return comparable_ips_match(current["ip_addresses"], desired["ip_addresses"])
+
+
+def validate_resolver_endpoint(module, endpoint, operation, expected_id=None, expected_name=None, changed=False):
+    """Fail when AWS returns a different resolver endpoint than the one requested."""
+    if expected_id is not None and endpoint["Id"] != expected_id:
+        module.fail_json(
+            changed=changed, msg=f"{operation}: AWS returned an unexpected resolver endpoint ID {endpoint['Id']}"
+        )
+
+    if expected_name is not None and endpoint.get("Name") != expected_name:
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver endpoint name")
+
+    return endpoint
 
 
 def get_resolver_endpoint(client, module, resolver_endpoint_id, changed=False):
@@ -1506,15 +1485,6 @@ def main():
             module.fail_json(msg="security_group_ids must contain at least one entry")
 
         for entry in module.params["ip_addresses"]:
-            if (
-                entry.get("ip") is not None
-                and entry.get("ipv6") is not None
-                and module.params["resolver_endpoint_type"] not in (None, "DUALSTACK")
-            ):
-                module.fail_json(
-                    msg="ip_addresses entries with both ip and ipv6 require resolver_endpoint_type=DUALSTACK"
-                )
-
             # Likewise for subnet IDs; on an update, AWS refuses the address only after adding the ones before it.
             if not entry["subnet_id"].strip() or len(entry["subnet_id"]) > 32:
                 module.fail_json(msg="ip_addresses[].subnet_id must contain 1 to 32 characters")
@@ -1522,7 +1492,7 @@ def main():
             require_ip_versions(module, entry, "ip_addresses")
 
         require_ip_address_families(module, module.params["ip_addresses"], module.params["resolver_endpoint_type"])
-        require_valid_tags(module, tags, 200, restricted_characters=True)
+        require_valid_tags(module, tags, restricted_characters=True)
 
     require_positive_wait_bounds(module, always=state == "present")
 

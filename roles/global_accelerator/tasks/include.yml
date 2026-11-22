@@ -29,8 +29,8 @@
   when:
     - _accelerator.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __global_accelerator_result.changed | bool
+    - __global_accelerator_result.finished | d(true) | bool
 
 - name: Ensure managed aws global accelerator jobs are complete
   tags:
@@ -46,6 +46,7 @@
   retries: "{{ global_accelerator_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __global_accelerator_status.finished | bool
 ...

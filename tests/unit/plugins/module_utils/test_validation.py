@@ -6,7 +6,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.validation import requ
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
 
 
-@pytest.mark.parametrize("value", [None, "a", " a ", "\tvalue\n", [], ["a"], ["a", " b "]])
+@pytest.mark.parametrize("value", [None, "a", " a ", "\tvalue\n"])
 def test_require_non_blank_accepts_unset_and_non_blank_values(value):
     require_non_blank(FakeModule({}), value, "option")
 
@@ -17,11 +17,3 @@ def test_require_non_blank_rejects_a_blank_string(value):
         require_non_blank(FakeModule({}), value, "option")
 
     assert raised.value.values == {"msg": "option must not be empty"}
-
-
-@pytest.mark.parametrize("value", [[""], [" "], ["a", "\t\n"], ["a", "b", "　"]])
-def test_require_non_blank_rejects_a_list_with_a_blank_entry(value):
-    with pytest.raises(ModuleFail) as raised:
-        require_non_blank(FakeModule({}), value, "parent[].option")
-
-    assert raised.value.values == {"msg": "parent[].option must not contain empty entries"}

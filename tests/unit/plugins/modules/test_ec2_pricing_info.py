@@ -127,7 +127,7 @@ def test_non_term_match_filter_types_are_sent_without_botocore_gate():
     assert query.call_args.kwargs["Filters"] == [{"Field": "instanceType", "Type": "EQUALS", "Value": "t3"}]
 
 
-def test_max_results_is_validated_when_requested():
+def test_max_results_is_sent_to_the_query():
     module = FakeModule(
         {
             "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}],
@@ -140,12 +140,13 @@ def test_max_results_is_validated_when_requested():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "paginated_query_with_retries", return_value={"PriceList": []}),
+        patch.object(plugin, "paginated_query_with_retries", return_value={"PriceList": []}) as query,
         pytest.raises(ModuleExit),
     ):
         plugin.main()
 
     assert "MaxResults" in require.call_args.args[3]["get_products"]
+    assert query.call_args.kwargs["MaxResults"] == 10
 
 
 @pytest.mark.parametrize("region", ["us-east-1", "eu-central-1", "us-west-2"])
@@ -172,7 +173,8 @@ def test_pricing_client_uses_the_selected_region(region):
     assert "region" not in module.client.call_args.kwargs
 
 
-def test_region_is_required():
+def test_missing_region_is_left_to_the_client_connection():
+    # amazon.aws fails the client connection with "requires a region" on NoRegionError.
     module = FakeModule(
         {
             "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3.micro"}],
@@ -181,15 +183,16 @@ def test_region_is_required():
             "service_code": "AmazonEC2",
         },
         region=None,
-        client=Mock(),
     )
+    module.client = Mock(side_effect=ModuleFail({"msg": "The pricing module requires a region"}))
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
-    assert "region is required" in raised.value.values["msg"]
+    module.client.assert_called_once()
+    assert raised.value.values["msg"] == "The pricing module requires a region"
 
 
 @pytest.mark.parametrize(

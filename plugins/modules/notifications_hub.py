@@ -139,7 +139,7 @@ def find_notification_hub(hubs, region):
 
 
 def hub_status(hub):
-    return ((hub or {}).get("statusSummary") or {}).get("status")
+    return hub["statusSummary"]["status"] if hub else None
 
 
 def ensure_absent(client, module):
@@ -203,12 +203,6 @@ def ensure_present(client, module):
             module.fail_json_aws(
                 e,
                 msg=f"Unable to create AWS Notifications hub {region}",
-            )
-
-        if hub["notificationHubRegion"] != region:
-            module.fail_json(
-                changed=True,
-                msg=f"Unable to create AWS Notifications hub {region}: AWS returned a hub for a different region",
             )
 
         hub.pop("ResponseMetadata", None)

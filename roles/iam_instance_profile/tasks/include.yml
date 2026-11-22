@@ -20,8 +20,8 @@
   when:
     - _instance_profile.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __iam_instance_profile_result.changed | bool
+    - __iam_instance_profile_result.finished | d(true) | bool
 
 - name: Ensure managed aws iam instance profile jobs are complete
   tags:
@@ -37,6 +37,7 @@
   retries: "{{ iam_instance_profile_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __iam_instance_profile_status.finished | bool
 ...

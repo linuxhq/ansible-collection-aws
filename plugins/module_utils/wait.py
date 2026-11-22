@@ -48,18 +48,15 @@ def sleep_until_next_poll(module, deadline):
     time.sleep(min(module.params["wait_delay"], max(0, deadline - time.monotonic())))
 
 
-def build_waiter_factory(model_data):
+def custom_waiter(client, model_data, waiter_name):
+    """Return a botocore waiter defined by a custom waiter model."""
+
     class _WaiterFactory(BaseWaiterFactory):
         @property
         def _waiter_model_data(self):
             return model_data
 
-    return _WaiterFactory()
-
-
-def custom_waiter(client, model_data, waiter_name):
-    """Return a botocore waiter defined by a custom waiter model."""
-    return build_waiter_factory(model_data).get_waiter(client, waiter_name)
+    return _WaiterFactory().get_waiter(client, waiter_name)
 
 
 def run_waiter(module, waiter, error_msg, changed=False, deadline=None, **wait_kwargs):

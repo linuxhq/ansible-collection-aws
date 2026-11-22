@@ -97,10 +97,9 @@ def test_empty_context_id_fails_before_any_aws_call(check_mode):
     require_client_methods.assert_not_called()
 
 
-@pytest.mark.parametrize("quota", [{"Value": "5"}, {"Value": True}, {"Value": float("nan")}, {"Adjustable": True}])
-def test_validate_current_quota_rejects_invalid_value(quota):
+def test_validate_current_quota_rejects_a_missing_value():
     with pytest.raises(ModuleFail) as raised:
-        plugin.validate_current_quota(FakeModule({}), quota, "ec2", "L-1")
+        plugin.validate_current_quota(FakeModule({}), {"Adjustable": True}, "ec2", "L-1")
 
     assert raised.value.values["msg"] == "AWS service quota ec2/L-1 did not return a valid value"
 
@@ -126,17 +125,6 @@ def test_validate_current_quota_names_the_error_reason(error_reason, suffix):
 
 def test_validate_current_quota_accepts_large_integer_without_crashing():
     plugin.validate_current_quota(FakeModule({}), {"Value": 10**400}, "ec2", "L-1")
-
-
-@pytest.mark.parametrize(
-    ("request_", "status", "message"),
-    [({"Status": "PENDING"}, "CASE_OPENED", "mismatched request"), ({"QuotaCode": "L-2"}, None, "mismatched request")],
-)
-def test_validate_quota_request_rejects_invalid_request(request_, status, message):
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_quota_request(FakeModule({}), request_, "ec2", "L-1", status=status)
-
-    assert message in raised.value.values["msg"]
 
 
 def test_check_mode_reports_the_quota_request():
@@ -341,20 +329,3 @@ def test_metric_dimension_identifiers_are_preserved():
 
     metric = result.values["current_quota"]["usage_metric"]
     assert metric == {"metric_namespace": "AWS/Usage", "metric_name": "ResourceCount", "metric_dimensions": dimensions}
-
-
-def test_invalid_request_response_reports_changed():
-    client = Mock()
-    client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
-    client.request_service_quota_increase.return_value = {"RequestedQuota": {"DesiredValue": 20.0}}
-    result, _query, _require = run(FakeModule(params(), client=client))
-
-    assert isinstance(result, ModuleFail)
-    assert result.values["changed"] is True
-
-
-def test_invalid_listed_request_reports_unchanged():
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_quota_request(FakeModule({}), {"Status": "CASE_OPENED"}, "ec2", "L-1", status="PENDING")
-
-    assert raised.value.values["changed"] is False

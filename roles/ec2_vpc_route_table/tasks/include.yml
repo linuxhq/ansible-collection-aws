@@ -27,8 +27,8 @@
     - _rtb.1.routes is defined
     - _rtb.1.subnets is defined
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_vpc_route_table_result.changed | bool
+    - __ec2_vpc_route_table_result.finished | d(true) | bool
 
 - name: Ensure managed aws virtual private cloud route table jobs are complete
   tags:
@@ -44,6 +44,7 @@
   retries: "{{ ec2_vpc_route_table_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_vpc_route_table_status.finished | bool
 ...

@@ -1,0 +1,15 @@
+---
+minor_changes:
+  - route53_resolver_rule - a O(target_ips) entry that sets O(target_ips[].ip) and O(target_ips[].ipv6) explicitly to
+    null no longer fails when O(state=absent), which does not use the targets.
+bugfixes:
+  - route53_resolver - pair the requested O(ip_addresses) with the current endpoint addresses the same way the
+    configuration comparison does, so a subnet-only entry no longer causes the replacement of an address that another
+    entry requests explicitly.
+  - route53_resolver_rule - require the botocore version that supports O(target_ips[].server_name_indication) only
+    when O(state=present), so deleting a rule no longer fails on an older botocore.
+trivial:
+  - route53_resolver - rely on the resolver endpoint type check for O(ip_addresses) entries that set both
+    O(ip_addresses[].ip) and O(ip_addresses[].ipv6) instead of a second, duplicate check.
+  - route53_resolver, route53_resolver_rule, and route53_resolver_rule_associate - move single-caller helpers out of
+    the shared Route 53 Resolver module utilities and reconcile tags with the shared ARN tag helper directly.

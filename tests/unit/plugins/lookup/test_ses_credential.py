@@ -54,7 +54,8 @@ def test_rejects_whitespace_in_secret_without_revealing_it(secret):
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
-        ({"aws_secret_access_key": "secret", "region": " "}, "non-empty region="),
+        ({"aws_secret_access_key": "secret", "region": ""}, "valid AWS region name, not ''"),
+        ({"aws_secret_access_key": "secret", "region": " "}, "valid AWS region name, not ''"),
         ({"aws_secret_access_key": "", "region": "us-east-1"}, "non-empty aws_secret_access_key="),
     ],
 )

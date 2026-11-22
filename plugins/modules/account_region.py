@@ -152,24 +152,6 @@ ACCOUNT_REGION_WAITER_MODEL_DATA = {
                 "matcher": "path",
                 "state": "success",
             },
-            {
-                "argument": "RegionOptStatus",
-                "expected": "ENABLING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "RegionOptStatus",
-                "expected": "DISABLING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "RegionOptStatus",
-                "expected": "DISABLED",
-                "matcher": "path",
-                "state": "retry",
-            },
         ],
     },
     "region_disabled": {
@@ -182,30 +164,6 @@ ACCOUNT_REGION_WAITER_MODEL_DATA = {
                 "expected": "DISABLED",
                 "matcher": "path",
                 "state": "success",
-            },
-            {
-                "argument": "RegionOptStatus",
-                "expected": "DISABLING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "RegionOptStatus",
-                "expected": "ENABLING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "RegionOptStatus",
-                "expected": "ENABLED",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "RegionOptStatus",
-                "expected": "ENABLED_BY_DEFAULT",
-                "matcher": "path",
-                "state": "retry",
             },
         ],
     },
@@ -250,7 +208,7 @@ def get_region_opt_status(client, module, changed=False):
     return region_status
 
 
-def wait_for_status(client, module, waiter_name, statuses, changed=False, deadline=None):
+def wait_for_region(client, module, waiter_name, statuses, changed=False, deadline=None):
     region_name = region_target(module)
     error_msg = f"Timed out waiting for AWS account region {region_name} to reach one of {sorted(statuses)}"
 
@@ -264,6 +222,9 @@ def wait_for_status(client, module, waiter_name, statuses, changed=False, deadli
         **region_request(module),
     )
 
+
+def wait_for_status(client, module, waiter_name, statuses, changed=False, deadline=None):
+    wait_for_region(client, module, waiter_name, statuses, changed=changed, deadline=deadline)
     return get_region_opt_status(client, module, changed=changed)
 
 
@@ -286,7 +247,7 @@ def ensure_present(client, module):
     if changed and not module.check_mode:
         if previous_status == "DISABLING":
             deadline = wait_deadline(module)
-            wait_for_status(client, module, "region_disabled", ABSENT_STEADY_STATUSES)
+            wait_for_region(client, module, "region_disabled", ABSENT_STEADY_STATUSES)
 
         require_client_methods(
             module,
@@ -341,7 +302,7 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         if previous_status == "ENABLING":
             deadline = wait_deadline(module)
-            wait_for_status(client, module, "region_enabled", PRESENT_STEADY_STATUSES)
+            wait_for_region(client, module, "region_enabled", PRESENT_STEADY_STATUSES)
 
         require_client_methods(
             module,

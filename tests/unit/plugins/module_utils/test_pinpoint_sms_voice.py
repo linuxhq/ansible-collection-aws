@@ -1,13 +1,16 @@
-from unittest.mock import Mock
+from unittest.mock import Mock, call, patch
 
 import pytest
 from botocore.exceptions import ClientError
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import pinpoint_sms_voice
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    describe_each,
     identity_matches,
     is_last_phone_number,
     is_phone_number_reference,
     last_phone_number_message,
+    list_pool_origination_identities,
     list_tags,
     predicted_origination_identity,
 )
@@ -168,3 +171,62 @@ def test_last_phone_number_message_names_the_identity_type():
     assert last_phone_number_message("sender-1", "pool-1", False).startswith(
         "Origination identity sender-1 is the last origination identity in Pinpoint SMS Voice V2 pool pool-1, "
     )
+
+
+def test_list_pool_origination_identities_returns_the_response():
+    response = {"OriginationIdentities": [], "PoolArn": ARN}
+    with patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=response) as query:
+        assert list_pool_origination_identities(Mock(), FakeModule({}), ARN) == response
+
+    assert query.call_args.kwargs == {"PoolId": ARN}
+
+
+@pytest.mark.parametrize("missing_ok", [False, True])
+def test_list_pool_origination_identities_fails_for_a_missing_pool_unless_allowed(missing_ok):
+    with patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=MISSING):
+        if missing_ok:
+            assert list_pool_origination_identities(Mock(), FakeModule({}), ARN, missing_ok=True) is None
+            return
+
+        with pytest.raises(ModuleFail) as raised:
+            list_pool_origination_identities(Mock(), FakeModule({}), ARN, changed=True)
+
+    assert raised.value.values == {
+        "changed": True,
+        "msg": f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {ARN}",
+    }
+
+
+def test_describe_each_describes_one_identifier_per_call_and_skips_missing_ones():
+    client = Mock()
+    with patch.object(
+        pinpoint_sms_voice, "paginated_query_with_retries", side_effect=[MISSING, {"Pools": [{"PoolId": "pool-2"}]}]
+    ) as query:
+        found = describe_each(
+            client,
+            FakeModule({}),
+            "describe_pools",
+            "Pools",
+            {"MaxResults": 5, "PoolIds": ["pool-1", "pool-2"]},
+            "PoolIds",
+            lambda pool_id: f"pool {pool_id}",
+        )
+
+    assert found == [{"PoolId": "pool-2"}]
+    assert query.call_args_list == [
+        call(client, "describe_pools", MaxResults=5, PoolIds=["pool-1"]),
+        call(client, "describe_pools", MaxResults=5, PoolIds=["pool-2"]),
+    ]
+
+
+def test_describe_each_names_the_identifier_in_failures():
+    denied = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "no"}}, "DescribePools")
+    with (
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=denied),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        describe_each(
+            Mock(), FakeModule({}), "describe_pools", "Pools", {"PoolIds": ["pool-1"]}, "PoolIds", lambda i: f"pool {i}"
+        )
+
+    assert raised.value.values == {"msg": "Unable to describe Pinpoint SMS Voice V2 pool pool-1"}

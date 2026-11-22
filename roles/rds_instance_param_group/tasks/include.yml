@@ -23,8 +23,8 @@
     - _pg.engine is defined
     - _pg.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __rds_instance_param_group_result.changed | bool
+    - __rds_instance_param_group_result.finished | d(true) | bool
 
 - name: Ensure managed aws rds instance parameter group jobs are complete
   tags:
@@ -40,6 +40,7 @@
   retries: "{{ rds_instance_param_group_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __rds_instance_param_group_status.finished | bool
 ...

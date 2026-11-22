@@ -384,6 +384,10 @@ options:
         O(wait_delay) and are bounded by O(wait_timeout).
       - The module retries a cluster update or deletion that EKS rejects because an update is in progress,
         every O(wait_delay) seconds within O(wait_timeout), even when O(wait=false).
+      - When EKS rejects a deletion because the cluster has managed node groups or Fargate profiles that are not being
+        deleted, the module fails at once and names them; it keeps retrying while they are being deleted. It reads
+        them with C(eks:ListNodegroups), C(eks:ListFargateProfiles), C(eks:DescribeNodegroup), and
+        C(eks:DescribeFargateProfile), and keeps retrying when it cannot read them.
     type: bool
   wait_delay:
     default: 15
@@ -1371,20 +1375,87 @@ def describe_update(client, module, update_id, changed=False):
     return response["update"]
 
 
-def retry_while_in_use(module, operation, deadline, **request):
+def retry_while_in_use(module, operation, deadline, on_in_use=None, **request):
     """Call a cluster update or delete operation, retrying while EKS reports an update in progress.
 
     EKS can run internal updates, which ListUpdates does not return, for several minutes after a cluster becomes
     active, and rejects new updates and deletion until they finish. The retries share the run's wait_timeout budget.
+    on_in_use, when set, is called with each rejection before retrying and fails the run when it is not transient.
     """
     while True:
         try:
-            return AWSRetry.jittered_backoff()(operation)(**request)
-        except is_boto3_error_code("ResourceInUseException"):
+            return operation(**request, aws_retry=True)
+        except is_boto3_error_code("ResourceInUseException") as e:
             if time.monotonic() >= deadline:
                 raise
 
+            if on_in_use is not None:
+                on_in_use(e)
+                # The check reads AWS, so the budget is checked again before the next attempt.
+                if time.monotonic() >= deadline:
+                    raise
+
             sleep_until_next_poll(module, deadline)
+
+
+def list_cluster_compute(client, module, deadline=None):
+    """Return the names of the cluster's managed node groups and Fargate profiles that are not being deleted.
+
+    Compute that is being deleted blocks DeleteCluster only until it is gone, so the delete keeps retrying for it. The
+    reads only explain a rejection, so each is made once without retries, and they stop once deadline passes.
+    """
+    name = module.params["name"]
+    listings = (
+        ("list_nodegroups", "nodegroups", "describe_nodegroup", "nodegroup", "nodegroupName"),
+        (
+            "list_fargate_profiles",
+            "fargateProfileNames",
+            "describe_fargate_profile",
+            "fargateProfile",
+            "fargateProfileName",
+        ),
+    )
+    compute = ([], [])
+    for (list_method, list_key, describe_method, describe_key, name_key), active in zip(listings, compute):
+        if deadline is not None and time.monotonic() >= deadline:
+            return compute
+
+        try:
+            for page in client.get_paginator(list_method).paginate(clusterName=name):
+                for item in page.get(list_key, []):
+                    if deadline is not None and time.monotonic() >= deadline:
+                        return compute
+
+                    try:
+                        response = getattr(client, describe_method)(clusterName=name, **{name_key: item})
+                    except (BotoCoreError, ClientError):
+                        # Compute that is gone, or that the caller cannot read, is not reported.
+                        continue
+
+                    if response[describe_key]["status"] != "DELETING":
+                        active.append(item)
+
+                if deadline is not None and time.monotonic() >= deadline:
+                    return compute
+        except (BotoCoreError, ClientError):
+            # A listing of a cluster that is gone, or that the caller cannot read, reports no compute, and DeleteCluster
+            # keeps being retried within the wait budget.
+            continue
+
+    return compute
+
+
+def require_no_cluster_compute(client, module, error, deadline=None):
+    """Fail on a DeleteCluster rejection caused by managed node groups or Fargate profiles, which is not transient."""
+    nodegroups, fargate_profiles = list_cluster_compute(client, module, deadline=deadline)
+    if nodegroups or fargate_profiles:
+        module.fail_json_aws(
+            error,
+            msg=(
+                f"Unable to delete EKS cluster {module.params['name']} while it has managed node groups "
+                f"{nodegroups} and Fargate profiles {fargate_profiles}; delete them first"
+            ),
+        )
 
 
 def wait_for_update(client, module, update_id, changed=False, deadline=None):
@@ -1828,8 +1899,7 @@ def ensure_present(client, module, deadline=None):
                 msg="resources_vpc_config.public_access_cidrs must not contain IPv6 CIDR blocks for an IPv4 cluster"
             )
 
-        endpoint = current.get("endpoint")
-        host = (urlparse(endpoint).hostname or "") if isinstance(endpoint, str) else ""
+        host = urlparse(current.get("endpoint") or "").hostname or ""
         if ip_family == "ipv6" and host.endswith((".eks.amazonaws.com", ".eks.amazonaws.com.cn")):
             module.fail_json(
                 msg=(
@@ -2171,10 +2241,22 @@ def ensure_absent(client, module):
         module,
         client,
         "EKS",
-        {"delete_cluster": ("name",)},
+        {
+            "delete_cluster": ("name",),
+            "describe_fargate_profile": ("clusterName", "fargateProfileName"),
+            "describe_nodegroup": ("clusterName", "nodegroupName"),
+            "list_fargate_profiles": ("clusterName", "maxResults", "nextToken"),
+            "list_nodegroups": ("clusterName", "maxResults", "nextToken"),
+        },
     )
     try:
-        retry_while_in_use(module, client.delete_cluster, deadline, name=name)
+        retry_while_in_use(
+            module,
+            client.delete_cluster,
+            deadline,
+            on_in_use=lambda error: require_no_cluster_compute(client, module, error, deadline=deadline),
+            name=name,
+        )
     except is_boto3_error_code("ResourceNotFoundException"):
         exit_result(module, False, {}, "absent")
     except (BotoCoreError, ClientError) as e:

@@ -1,0 +1,20 @@
+---
+minor_changes:
+  - ec2_flow_log - O(tags) are validated once, with O(name) as their C(Name) tag, so a C(Name) value in O(tags)
+    that O(name) replaces is no longer validated.
+  - ec2_pricing_info - a missing region is now reported by the AWS client connection instead of by the module.
+  - ec2_vpc_prefix_list - an empty O(entries) list is now sent to EC2, which creates a prefix list without entries
+    or removes every entry of an existing one, instead of being rejected by the module; an O(max_entries) below C(1),
+    and creating a prefix list without entries or O(max_entries), still fail before any change, including in check
+    mode.
+  - ec2_vpc_vpn - creating a connection without O(vpn_gateway_id), O(transit_gateway_id), or O(vpn_concentrator_id)
+    is now left to EC2, which creates a connection attached to no gateway; creating a connection without
+    O(customer_gateway_id) fails before any call, including in check mode.
+trivial:
+  - ec2_flow_log - check that the SDK supports C(DeleteFlowLogs) once before deleting flow logs with
+    O(state=absent), and report a failed delete in one place.
+  - ec2_pricing_info - assert that O(max_results) reaches the C(GetProducts) query in the unit tests.
+  - ec2_transit_gateway_route_table - drop the route search SDK check that main() already makes, and the name
+    and transit gateway conditions that main() already guarantees.
+  - ec2_vpc_prefix_list - rely on the C(DescribeManagedPrefixLists) response shape when reporting a failed state.
+  - ec2_vpc_vpn - rely on pre-shared keys being strings.

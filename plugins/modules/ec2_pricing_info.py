@@ -259,11 +259,6 @@ def main():
     max_results = module.params["max_results"]
     service_code = module.params["service_code"]
 
-    if not module.region:
-        module.fail_json(
-            msg="region is required; in the aws partition, the Pricing API is served from us-east-1, eu-central-1, and ap-south-1"
-        )
-
     client = module.client("pricing", retry_decorator=AWSRetry.jittered_backoff())
 
     request = scrub_none_parameters(

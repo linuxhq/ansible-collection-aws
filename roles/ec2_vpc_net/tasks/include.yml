@@ -27,8 +27,8 @@
     - _vpc.cidr_block is defined
     - _vpc.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_vpc_net_result.changed | bool
+    - __ec2_vpc_net_result.finished | d(true) | bool
 
 - name: Ensure managed aws virtual private cloud jobs are complete
   tags:
@@ -44,6 +44,7 @@
   retries: "{{ ec2_vpc_net_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_vpc_net_status.finished | bool
 ...

@@ -303,9 +303,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver impor
     comparable_ip_fields,
     comparable_ips_match,
     comparable_ips_matches,
-    reconcile_resolver_arn_tags,
     resolver_resource_with_tags,
-    validate_resolver_rule,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -313,6 +311,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
+    reconcile_arn_tags,
     require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
@@ -339,12 +338,6 @@ ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA = {
             },
             {
                 "argument": "ResolverRule.Status",
-                "expected": "UPDATING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "ResolverRule.Status",
                 "expected": "DELETING",
                 "matcher": "path",
                 "state": "failure",
@@ -367,12 +360,6 @@ ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA = {
                 "expected": "ResourceNotFoundException",
                 "matcher": "error",
                 "state": "success",
-            },
-            {
-                "argument": "ResolverRule.Status",
-                "expected": "DELETING",
-                "matcher": "path",
-                "state": "retry",
             },
             # A failed delete leaves the rule FAILED; wait_for_resolver_rule_status reports its status message.
             {
@@ -641,13 +628,13 @@ def ensure_present(client, module, deadline=None):
 
         rule = dict(rule, Tags=rule.get("Tags", current_tags))
         if tags is not None:
-            reconcile_resolver_arn_tags(
+            reconcile_arn_tags(
                 module,
                 client,
-                rule,
-                "rule",
+                rule["Arn"],
                 tags_to_set,
                 tag_keys_to_unset,
+                "AWS Route53 Resolver rule",
                 changed=resource_changed,
             )
 
@@ -783,6 +770,17 @@ def rules_match(current, desired):
     ) and comparable_ips_match(current["target_ips"], desired["target_ips"])
 
 
+def validate_resolver_rule(module, rule, operation, expected_id=None, expected_name=None, changed=False):
+    """Fail when AWS returns a different resolver rule than the one requested."""
+    if expected_id is not None and rule["Id"] != expected_id:
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule ID {rule['Id']}")
+
+    if expected_name is not None and rule.get("Name") != expected_name:
+        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule name")
+
+    return rule
+
+
 def get_resolver_rule(client, module, resolver_rule_id, changed=False):
     try:
         response = client.get_resolver_rule(
@@ -896,7 +894,9 @@ def main():
 
     if state == "present":
         # required_if counts only supplied keys, so an explicit null passes it.
-        missing = [option for option in ("domain_name", "resolver_endpoint_id") if module.params[option] is None]
+        missing = [
+            option for option in ("domain_name", "resolver_endpoint_id", "target_ips") if module.params[option] is None
+        ]
         if missing:
             module.fail_json(msg=f"state is present but all of the following are missing: {', '.join(missing)}")
 
@@ -907,23 +907,24 @@ def main():
         if not module.params["target_ips"]:
             module.fail_json(msg="target_ips must contain at least one entry")
 
+        for target_ip in module.params["target_ips"]:
+            # ansible-core counts an explicit null as set for required_one_of, and a target without an address would
+            # match any current target on its port, so the rule would never be sent to AWS.
+            if target_ip.get("ip") is None and target_ip.get("ipv6") is None:
+                module.fail_json(msg="target_ips entries must set ip or ipv6")
+
         normalized_targets = [
             json.dumps(comparable_target_ip(target_ip), sort_keys=True) for target_ip in module.params["target_ips"]
         ]
         if len(set(normalized_targets)) != len(normalized_targets):
             module.fail_json(msg="target_ips entries must be unique")
 
-        require_valid_tags(module, tags, 200, restricted_characters=True)
+        require_valid_tags(module, tags, restricted_characters=True)
 
-    for target_ip in module.params["target_ips"] or []:
-        # ansible-core counts an explicit null as set for required_one_of.
-        if target_ip.get("ip") is None and target_ip.get("ipv6") is None:
-            module.fail_json(msg="target_ips entries must set ip or ipv6")
+        if any(target_ip.get("server_name_indication") is not None for target_ip in module.params["target_ips"]):
+            module.require_botocore_at_least("1.35.38", reason="for target_ips[].server_name_indication")
 
     require_positive_wait_bounds(module, always=state == "present")
-
-    if any(target_ip.get("server_name_indication") is not None for target_ip in module.params["target_ips"] or []):
-        module.require_botocore_at_least("1.35.38", reason="for target_ips[].server_name_indication")
 
     client = module.client("route53resolver", retry_decorator=AWSRetry.jittered_backoff())
     methods = {"list_resolver_rules": ("Filters", "MaxResults", "NextToken")}

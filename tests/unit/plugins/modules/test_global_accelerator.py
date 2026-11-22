@@ -178,6 +178,7 @@ def test_absent_tolerates_accelerator_disappearing_while_waiting():
     client = Mock()
     module = FakeModule({"wait": False})
     with (
+        patch.object(plugin, "require_client_methods"),
         patch.object(
             plugin,
             "get_accelerator",
@@ -619,6 +620,34 @@ def test_check_mode_listener_create_predicts_its_endpoint_group_health_check_por
 
     assert changed
     assert listeners[0]["endpoint_groups"][0]["health_check_port"] == 443
+
+
+def test_created_listener_endpoint_groups_are_created_without_listing_them():
+    listener = {
+        "client_affinity": None,
+        "endpoint_groups": [unset_endpoint_group()],
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    module = FakeModule({"listeners": [listener], "purge_endpoint_groups": True, "purge_listeners": True})
+    client = Mock()
+    client.create_listener.return_value = {"Listener": {"ClientAffinity": "NONE", "ListenerArn": "arn:listener"}}
+    client.create_endpoint_group.return_value = {
+        "EndpointGroup": {"EndpointGroupArn": "arn:group", "EndpointGroupRegion": "us-west-2"}
+    }
+    with (
+        patch.object(plugin, "get_listeners", return_value=[]),
+        patch.object(plugin, "get_endpoint_groups") as get_endpoint_groups,
+        patch.object(plugin, "wait_for_accelerator"),
+    ):
+        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+
+    assert changed
+    get_endpoint_groups.assert_not_called()
+    client.create_endpoint_group.assert_called_once()
+    assert listeners[0]["endpoint_groups"] == [
+        {"endpoint_group_arn": "arn:group", "endpoint_group_region": "us-west-2"}
+    ]
 
 
 MULTIPLE_PORT_RANGES = [{"from_port": 9000, "to_port": 9001}, {"from_port": 7000, "to_port": 7001}]
@@ -3380,6 +3409,7 @@ def test_check_mode_create_predicts_the_status_a_real_run_returns(wait, status):
     module = FakeModule(accelerator_params(wait=wait), check_mode=True)
     client = Mock()
     with (
+        patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "get_accelerator", return_value=None),
         pytest.raises(ModuleExit) as result,
     ):
@@ -3396,6 +3426,7 @@ def test_check_mode_update_predicts_the_status_a_real_run_returns(wait, status):
     module = FakeModule(accelerator_params(name="renamed", wait=wait), check_mode=True)
     client = Mock()
     with (
+        patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
         pytest.raises(ModuleExit) as result,
     ):
@@ -3628,6 +3659,7 @@ def test_check_mode_enabled_change_preserves_matching_ip_sets(family, addresses)
     )
     client = Mock()
     with (
+        patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "get_accelerator", return_value=current),
         pytest.raises(ModuleExit) as result,
     ):
@@ -3659,6 +3691,7 @@ def test_check_mode_change_to_ipv4_drops_the_dual_stack_name_and_ipv6_addresses(
     module = FakeModule(accelerator_params(ip_address_type="IPV4", wait=wait), check_mode=True)
     client = Mock()
     with (
+        patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "get_accelerator", return_value=current),
         pytest.raises(ModuleExit) as result,
     ):
@@ -3980,10 +4013,12 @@ def test_deployment_wait_failure_after_create_reports_changed():
     with (
         patch.object(plugin, "get_accelerator", return_value=None),
         patch.object(plugin, "require_client_methods"),
-        patch("ansible_collections.linuxhq.aws.plugins.module_utils.wait.build_waiter_factory") as factory,
+        patch(
+            "ansible_collections.linuxhq.aws.plugins.module_utils.wait.BaseWaiterFactory.get_waiter",
+            return_value=waiter,
+        ),
         pytest.raises(ModuleFail) as raised,
     ):
-        factory.return_value.get_waiter.return_value = waiter
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
@@ -5034,3 +5069,69 @@ def test_purged_listener_holding_an_override_endpoint_port_is_deleted_before_a_l
     assert changed is True
     assert [single_range(listener) for listener in listeners] == [(8080, 8080)]
     assert events == ([] if check_mode else [("delete_listener", "arn:a"), ("create_listener", "arn:new")])
+
+
+@pytest.mark.parametrize(
+    "operation, params, accelerator, current_tags",
+    [
+        ("create_accelerator", {}, None, []),
+        ("update_accelerator", {"name": "renamed"}, deployed_accelerator(), []),
+        ("tag_resource", {"tags": {"Env": "test"}}, deployed_accelerator(), []),
+        ("untag_resource", {"tags": {}}, deployed_accelerator(), [{"Key": "Old", "Value": "x"}]),
+        (
+            "create_listener",
+            {"listeners": [{"client_affinity": None, "endpoint_groups": None}], "purge_listeners": False},
+            deployed_accelerator(),
+            [],
+        ),
+        (
+            "delete_endpoint_group",
+            {"listeners": [{"client_affinity": None, "endpoint_groups": []}], "purge_listeners": False},
+            deployed_accelerator(),
+            [],
+        ),
+    ],
+)
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_present_sdk_checks_run_in_check_mode_too(operation, params, accelerator, current_tags, check_mode):
+    # Check mode fails where the real run would, before any write.
+    module = FakeModule(accelerator_params(**params), check_mode=check_mode)
+    client = Mock()
+
+    def require(module, client, service, methods, changed=False):
+        if operation in methods:
+            module.fail_json(changed=changed, msg=f"Unsupported {operation}")
+
+    with (
+        patch.object(plugin, "get_accelerator", return_value=accelerator),
+        patch.object(plugin, "list_accelerator_tags", return_value=current_tags),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        patch.object(plugin, "get_listeners", return_value=[]),
+        pytest.raises(ModuleFail, match=f"Unsupported {operation}") as raised,
+    ):
+        plugin.ensure_present(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("operation", ["delete_accelerator", "update_accelerator"])
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_sdk_checks_run_in_check_mode_too(operation, check_mode):
+    module = FakeModule({"wait": False}, check_mode=check_mode)
+    client = Mock()
+
+    def require(module, client, service, methods, changed=False):
+        if operation in methods:
+            module.fail_json(changed=changed, msg=f"Unsupported {operation}")
+
+    with (
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
+        patch.object(plugin, "require_client_methods", side_effect=require),
+        patch.object(plugin, "get_listeners", return_value=[]),
+        pytest.raises(ModuleFail, match=f"Unsupported {operation}") as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["changed"] is False
+    assert client.mock_calls == []

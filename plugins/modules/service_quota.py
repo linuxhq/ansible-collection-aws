@@ -423,19 +423,15 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import (
     get_quota,
+    quota_identifier,
     quota_methods,
+    quota_parameters,
     quota_to_ansible_dict,
 )
 
 
 def validate_current_quota(module, quota, service_code, quota_code):
-    value = quota.get("Value")
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or isinstance(value, float)
-        and not math.isfinite(value)
-    ):
+    if quota.get("Value") is None:
         msg = f"AWS service quota {service_code}/{quota_code} did not return a valid value"
         # ErrorReason explains why Service Quotas could not read the value from the owning service.
         error_reason = quota.get("ErrorReason")
@@ -447,27 +443,6 @@ def validate_current_quota(module, quota, service_code, quota_code):
                 msg = f"{msg}: {': '.join(details)}"
 
         module.fail_json(msg=msg)
-
-
-def validate_quota_request(module, request, service_code, quota_code, desired_value=None, status=None, changed=False):
-    """Fail when a quota request is for another quota, value, or status.
-
-    changed reports whether an increase was already requested, for failure results.
-    """
-    expected_values = {
-        "ServiceCode": service_code,
-        "QuotaCode": quota_code,
-        "DesiredValue": desired_value,
-        "Status": status,
-    }
-    if any(
-        key in request and expected is not None and request[key] != expected
-        for key, expected in expected_values.items()
-    ):
-        module.fail_json(
-            changed=changed,
-            msg=f"AWS Service Quotas returned a mismatched request for {service_code}/{quota_code}",
-        )
 
 
 def main():
@@ -494,18 +469,9 @@ def main():
     quota_code = module.params["quota_code"]
     service_code = module.params["service_code"]
     desired_value = module.params["value"]
-    identifier = f"{service_code}/{quota_code}" + (f" for {context_id}" if context_id else "")
-    quota_request = {
-        "QuotaCode": quota_code,
-        "ServiceCode": service_code,
-    }
-    if context_id:
-        quota_request["ContextId"] = context_id
-
-    history_request = {
-        "QuotaCode": quota_code,
-        "ServiceCode": service_code,
-    }
+    identifier = quota_identifier(service_code, quota_code, context_id)
+    quota_request = quota_parameters(service_code, quota_code, context_id)
+    history_request = quota_parameters(service_code, quota_code)
     if context_id:
         history_request["QuotaRequestedAtLevel"] = "RESOURCE"
 
@@ -538,9 +504,6 @@ def main():
             module.fail_json_aws(e, msg=f"Unable to list AWS service quota change history for {identifier}")
 
         requests = response.get("RequestedQuotas", [])
-        for request in requests:
-            validate_quota_request(module, request, service_code, quota_code, status=status)
-
         if context_id:
             # Resource-level history covers every resource, so keep only this context.
             requests = [
@@ -599,14 +562,6 @@ def main():
                 module.fail_json_aws(e, msg=f"Unable to request AWS service quota increase for {identifier}")
 
             requested_quota = response["RequestedQuota"]
-            validate_quota_request(
-                module,
-                requested_quota,
-                service_code,
-                quota_code,
-                desired_value=desired_value,
-                changed=True,
-            )
 
     result = {
         "changed": changed,

@@ -26,8 +26,8 @@
     - _sg.1.name is defined
     - _sg.1.state | d('present') == 'present'
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_security_group_populate_result.changed | bool
+    - __ec2_security_group_populate_result.finished | d(true) | bool
 
 - name: Ensure populated aws security group jobs are complete
   tags:
@@ -43,6 +43,7 @@
   retries: "{{ ec2_security_group_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_security_group_populate_status.finished | bool
 
@@ -66,8 +67,8 @@
     - _sg.1.name is defined
     - _sg.1.state | d('present') == 'absent'
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_security_group_delete_result.changed | bool
+    - __ec2_security_group_delete_result.finished | d(true) | bool
 
 - name: Ensure deleted aws security group jobs are complete
   tags:
@@ -83,6 +84,7 @@
   retries: "{{ ec2_security_group_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_security_group_delete_status.finished | bool
 ...

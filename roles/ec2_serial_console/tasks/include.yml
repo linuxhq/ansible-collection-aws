@@ -14,8 +14,8 @@
   async: "{{ ansible_check_mode | ternary(0, ec2_serial_console_async) }}"
   poll: "{{ ec2_serial_console_poll }}"
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_serial_console_result.changed | bool
+    - __ec2_serial_console_result.finished | d(true) | bool
 
 - name: Ensure managed aws ec2 serial console access jobs are complete
   tags:
@@ -31,6 +31,7 @@
   retries: "{{ ec2_serial_console_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_serial_console_status.finished | bool
 ...

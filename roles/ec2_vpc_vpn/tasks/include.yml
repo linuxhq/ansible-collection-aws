@@ -44,8 +44,8 @@
       _vpn.vpn_concentrator_id is defined or
       _vpn.vpn_gateway_id is defined
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_vpc_vpn_result.changed | bool
+    - __ec2_vpc_vpn_result.finished | d(true) | bool
 
 - name: Ensure managed aws virtual private cloud vpn connection jobs are complete
   tags:
@@ -61,6 +61,7 @@
   retries: "{{ ec2_vpc_vpn_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_vpc_vpn_status.finished | bool
 ...

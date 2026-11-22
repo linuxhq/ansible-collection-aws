@@ -29,8 +29,8 @@
     - _tgw_attach.subnets | length > 0
     - _tgw_attach.transit_gateway is defined
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_transit_gateway_vpc_attachment_result.changed | bool
+    - __ec2_transit_gateway_vpc_attachment_result.finished | d(true) | bool
 
 - name: Ensure managed aws transit gateway vpc attachment jobs are complete
   tags:
@@ -46,6 +46,7 @@
   retries: "{{ ec2_transit_gateway_vpc_attachment_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_transit_gateway_vpc_attachment_status.finished | bool
 ...

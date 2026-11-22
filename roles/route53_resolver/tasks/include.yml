@@ -31,8 +31,8 @@
     - _route53resolver.security_group_ids is defined
     - _route53resolver.security_group_ids | length > 0
   changed_when:
-    - ansible_check_mode | bool
     - __route53_resolver_result.changed | bool
+    - __route53_resolver_result.finished | d(true) | bool
 
 - name: Ensure managed aws route53 resolver endpoint jobs are complete
   tags:
@@ -48,6 +48,7 @@
   retries: "{{ route53_resolver_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __route53_resolver_status.finished | bool
 ...

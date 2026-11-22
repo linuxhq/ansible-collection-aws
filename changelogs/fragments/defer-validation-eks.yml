@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - eks_cluster - O(state=absent) now fails at once, naming them, when EKS rejects the deletion because the cluster has
+    managed node groups or Fargate profiles that are not being deleted, instead of retrying until O(wait_timeout) runs
+    out; a deletion rejected while an update is in progress or while that compute is being deleted is still retried.
+trivial:
+  - eks_cluster - send cluster updates and deletions through the client retry decorator instead of wrapping each call,
+    and read the endpoint host without checking its type.
+...

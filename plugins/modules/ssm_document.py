@@ -313,8 +313,6 @@ SSM_DOCUMENT_WAITER_MODEL_DATA = {
             {"argument": "Document.Status", "expected": "Active", "matcher": "path", "state": "success"},
             # A failed document is inspected after the wait so its status information can be reported.
             {"argument": "Document.Status", "expected": "Failed", "matcher": "path", "state": "success"},
-            {"argument": "Document.Status", "expected": "Creating", "matcher": "path", "state": "retry"},
-            {"argument": "Document.Status", "expected": "Updating", "matcher": "path", "state": "retry"},
             {"argument": "Document.Status", "expected": "Deleting", "matcher": "path", "state": "failure"},
         ],
     },
@@ -324,7 +322,6 @@ SSM_DOCUMENT_WAITER_MODEL_DATA = {
         "operation": "DescribeDocument",
         "acceptors": [
             {"expected": "InvalidDocument", "matcher": "error", "state": "success"},
-            {"argument": "Document.Status", "expected": "Deleting", "matcher": "path", "state": "retry"},
         ],
     },
 }
@@ -572,6 +569,7 @@ def ensure_present(client, module):
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
+        created = current is None
         if resource_changed:
             desired_content = json.dumps(desired_comparable["content"], separators=(",", ":"), sort_keys=True)
 
@@ -596,9 +594,9 @@ def ensure_present(client, module):
                 wait_for_document(client, module, "active", current["DocumentVersion"], changed=True, deadline=deadline)
 
             current["Content"] = desired_content
-            if tags:
-                current["Tags"] = request["Tags"]
-            elif tags is None:
+            if tags is not None:
+                current["Tags"] = request.get("Tags", [])
+            else:
                 # CreateDocument returns Tags even when none were sent; tags are returned only when O(tags) is set.
                 current.pop("Tags", None)
 
@@ -652,13 +650,8 @@ def ensure_present(client, module):
 
                 current = refreshed
 
-        if tags is not None:
-            tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
-                tags,
-                purge_tags=purge_tags,
-            )
-
+        # A create sends its tags in its only write, so only an existing document needs the tag deltas.
+        if tags is not None and not created:
             reconcile_ssm_tags(
                 module,
                 client,
@@ -704,14 +697,12 @@ def ensure_present(client, module):
         if tags is not None:
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
-    document = current
-    if current.get("Name") is not None:
-        document = boto3_resource_to_ansible_dict(
-            dict(current, Content=document_content(current)),
-            ignore_list=["Content"],
-            transform_tags=True,
-            force_tags=False,
-        )
+    document = boto3_resource_to_ansible_dict(
+        dict(current, Content=document_content(current)),
+        ignore_list=["Content"],
+        transform_tags=True,
+        force_tags=False,
+    )
 
     module.exit_json(
         changed=changed,
@@ -796,7 +787,7 @@ def main():
         if missing:
             module.fail_json(msg=f"state is present but all of the following are missing: {', '.join(missing)}")
 
-    require_valid_tags(module, tags if state == "present" else None, 50, restricted_characters=True)
+    require_valid_tags(module, tags if state == "present" else None, restricted_characters=True)
     # Updated versions are always waited on before they are promoted.
     require_positive_wait_bounds(module, always=state == "present")
     client = module.client(

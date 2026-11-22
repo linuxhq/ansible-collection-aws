@@ -1,0 +1,8 @@
+---
+trivial:
+  - notifications_contacts and notifications_contacts_info - apply tag changes to the contact result directly instead
+    of through a local helper, and drop needless contact copies.
+  - notifications_hub - rely on RegisterNotificationHub returning the requested region and on hubs always having a
+    status summary.
+  - sns_topic_attributes - unit tests use the KMS key alias SNS returns as it was set.
+...

@@ -228,6 +228,34 @@ def test_invalid_resource_and_destination_combinations_are_rejected():
         assert_module_rejects(plugin, params, message)
 
 
+def test_absent_checks_the_delete_operation_before_deleting():
+    client = Mock()
+    params = dict(dict.fromkeys(plugin.ABSENT_MATCH_FIELDS), name="main")
+    params.update({"destination_options": None, "resource_ids": ["vpc-1"]})
+    with (
+        patch.object(
+            plugin,
+            "get_flow_logs",
+            return_value=[{"FlowLogId": "fl-1", "ResourceId": "vpc-1", "Tags": [{"Key": "Name", "Value": "main"}]}],
+        ),
+        patch.object(plugin, "require_client_methods", side_effect=ModuleFail({"msg": "old botocore"})) as require,
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_absent(client, FakeModule(params))
+
+    assert require.call_args.args[3] == {"delete_flow_logs": ("FlowLogIds",)}
+    client.delete_flow_logs.assert_not_called()
+
+
+def test_delete_does_not_check_the_delete_operation_again():
+    client = Mock()
+    client.delete_flow_logs.return_value = {}
+    with patch.object(plugin, "require_client_methods") as require:
+        assert plugin.delete_flow_logs(client, FakeModule({}), ["fl-1"]) == ["fl-1"]
+
+    require.assert_not_called()
+
+
 def test_tag_keys_may_contain_128_characters_but_not_129():
     params = dict(dict.fromkeys(plugin.PRESENT_MATCH_FIELDS), name="main")
     params.update(
@@ -2146,3 +2174,30 @@ def test_reserved_tag_keys_fail_before_creating_or_tagging_flow_logs(key, check_
     client.create_flow_logs.assert_not_called()
     client.create_tags.assert_not_called()
     client.delete_tags.assert_not_called()
+
+
+def test_tags_are_validated_once_with_name_replacing_their_name_key():
+    # name replaces the Name value of tags, so only the merged tags are validated.
+    module = FakeModule(present_params(name="main", tags={"Name": "v" * 257}), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_valid_tags", wraps=plugin.require_valid_tags) as require_valid_tags,
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    require_valid_tags.assert_called_once_with(module, {"Name": "main"}, 50, ec2=True)
+    ensure_present.assert_called_once_with(module.client(), module)
+
+
+def test_tags_are_normalized_for_the_rest_of_the_run():
+    module = FakeModule(present_params(tags={1: 2}), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present"),
+    ):
+        plugin.main()
+
+    assert plugin.desired_tags(module) == {"1": "2", "Name": "main"}

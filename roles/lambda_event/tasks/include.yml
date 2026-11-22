@@ -21,8 +21,8 @@
     - _event.lambda_function_arn is defined
     - _event.source_params is defined
   changed_when:
-    - ansible_check_mode | bool
     - __lambda_event_result.changed | bool
+    - __lambda_event_result.finished | d(true) | bool
 
 - name: Ensure managed aws lambda event jobs are complete
   tags:
@@ -38,6 +38,7 @@
   retries: "{{ lambda_event_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __lambda_event_status.finished | bool
 ...

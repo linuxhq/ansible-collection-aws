@@ -1,0 +1,9 @@
+---
+trivial:
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate, and
+    pinpoint_sms_voice_sender_id - return the resource AWS describes or returns without comparing its identifier to
+    the request, and rely on the always-returned ARN fields.
+  - pinpoint_sms_voice_phone_number and pinpoint_sms_voice_phone_pool - build and validate the tags sent to AWS once.
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate, and the
+    pinpoint_sms_voice info modules - share the origination identity listing and the per-ID describe calls.
+...

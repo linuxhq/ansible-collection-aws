@@ -21,8 +21,8 @@
     - _igw.name is defined
     - _igw.vpc_id is defined
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_vpc_igw_result.changed | bool
+    - __ec2_vpc_igw_result.finished | d(true) | bool
 
 - name: Ensure managed aws virtual private cloud internet gateway jobs are complete
   tags:
@@ -38,6 +38,7 @@
   retries: "{{ ec2_vpc_igw_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_vpc_igw_status.finished | bool
 ...

@@ -36,8 +36,8 @@
   when:
     - _cluster.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __eks_cluster_result.changed | bool
+    - __eks_cluster_result.finished | d(true) | bool
 
 - name: Ensure managed aws elastic kubernetes service cluster jobs are complete
   tags:
@@ -53,6 +53,7 @@
   retries: "{{ eks_cluster_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __eks_cluster_status.finished | bool
 ...

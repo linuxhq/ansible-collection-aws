@@ -109,7 +109,7 @@ def test_country_code_is_optional_for_non_country_specific_identities():
     }
 
 
-def test_present_rejects_wrong_association_response():
+def test_present_returns_the_association_response_without_comparing_it():
     client = Mock()
     client.associate_origination_identity.return_value = {
         "OriginationIdentity": "sender-2",
@@ -125,13 +125,13 @@ def test_present_rejects_wrong_association_response():
         }
     )
     with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": []}),
-        pytest.raises(ModuleFail) as raised,
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": []}),
+        pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
 
-    assert "wrong" in raised.value.values["msg"]
     assert raised.value.values["changed"] is True
+    assert raised.value.values["association"] == {"origination_identity": "sender-2", "pool_id": "pool-1"}
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -152,7 +152,7 @@ def test_present_with_pool_arn_returns_the_pool_id_in_every_mode(check_mode):
         check_mode=check_mode,
     )
     with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": []}),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": []}),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -190,7 +190,7 @@ def test_present_with_identity_arn_returns_the_identity_id_in_every_mode(check_m
         check_mode=check_mode,
     )
     with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": []}),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": []}),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -229,7 +229,7 @@ def test_present_unchanged_returns_the_pool_id_and_arn(check_mode):
     }
     with (
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             return_value={"OriginationIdentities": [listed], "PoolArn": pool_arn, "PoolId": "pool-1"},
         ),
@@ -280,7 +280,7 @@ def test_present_new_association_returns_the_listed_pool_arn_in_every_mode(pool_
     }
     with (
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             return_value={"OriginationIdentities": [listed], "PoolArn": pool_arn, "PoolId": "pool-1"},
         ) as query,
@@ -325,7 +325,7 @@ def test_sender_id_association_is_found_without_letter_case(origination_identity
     )
     with (
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             return_value={"OriginationIdentities": [phone, listed], "PoolArn": "arn:pool-1", "PoolId": "pool-1"},
         ),
@@ -343,7 +343,7 @@ def test_check_mode_predicts_the_uppercase_sender_id_aws_returns():
     module = FakeModule(associate_params(iso_country_code="DE", origination_identity="AuP2Mix"), check_mode=True)
     with (
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             return_value={"OriginationIdentities": [], "PoolArn": "arn:pool-1", "PoolId": "pool-1"},
         ),
@@ -354,7 +354,7 @@ def test_check_mode_predicts_the_uppercase_sender_id_aws_returns():
     assert raised.value.values["association"]["origination_identity"] == "AUP2MIX"
 
 
-def test_malformed_disassociate_response_reports_changed():
+def test_disassociate_response_without_the_identity_is_returned_unchanged():
     client = Mock(disassociate_origination_identity=Mock(return_value={"PoolId": "pool-1"}))
     module = FakeModule(
         {
@@ -377,16 +377,18 @@ def test_malformed_disassociate_response_reports_changed():
                 ],
             ),
         ),
-        pytest.raises(ModuleFail) as raised,
+        pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_absent(client, module)
 
+    # The response is returned as AWS sends it; every member of it is optional in the model.
     assert raised.value.values["changed"] is True
+    assert raised.value.values["association"] == {"pool_id": "pool-1"}
 
 
 def test_absent_does_not_return_association_that_disappeared():
     client = Mock()
-    client.disassociate_origination_identity.side_effect = plugin.ClientError(
+    client.disassociate_origination_identity.side_effect = pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
         "DisassociateOriginationIdentity",
     )
@@ -466,7 +468,9 @@ def test_absent_with_empty_origination_identity_still_reports_no_association(che
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(
-            plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [PHONE_1, PHONE_2]}
+            pinpoint_sms_voice,
+            "paginated_query_with_retries",
+            return_value={"OriginationIdentities": [PHONE_1, PHONE_2]},
         ),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -478,7 +482,7 @@ def test_absent_with_empty_origination_identity_still_reports_no_association(che
 
 
 def pool_not_found():
-    return plugin.ClientError(
+    return pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
         "ListPoolOriginationIdentities",
     )
@@ -498,7 +502,7 @@ def test_present_fails_when_pool_does_not_exist(check_mode):
         check_mode=check_mode,
     )
     with (
-        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_not_found()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=pool_not_found()),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -519,7 +523,7 @@ def test_absent_reports_no_change_when_pool_does_not_exist():
         }
     )
     with (
-        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_not_found()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=pool_not_found()),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_absent(client, module)
@@ -705,7 +709,7 @@ def test_absent_disassociates_sender_id_beside_last_phone_number():
 
 def test_absent_maps_last_phone_number_conflict_to_clear_failure():
     client = Mock()
-    client.disassociate_origination_identity.side_effect = plugin.ClientError(
+    client.disassociate_origination_identity.side_effect = pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ConflictException", "Message": "conflict"}, "Reason": "LAST_PHONE_NUMBER"},
         "DisassociateOriginationIdentity",
     )
@@ -721,7 +725,7 @@ def test_absent_maps_last_phone_number_conflict_to_clear_failure():
 
 def test_absent_maps_last_identity_conflict_for_sender_id_to_neutral_failure():
     client = Mock()
-    client.disassociate_origination_identity.side_effect = plugin.ClientError(
+    client.disassociate_origination_identity.side_effect = pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ConflictException", "Message": "conflict"}, "Reason": "LAST_PHONE_NUMBER"},
         "DisassociateOriginationIdentity",
     )
@@ -738,7 +742,7 @@ def test_absent_maps_last_identity_conflict_for_sender_id_to_neutral_failure():
 
 def test_absent_reports_other_disassociate_conflicts_from_aws():
     client = Mock()
-    client.disassociate_origination_identity.side_effect = plugin.ClientError(
+    client.disassociate_origination_identity.side_effect = pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ConflictException", "Message": "conflict"}, "Reason": "RESOURCE_NOT_ACTIVE"},
         "DisassociateOriginationIdentity",
     )
@@ -870,7 +874,9 @@ def test_present_requires_a_country_to_associate_a_phone_number(origination_iden
         associate_params(iso_country_code=None, origination_identity=origination_identity), check_mode=check_mode
     )
     with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [PHONE_1]}),
+        patch.object(
+            pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": [PHONE_1]}
+        ),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -892,7 +898,9 @@ def test_present_existing_phone_number_association_without_a_country_is_unchange
         associate_params(iso_country_code=None, origination_identity=PHONE_NUMBER_ID), check_mode=check_mode
     )
     with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [listed]}),
+        patch.object(
+            pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": [listed]}
+        ),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -931,7 +939,7 @@ def test_absent_check_mode_predicts_the_disassociate_response(phone_number, iso_
         module = absent_params(check_mode=check_mode)
         module.params["iso_country_code"] = iso_country_code
         with (
-            patch.object(plugin, "paginated_query_with_retries", return_value=listing),
+            patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=listing),
             pytest.raises(ModuleExit) as raised,
         ):
             plugin.ensure_absent(client, module)
@@ -969,7 +977,9 @@ def test_present_without_a_country_requires_botocore_1_42_80_before_associating(
     module.require_botocore_at_least = Mock(side_effect=OLD_BOTOCORE)
     client.associate_origination_identity.return_value = dict(SENDER_1, PoolId="pool-1")
     with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [PHONE_1]}),
+        patch.object(
+            pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": [PHONE_1]}
+        ),
         pytest.raises(ModuleFail if required else ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -989,7 +999,9 @@ def test_present_existing_association_without_a_country_needs_no_botocore_check(
     module = FakeModule(associate_params(iso_country_code=None, origination_identity="sender-1"), check_mode=check_mode)
     module.require_botocore_at_least = Mock(side_effect=OLD_BOTOCORE)
     with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": [SENDER_1]}),
+        patch.object(
+            pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": [SENDER_1]}
+        ),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(Mock(), module)
@@ -1049,7 +1061,7 @@ def test_client_token_reused_after_a_disassociation_fails_naming_the_token(liste
     )
     listings = [{"OriginationIdentities": []}, {"OriginationIdentities": listed_after}]
     with (
-        patch.object(plugin, "paginated_query_with_retries", side_effect=listings),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=listings),
         pytest.raises(ModuleFail if replayed else ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -1078,7 +1090,9 @@ def test_association_without_client_token_is_not_listed_again():
         }
     )
     with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": []}) as listing,
+        patch.object(
+            pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": []}
+        ) as listing,
         pytest.raises(ModuleExit),
     ):
         plugin.ensure_present(client, module)

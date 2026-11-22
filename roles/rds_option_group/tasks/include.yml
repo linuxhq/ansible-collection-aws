@@ -27,8 +27,8 @@
     - _og.option_group_name is defined
     - _og.options is defined
   changed_when:
-    - ansible_check_mode | bool
     - __rds_option_group_result.changed | bool
+    - __rds_option_group_result.finished | d(true) | bool
 
 - name: Ensure managed aws rds option group jobs are complete
   tags:
@@ -44,6 +44,7 @@
   retries: "{{ rds_option_group_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __rds_option_group_status.finished | bool
 ...

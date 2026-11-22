@@ -23,8 +23,8 @@
     - _zone.vpc_region is not defined
     - _zone.zone is defined
   changed_when:
-    - ansible_check_mode | bool
     - __route53_zone_result.changed | bool
+    - __route53_zone_result.finished | d(true) | bool
 
 - name: Ensure managed aws route53 public zone jobs are complete
   tags:
@@ -40,6 +40,7 @@
   retries: "{{ route53_zone_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __route53_zone_status.finished | bool
 ...

@@ -28,8 +28,8 @@
     - _policy.principal is defined
     - _policy.statement_id is defined
   changed_when:
-    - ansible_check_mode | bool
     - __lambda_policy_result.changed | bool
+    - __lambda_policy_result.finished | d(true) | bool
 
 - name: Ensure managed aws lambda policy jobs are complete
   tags:
@@ -45,6 +45,7 @@
   retries: "{{ lambda_policy_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __lambda_policy_status.finished | bool
 ...

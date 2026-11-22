@@ -22,8 +22,8 @@
     - _eip.state is defined
     - _eip.state == 'absent'
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_eip_result_absent.changed | bool
+    - __ec2_eip_result_absent.finished | d(true) | bool
 
 - name: Ensure aws elastic ip address absent jobs are complete
   tags:
@@ -39,6 +39,7 @@
   retries: "{{ ec2_eip_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_eip_status_absent.finished | bool
 

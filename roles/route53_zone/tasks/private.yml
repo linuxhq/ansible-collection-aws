@@ -54,8 +54,8 @@
     - _zone.zone is defined
     - _zone.zone not in __route53_zone_private_dict.keys()
   changed_when:
-    - ansible_check_mode | bool
     - __route53_zone_result_present.changed | bool
+    - __route53_zone_result_present.finished | d(true) | bool
 
 - name: Ensure managed aws route53 private zone present jobs are complete
   tags:
@@ -71,6 +71,7 @@
   retries: "{{ route53_zone_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __route53_zone_status_present.finished | bool
 
@@ -101,8 +102,8 @@
     - _zone.zone is defined
     - _zone.zone in __route53_zone_private_dict.keys()
   changed_when:
-    - ansible_check_mode | bool
     - __route53_zone_result_absent.changed | bool
+    - __route53_zone_result_absent.finished | d(true) | bool
 
 - name: Ensure managed aws route53 private zone absent jobs are complete
   tags:
@@ -118,6 +119,7 @@
   retries: "{{ route53_zone_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __route53_zone_status_absent.finished | bool
 ...

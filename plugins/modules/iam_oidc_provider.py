@@ -34,7 +34,7 @@ options:
   thumbprint_list:
     description:
       - The certificate thumbprints to register with the OIDC provider.
-      - Each thumbprint must be exactly 40 hexadecimal characters.
+      - Each thumbprint must be exactly 40 characters.
       - This must contain at most 5 unique entries.
       - When omitted while creating a provider, IAM retrieves the thumbprint of the
         provider's top intermediate certificate authority.
@@ -154,8 +154,6 @@ url:
   type: str
 """
 
-import re
-
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -238,22 +236,22 @@ def provider_lists(desired, current_comparable=None):
 
 def client_id_changes(current, desired):
     """Return the client IDs to remove and to add, each sorted, which is the order they are written in."""
-    current_client_ids = set(current.get("ClientIDList") or [])
+    current_client_ids = set(current["ClientIDList"])
     desired_client_ids = set(desired["client_id_list"])
     return sorted(current_client_ids - desired_client_ids), sorted(desired_client_ids - current_client_ids)
 
 
-def updated_provider(current, desired, current_comparable):
-    """Return an existing provider as IAM reports it after the lists that differ are written.
+def updated_provider(current, desired, written):
+    """Return an existing provider as IAM reports it after the written lists, those that differ, are written.
 
     IAM keeps a list that is not written. It removes a client ID in place and appends an added one, so the remaining
     client IDs keep their order and the added ones follow in the order they are added.
     """
-    written = provider_lists(desired, current_comparable)
+    written = dict(written)
     if "ClientIDList" in written:
         removed_client_ids, added_client_ids = client_id_changes(current, desired)
         written["ClientIDList"] = [
-            client_id for client_id in current.get("ClientIDList") or [] if client_id not in removed_client_ids
+            client_id for client_id in current["ClientIDList"] if client_id not in removed_client_ids
         ] + added_client_ids
 
     return dict(current, **written)
@@ -282,11 +280,13 @@ def ensure_present(client, module):
         desired["thumbprint_list"] = sorted({thumbprint.lower() for thumbprint in module.params["thumbprint_list"]})
 
     current_comparable = None
+    written = {}
     if current is not None:
         current_comparable = {
-            "client_id_list": sorted(set(current.get("ClientIDList") or [])),
-            "thumbprint_list": sorted({thumbprint.lower() for thumbprint in current.get("ThumbprintList") or []}),
+            "client_id_list": sorted(set(current["ClientIDList"])),
+            "thumbprint_list": sorted({thumbprint.lower() for thumbprint in current["ThumbprintList"]}),
         }
+        written = provider_lists(desired, current_comparable)
 
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
@@ -303,7 +303,7 @@ def ensure_present(client, module):
 
         require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "OIDC provider")
 
-    resource_changed = current is None or bool(provider_lists(desired, current_comparable))
+    resource_changed = current is None or bool(written)
     changed = bool(resource_changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
@@ -341,10 +341,8 @@ def ensure_present(client, module):
         else:
             arn = current["OpenIDConnectProviderArn"]
             provider_changed = False
-            written = provider_lists(desired, current_comparable)
             client_ids_changed = "ClientIDList" in written
             thumbprints_changed = "ThumbprintList" in written
-            current_client_ids = set(current.get("ClientIDList") or [])
             removed_client_ids, added_client_ids = (
                 client_id_changes(current, desired) if client_ids_changed else ([], [])
             )
@@ -385,7 +383,7 @@ def ensure_present(client, module):
 
             if client_ids_changed:
                 # Free only the capacity needed before adding replacement audiences.
-                remove_first = max(0, len(current_client_ids) + len(added_client_ids) - 100)
+                remove_first = max(0, len(current_comparable["client_id_list"]) + len(added_client_ids) - 100)
                 operations = (
                     [("remove", client_id) for client_id in removed_client_ids[:remove_first]]
                     + [("add", client_id) for client_id in added_client_ids]
@@ -457,7 +455,7 @@ def ensure_present(client, module):
                     )
 
             if provider_changed:
-                current = updated_provider(current, desired, current_comparable)
+                current = updated_provider(current, desired, written)
 
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
@@ -465,7 +463,7 @@ def ensure_present(client, module):
         if current is None:
             current = new_provider(created_url, desired, tags)
         elif resource_changed:
-            current = updated_provider(current, desired, current_comparable)
+            current = updated_provider(current, desired, written)
 
         if tags is not None:
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
@@ -529,11 +527,14 @@ def main():
             if not 1 <= len(client_id) <= 255:
                 module.fail_json(msg=f"client_id_list entries must be 1 to 255 characters: {client_id}")
 
+        # IAM accepts any 40 characters and stores them lowercased (live: also when they are not hexadecimal), but on
+        # update it rejects another length only after earlier writes. Both the supplied value and the lowercased value the
+        # module sends must have 40 characters.
         for thumbprint in module.params["thumbprint_list"] or []:
-            if not re.fullmatch(r"[0-9a-fA-F]{40}", thumbprint):
-                module.fail_json(msg=f"thumbprint_list entries must be exactly 40 hexadecimal characters: {thumbprint}")
+            if len(thumbprint) != 40 or len(thumbprint.lower()) != 40:
+                module.fail_json(msg=f"thumbprint_list entries must be exactly 40 characters: {thumbprint}")
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, restricted_characters=True)
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, restricted_characters=True)
     client = module.client(
         "iam",
         retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["ConcurrentModification"]),

@@ -55,17 +55,31 @@ def test_single_value_list_filters_are_accepted():
     assert query_list.call_args.kwargs["AssociationFilterList"] == [{"key": "Name", "value": "document"}]
 
 
-@pytest.mark.parametrize("value", [["a", "b"], [], None, [None]])
-def test_filters_without_exactly_one_value_are_rejected_before_any_call(value):
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ([], "filters.AssociationName must not be empty"),
+        (None, "filters.AssociationName must not contain a null value"),
+        ([None], "filters.AssociationName must not contain a null value"),
+    ],
+)
+def test_empty_or_null_filters_are_rejected_before_any_call(value, message):
     module = FakeModule({"filters": {"Name": "document", "AssociationName": value}}, client=Mock())
     result, require_client_methods, query_list = run(module, [])
 
-    assert result.values["msg"] == (
-        "filters.AssociationName requires exactly one value; "
-        "ListAssociations does not allow an empty or repeated filter key"
-    )
+    assert result.values["msg"] == message
     require_client_methods.assert_not_called()
     query_list.assert_not_called()
+
+
+def test_repeated_filter_values_are_left_to_aws():
+    module = FakeModule({"filters": {"AssociationName": ["a", "b"]}}, client=Mock())
+    _result, _require, query_list = run(module, [])
+
+    assert query_list.call_args.kwargs["AssociationFilterList"] == [
+        {"key": "AssociationName", "value": "a"},
+        {"key": "AssociationName", "value": "b"},
+    ]
 
 
 def test_associations_include_tags():

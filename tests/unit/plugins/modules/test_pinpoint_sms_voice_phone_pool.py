@@ -15,6 +15,11 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
+def run_ensure_present(client, module):
+    """Run ensure_present with the tags main() passes, the tags with the Name tag from name."""
+    plugin.ensure_present(client, module, dict(module.params.get("tags") or {}, Name=module.params.get("name")))
+
+
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["name"] == {"required": True, "type": "str"}
@@ -98,29 +103,11 @@ def test_omitted_deletion_protection_leaves_an_existing_pool_unchanged():
         patch.object(plugin, "find_pool", return_value=current),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert not raised.value.values["changed"]
     assert raised.value.values["pool"]["deletion_protection_enabled"]
     client.update_pool.assert_not_called()
-
-
-def test_name_tag_counts_toward_provider_limit():
-    module = FakeModule(
-        {
-            "iso_country_code": None,
-            "name": "main",
-            "state": "present",
-            "tags": {str(index): "" for index in range(200)},
-        }
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "tags must contain at most 200 entries"
 
 
 def main_params(**overrides):
@@ -208,7 +195,7 @@ def test_tags_with_characters_aws_accepts_reach_aws():
     ):
         plugin.main()
 
-    ensure_present.assert_called_once_with(client, module)
+    ensure_present.assert_called_once_with(client, module, dict(tags, Name="プール é_.:/=+-@1"))
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -225,7 +212,8 @@ def test_name_tag_overridden_by_name_is_not_checked_for_characters(check_mode):
     ):
         plugin.main()
 
-    ensure_present.assert_called_once_with(client, module)
+    # Tags are validated once, as sent to AWS.
+    ensure_present.assert_called_once_with(client, module, {"Name": "primary", "Team": "ops"})
 
 
 @pytest.mark.parametrize("state", ["absent", "present"])
@@ -259,7 +247,7 @@ def test_existing_pool_rejects_message_type_change():
         ),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(Mock(), module)
+        run_ensure_present(Mock(), module)
 
     assert "Cannot modify message_type" in raised.value.values["msg"]
 
@@ -277,7 +265,7 @@ def test_missing_explicit_pool_id_is_not_replaced_with_an_unselectable_pool():
         patch.object(plugin, "find_pool", return_value=None),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(Mock(), module)
+        run_ensure_present(Mock(), module)
 
     assert "does not exist" in raised.value.values["msg"]
 
@@ -425,7 +413,7 @@ def test_phone_number_in_a_non_matching_pool_fails_before_create(check_mode, poo
     describe, originations, tags = patch_held_pool(pool, PHONE_ORIGINATION)
 
     with originations, tags, describe as describe_pools, pytest.raises(ModuleFail) as raised:
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert "pool-1" in raised.value.values["msg"]
     assert "pool_id" in raised.value.values["msg"]
@@ -462,7 +450,7 @@ def test_sender_id_in_another_pool_does_not_conflict_and_creates_pool(message_ty
     describe, originations, tags = patch_held_pool(pool, SENDER_ORIGINATION)
 
     with describe, originations, tags, pytest.raises(ModuleExit) as raised:
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["pool_id"] == "pool-2"
@@ -518,7 +506,7 @@ def test_check_mode_projects_new_pool_identity_and_name_tag():
         patch.object(plugin, "find_pool", return_value=None),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     pool = raised.value.values["pool"]
     assert raised.value.values["changed"]
@@ -559,7 +547,7 @@ def test_new_pool_predicts_listed_origination_identity(check_mode, origination_i
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"]
     assert raised.value.values["pool"]["origination_identities"] == [expected]
@@ -575,7 +563,7 @@ def test_new_pool_check_mode_predicts_the_status_a_real_run_returns(wait, expect
         patch.object(plugin, "find_pool", return_value=None),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     client.create_pool.assert_not_called()
     assert raised.value.values["changed"] is True
@@ -611,7 +599,7 @@ def test_check_mode_preserves_existing_empty_pool_identities():
         patch.object(plugin, "find_pool", return_value=current),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(Mock(), module)
+        run_ensure_present(Mock(), module)
 
     assert raised.value.values["pool"]["origination_identities"] == []
 
@@ -641,7 +629,7 @@ def test_check_mode_does_not_wait_for_existing_pool():
         patch.object(plugin, "wait_for_pool_active") as wait_for_active,
         pytest.raises(ModuleExit),
     ):
-        plugin.ensure_present(Mock(), module)
+        run_ensure_present(Mock(), module)
 
     wait_for_active.assert_not_called()
 
@@ -672,7 +660,7 @@ def test_no_wait_creation_uses_create_result_without_retagging():
         patch.object(plugin, "get_pool_by_id") as get_pool_by_id,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["pool"]["tags"] == {"Environment": "test", "Name": "primary"}
     get_pool_by_id.assert_not_called()
@@ -711,7 +699,7 @@ def test_no_wait_update_waits_for_transition_and_rechecks_state():
         patch.object(plugin, "get_pool_by_id") as get_pool_by_id,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     wait_for_pool_active.assert_called_once_with(client, module, "pool-1")
     get_pool_by_id.assert_not_called()
@@ -904,15 +892,13 @@ def test_absent_disables_deletion_protection_before_deleting():
     assert raised.value.values["changed"]
 
 
-def test_select_pool_by_id_rejects_wrong_pool():
-    with pytest.raises(ModuleFail) as raised:
-        plugin.select_pool_by_id(
-            FakeModule({}),
-            [{"PoolId": "pool-2", "Status": "ACTIVE"}],
-            "arn:aws:sms-voice:us-east-1:1:pool/pool-1",
-        )
+def test_describe_pool_returns_the_described_pool_without_comparing_its_id():
+    pool = {"PoolId": "pool-2", "Status": "ACTIVE"}
+    with patch.object(plugin, "describe_pools", return_value=[pool]) as describe:
+        result = plugin.describe_pool(Mock(), FakeModule({}), "arn:aws:sms-voice:us-east-1:1:pool/pool-1")
 
-    assert "wrong" in raised.value.values["msg"]
+    assert result == pool
+    assert describe.call_args.kwargs == {"changed": False, "PoolIds": ["arn:aws:sms-voice:us-east-1:1:pool/pool-1"]}
 
 
 def test_absent_does_not_return_stale_data_when_delete_races():
@@ -993,7 +979,7 @@ def test_wait_reuses_the_described_pool_after_update():
         patch.object(plugin, "reconcile_arn_tags"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     wait_for_pool_active.assert_called_once_with(client, module, "pool-1", changed=True)
     pool_with_details.assert_called_once_with(client, module, active, changed=True)
@@ -1038,7 +1024,7 @@ def test_present_reports_a_deleting_pool_id_as_missing(wait):
         patch.object(plugin, "pool_with_details") as pool_with_details,
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     pool_with_details.assert_not_called()
     assert raised.value.values["msg"] == "Pinpoint SMS Voice V2 pool pool-1 does not exist"
@@ -1072,7 +1058,7 @@ def test_explicit_pool_id_does_not_require_origination_identity():
         patch.object(plugin, "get_pool_by_id", return_value=current) as get_pool,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     get_pool.assert_called_once_with(client, module, "pool-1")
     assert raised.value.values["changed"] is False
@@ -1122,7 +1108,7 @@ def test_tag_failure_reports_whether_the_pool_was_updated(deletion_protection_en
         patch.object(plugin, "find_pool", return_value=active_pool()),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["msg"] == "Unable to tag Pinpoint SMS Voice V2 pool arn:pool"
     assert raised.value.values["changed"] is changed
@@ -1141,7 +1127,7 @@ def test_wait_timeout_after_create_reports_changed():
         patch.object(plugin.time, "monotonic", side_effect=[0, 0, 0, 2]),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"].startswith("Timed out waiting for AWS End User Messaging SMS phone pool pool-1")
@@ -1227,19 +1213,14 @@ def test_pool_id_search_paths_gate_describe_by_pool_ids():
 POOL_ARN = "arn:aws:sms-voice:us-east-1:111111111111:pool/pool-1"
 
 
-@pytest.mark.parametrize(
-    ("pool", "expected_pool_id"),
-    [
-        ({"PoolArn": POOL_ARN, "PoolId": "pool-1"}, POOL_ARN),
-        ({"PoolId": "pool-1"}, "pool-1"),
-    ],
-)
-def test_origination_identities_prefer_the_pool_arn(pool, expected_pool_id):
+def test_origination_identities_use_the_pool_arn():
     response = {"OriginationIdentities": [{"OriginationIdentity": "phone-1"}]}
-    with patch.object(plugin, "paginated_query_with_retries", return_value=response) as query:
-        result = plugin.pool_with_origination_identities(Mock(), FakeModule({}), pool)
+    with patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=response) as query:
+        result = plugin.pool_with_origination_identities(
+            Mock(), FakeModule({}), {"PoolArn": POOL_ARN, "PoolId": "pool-1"}
+        )
 
-    assert query.call_args.kwargs["PoolId"] == expected_pool_id
+    assert query.call_args.kwargs["PoolId"] == POOL_ARN
     assert result["OriginationIdentities"] == [{"OriginationIdentity": "phone-1"}]
 
 
@@ -1270,7 +1251,7 @@ def test_find_pool_skips_a_pool_deleted_during_the_scan(deleted_by):
     client.list_tags_for_resource.side_effect = list_tags
     with (
         patch.object(plugin, "describe_pools", return_value=[deleted, kept]),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=list_identities),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=list_identities),
     ):
         result = plugin.find_pool(client, module)
 
@@ -1282,7 +1263,7 @@ def test_pool_detail_reads_fail_when_the_pool_is_missing_by_default(helper):
     client = Mock()
     client.list_tags_for_resource.side_effect = not_found()
     with (
-        patch.object(plugin, "paginated_query_with_retries", side_effect=not_found()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=not_found()),
         pytest.raises(ModuleFail) as raised,
     ):
         getattr(plugin, helper)(client, FakeModule({}), {"PoolArn": "arn:pool-1", "PoolId": "pool-1"})
@@ -1304,7 +1285,7 @@ def test_resulting_tag_limit_fails_before_updating_the_pool(check_mode):
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert (
         raised.value.values["msg"] == "The resulting Pinpoint SMS Voice V2 pool tags must contain at most 200 entries"
@@ -1332,7 +1313,7 @@ def test_present_addresses_a_pool_given_by_arn_by_that_arn(update_status):
         patch.object(plugin, "reconcile_arn_tags"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     client.update_pool.assert_called_once_with(PoolId=POOL_ARN, DeletionProtectionEnabled=True, aws_retry=True)
     expected_waits = [call(client, module, POOL_ARN)]
@@ -1360,7 +1341,7 @@ def run_present_on_creating_pool(check_mode, **overrides):
         patch.object(plugin, "reconcile_arn_tags"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     return raised.value.values, wait_for_pool_active.called
 
@@ -1457,7 +1438,7 @@ def test_new_pool_from_a_phone_number_requires_a_country_before_any_write(origin
         patch.object(plugin, "find_pool", return_value=None),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values == {
         "msg": (
@@ -1475,7 +1456,7 @@ def test_existing_pool_holding_a_phone_number_is_adopted_without_a_country():
         patch.object(plugin, "find_pool", return_value=active_pool()),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is False
     assert raised.value.values["pool_id"] == "pool-1"
@@ -1510,7 +1491,7 @@ def create_new_pool(check_mode, wait):
         ),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
     assert client.create_pool.called is not check_mode
@@ -1546,7 +1527,7 @@ def test_reserved_tag_key_fails_before_updating_the_pool(key, check_mode):
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
     assert raised.value.values.get("changed", False) is False
@@ -1563,7 +1544,7 @@ def test_reserved_tag_key_is_left_to_aws_on_a_new_pool():
         patch.object(plugin, "find_pool", return_value=None),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
 
@@ -1589,7 +1570,7 @@ def test_new_pool_without_a_country_requires_botocore_1_42_80_before_any_write(
         patch.object(plugin, "find_pool", return_value=active_pool() if existing else None),
         pytest.raises((ModuleExit, ModuleFail)) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     if required:
         assert raised.value is old_botocore
@@ -1624,7 +1605,7 @@ def test_client_token_reused_after_a_delete_fails_naming_the_token(wait, describ
         patch.object(plugin, "describe_pools", side_effect=described) as describe_pools,
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values == {
         "msg": (
@@ -1648,7 +1629,7 @@ def test_new_pool_with_a_client_token_is_described_until_visible():
         patch.object(plugin, "describe_pools", side_effect=[[], [active_pool(Status="CREATING")]]),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert result.value.values["changed"] is True
     sleep.assert_called_once_with(pinpoint_sms_voice.REPLAY_CHECK_DELAY)
@@ -1663,7 +1644,7 @@ def test_new_pool_without_a_client_token_is_not_described():
         patch.object(plugin, "describe_pools", side_effect=AssertionError("Unexpected describe")),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert result.value.values["changed"] is True
 
@@ -1685,10 +1666,12 @@ def test_client_token_reused_for_a_pool_that_no_longer_matches_fails_without_cha
     )
     with (
         patch.object(plugin, "describe_pools", side_effect=[[listed], [active_pool()]]),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"OriginationIdentities": identities}),
+        patch.object(
+            pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": identities}
+        ),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values == {
         "msg": (
@@ -1922,7 +1905,7 @@ def test_absent_with_pool_id_does_not_look_up_the_name():
     ):
         plugin.ensure_absent(client, module)
 
-    assert describe.call_args_list == [call(client, module, PoolIds=["pool-1"])]
+    assert describe.call_args_list == [call(client, module, changed=False, PoolIds=["pool-1"])]
     find_pool_by_name.assert_not_called()
     client.list_tags_for_resource.assert_not_called()
     client.delete_pool.assert_called_once_with(PoolId="pool-1", aws_retry=True)
@@ -1962,7 +1945,7 @@ def test_name_overrides_a_name_entry_in_tags_when_creating(check_mode):
         patch.object(plugin, "find_pool", return_value=None),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["pool"]["tags"] == {"Env": "test", "Name": "real"}
     if not check_mode:
@@ -1983,7 +1966,7 @@ def test_name_overrides_a_name_entry_in_tags_when_updating(check_mode):
         patch.object(plugin, "reconcile_arn_tags") as reconcile,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["pool"]["tags"] == {"Env": "test", "Name": "real"}

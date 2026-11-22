@@ -35,16 +35,23 @@ def test_tag_limits_are_rejected():
         assert raised.value.values["msg"] == message
 
 
+def test_tag_count_is_not_checked_without_max_tags():
+    # Callers that do not send tags in a create check the tags a write would leave with require_resulting_tag_limit.
+    tags = {f"key{index}": "" for index in range(201)}
+    require_valid_tags(FakeModule({}), tags)
+    assert len(tags) == 201
+
+
 def test_tag_keys_up_to_128_characters_and_values_up_to_256_characters_are_accepted():
     tags = {"k" * 128: "v" * 256}
-    require_valid_tags(FakeModule({}), tags, 50)
+    require_valid_tags(FakeModule({}), tags)
     assert tags == {"k" * 128: "v" * 256}
 
 
 @pytest.mark.parametrize("key", ["", "k" * 129])
 def test_tag_keys_outside_1_to_128_characters_are_rejected(key):
     with pytest.raises(ModuleFail) as raised:
-        require_valid_tags(FakeModule({}), {key: "v"}, 50)
+        require_valid_tags(FakeModule({}), {key: "v"})
 
     assert raised.value.values["msg"] == "tag keys must contain 1 to 128 characters and values at most 256 characters"
 
@@ -76,27 +83,27 @@ def test_resulting_tag_limit_does_not_double_count_replaced_or_reserved_tags():
 
 def test_tag_keys_and_values_are_normalized_for_map_apis():
     tags = {1: True, "count": 2}
-    require_valid_tags(FakeModule({}), tags, 50)
+    require_valid_tags(FakeModule({}), tags)
     assert tags == {"1": "True", "count": "2"}
 
 
 @pytest.mark.parametrize("tags", [{"Name": None}, {None: "value"}])
 def test_null_tag_keys_and_values_are_rejected(tags):
     with pytest.raises(ModuleFail) as raised:
-        require_valid_tags(FakeModule({}), tags, 50)
+        require_valid_tags(FakeModule({}), tags)
 
     assert raised.value.values["msg"] == "tag keys and values must not be null"
 
 
 def test_empty_tag_values_are_kept():
     tags = {"Name": ""}
-    require_valid_tags(FakeModule({}), tags, 50)
+    require_valid_tags(FakeModule({}), tags)
     assert tags == {"Name": ""}
 
 
 def test_colliding_normalized_tag_keys_are_rejected():
     with pytest.raises(ModuleFail) as raised:
-        require_valid_tags(FakeModule({}), {1: "numeric", "1": "string"}, 50)
+        require_valid_tags(FakeModule({}), {1: "numeric", "1": "string"})
 
     assert raised.value.values["msg"] == "tag keys must be unique after string normalization"
 
@@ -119,10 +126,10 @@ RESTRICTED_CHARACTERS_MESSAGE = "tag keys and values must contain only letters, 
 def test_restricted_tag_characters_are_rejected(tags):
     # Live SSM and IAM reject each of these with a validation error naming the tag pattern; other services may not.
     with pytest.raises(ModuleFail) as raised:
-        require_valid_tags(FakeModule({}), dict(tags), 50, restricted_characters=True)
+        require_valid_tags(FakeModule({}), dict(tags), restricted_characters=True)
 
     assert raised.value.values == {"msg": RESTRICTED_CHARACTERS_MESSAGE}
-    require_valid_tags(FakeModule({}), dict(tags), 50)
+    require_valid_tags(FakeModule({}), dict(tags))
 
 
 def test_restricted_tag_characters_accept_letters_numbers_separators_and_symbols():
@@ -136,7 +143,7 @@ def test_restricted_tag_characters_accept_letters_numbers_separators_and_symbols
         "aws:cloudformation:stack-name": "",
         1: True,
     }
-    require_valid_tags(FakeModule({}), tags, 50, restricted_characters=True)
+    require_valid_tags(FakeModule({}), tags, restricted_characters=True)
     assert tags["1"] == "True"
 
 
@@ -153,17 +160,17 @@ def test_ec2_blank_characters_are_the_xml_valid_python_whitespace():
 )
 def test_ec2_blank_tag_keys_are_rejected(key):
     with pytest.raises(ModuleFail) as raised:
-        require_valid_tags(FakeModule({}), {key: "x"}, 50, ec2=True)
+        require_valid_tags(FakeModule({}), {key: "x"}, ec2=True)
 
     assert raised.value.values == {"msg": "tag keys must not be blank"}
     # Other services keep accepting them; live SSM AddTagsToResource stores " " as sent.
-    require_valid_tags(FakeModule({}), {key: "x"}, 50)
+    require_valid_tags(FakeModule({}), {key: "x"})
 
 
 def test_ec2_tag_keys_with_text_or_invalid_xml_whitespace_are_not_blank():
     # Live: EC2 stores these keys as sent, except \x0b, which it rejects as invalid XML rather than as blank.
     tags = {" pad ": "v", "\N{ZERO WIDTH SPACE}": "v", "\N{ZERO WIDTH NO-BREAK SPACE}": "v", "\x0b": "v"}
-    require_valid_tags(FakeModule({}), tags, 50, ec2=True)
+    require_valid_tags(FakeModule({}), tags, ec2=True)
     assert tags == {" pad ": "v", "\N{ZERO WIDTH SPACE}": "v", "\N{ZERO WIDTH NO-BREAK SPACE}": "v", "\x0b": "v"}
 
 
@@ -181,7 +188,7 @@ def test_ec2_tag_values_of_only_spaces_tabs_and_line_breaks_become_empty():
         "vt": "\x0b",
         1: True,
     }
-    require_valid_tags(FakeModule({}), tags, 50, ec2=True)
+    require_valid_tags(FakeModule({}), tags, ec2=True)
     assert tags == {
         "space": "",
         "spaces": "",
@@ -198,7 +205,7 @@ def test_ec2_tag_values_of_only_spaces_tabs_and_line_breaks_become_empty():
 
 def test_tag_values_are_kept_without_ec2():
     tags = {"space": " ", "padded": " x "}
-    require_valid_tags(FakeModule({}), tags, 50)
+    require_valid_tags(FakeModule({}), tags)
     assert tags == {"space": " ", "padded": " x "}
 
 

@@ -111,23 +111,6 @@ def test_hub_with_unknown_status_is_deregistered_without_last_active_guard():
     client.deregister_notification_hub.assert_called_once_with(notificationHubRegion="us-east-1", aws_retry=True)
 
 
-def test_register_rejects_hub_for_different_region():
-    client = Mock(register_notification_hub=Mock(return_value={"notificationHubRegion": "us-west-2"}))
-    module = FakeModule({"region": "us-east-1"})
-    with (
-        patch.object(plugin, "list_notification_hubs", return_value=[]),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert (
-        raised.value.values["msg"]
-        == "Unable to create AWS Notifications hub us-east-1: AWS returned a hub for a different region"
-    )
-    assert raised.value.values["changed"] is True
-
-
 def test_inactive_hub_is_registered_again():
     client = Mock(register_notification_hub=Mock(return_value={"notificationHubRegion": "us-east-1"}))
     module = FakeModule({"region": "us-east-1"})

@@ -30,8 +30,8 @@
     - _role.assume_role_policy_document is defined
     - _role.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __iam_role_result.changed | bool
+    - __iam_role_result.finished | d(true) | bool
 
 - name: Ensure managed aws iam role jobs are complete
   tags:
@@ -47,6 +47,7 @@
   retries: "{{ iam_role_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __iam_role_status.finished | bool
 ...

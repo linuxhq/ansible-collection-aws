@@ -18,6 +18,11 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
+def run_ensure_present(client, module):
+    """Run ensure_present with the tags main() passes, the tags with the Name tag from name."""
+    plugin.ensure_present(client, module, dict(module.params["tags"] or {}, Name=module.params["name"]))
+
+
 def model_client():
     """Return a mock client with the real botocore model, for check-mode predictions that read it.
 
@@ -214,6 +219,17 @@ def test_null_iso_country_code_is_rejected_before_any_aws_call(check_mode):
     ensure_present.assert_not_called()
 
 
+@pytest.mark.parametrize("option", ["message_type", "number_capabilities", "number_type"])
+def test_null_option_with_choices_is_rejected_by_ansible_core(option):
+    # The choices check rejects an explicit null, so the module never sees one, for example as len(set(None)).
+    spec = assert_module_contract(plugin)
+    spec.pop("supports_check_mode")
+    result = ArgumentSpecValidator(**spec).validate(phone_number_params(**{option: None}))
+
+    assert len(result.error_messages) == 1
+    assert result.error_messages[0].startswith(f"value of {option} must be one of: ")
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("phone_number_id", [None, "phone-1"])
 @pytest.mark.parametrize(
@@ -260,7 +276,8 @@ def test_tags_with_characters_aws_accepts_reach_aws():
     ):
         plugin.main()
 
-    ensure_present.assert_called_once_with(client, module)
+    # name replaces the Name entry of tags in the tags sent to AWS.
+    ensure_present.assert_called_once_with(client, module, dict(tags, Name="sms"))
     assert module.params["tags"] == tags
 
 
@@ -325,7 +342,7 @@ def test_existing_number_matches_capabilities_without_order():
         patch.object(plugin, "query_list", return_value=[current]),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert not raised.value.values["changed"]
     assert raised.value.values["phone_number_id"] == "phone-1"
@@ -369,7 +386,7 @@ def test_existing_number_matches_pool_and_opt_out_list_arns():
         patch.object(plugin, "query_list", return_value=[current]) as query,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     filter_names = {item["Name"] for item in query.call_args.kwargs["Filters"]}
     assert "opt-out-list-name" not in filter_names
@@ -415,7 +432,7 @@ def test_check_mode_does_not_wait_for_existing_number():
         patch.object(plugin, "wait_for_phone_number_active") as wait_for_active,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert not raised.value.values["changed"]
     wait_for_active.assert_not_called()
@@ -449,7 +466,7 @@ def test_check_mode_projects_deduplicated_request_without_client_token():
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     phone_number = raised.value.values["phone_number"]
     assert raised.value.values["changed"]
@@ -505,7 +522,7 @@ def test_present_activation_wait_polls_until_a_new_number_is_visible():
         patch.object(plugin.time, "sleep"),
         patch.object(plugin, "get_phone_number", side_effect=[None, {"PhoneNumberId": "phone-1", "Status": "ACTIVE"}]),
     ):
-        result = plugin.wait_for_phone_number_active(Mock(), module, "phone-1")
+        result = plugin.wait_for_phone_number_active(Mock(), module, "phone-1", tags=[])
 
     assert result["Status"] == "ACTIVE"
 
@@ -599,15 +616,6 @@ def test_phone_number_tags_default_missing_tags_to_empty():
         assert plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberArn": "arn:phone-1"}) == {}
 
 
-def test_phone_number_tags_without_an_arn_list_nothing():
-    client = Mock()
-    with patch.object(plugin, "require_client_methods") as require:
-        assert plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberId": "phone-1"}) == {}
-
-    require.assert_not_called()
-    client.list_tags_for_resource.assert_not_called()
-
-
 @pytest.mark.parametrize("missing_ok", [False, True])
 def test_phone_number_tags_reports_a_released_number_only_when_missing_is_allowed(missing_ok):
     client = Mock()
@@ -652,22 +660,19 @@ def test_name_matching_skips_a_candidate_released_before_its_tags_are_listed():
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is False
     assert raised.value.values["phone_number_id"] == "phone-1"
     client.request_phone_number.assert_not_called()
 
 
-def test_get_phone_number_rejects_wrong_phone_number():
+def test_get_phone_number_returns_the_described_number_without_comparing_its_id():
     response = {"PhoneNumbers": [{"PhoneNumberId": "phone-2", "Status": "ACTIVE"}]}
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value=response),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_phone_number(Mock(), FakeModule({}), "phone-1")
+    with patch.object(plugin, "paginated_query_with_retries", return_value=response):
+        result = plugin.get_phone_number(Mock(), FakeModule({}), "phone-1")
 
-    assert "wrong" in raised.value.values["msg"]
+    assert result == response["PhoneNumbers"][0]
 
 
 PHONE_NUMBER_ARN = "arn:aws:sms-voice:us-east-1:111111111111:phone-number/phone-1"
@@ -680,17 +685,6 @@ def test_get_phone_number_accepts_an_arn():
 
     assert query.call_args.kwargs["PhoneNumberIds"] == [PHONE_NUMBER_ARN]
     assert result["PhoneNumberId"] == "phone-1"
-
-
-def test_get_phone_number_rejects_wrong_phone_number_for_an_arn():
-    response = {"PhoneNumbers": [{"PhoneNumberId": "phone-2", "Status": "ACTIVE"}]}
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value=response),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_phone_number(Mock(), FakeModule({}), PHONE_NUMBER_ARN)
-
-    assert "wrong" in raised.value.values["msg"]
 
 
 def test_absent_removes_pool_and_deletion_protection_before_release():
@@ -726,7 +720,7 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
                 "Status": "ACTIVE",
             },
         ) as wait_for_phone_number_active,
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -762,7 +756,7 @@ def test_absent_disassociates_with_the_phone_number_country():
         patch.object(
             plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
         ),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -804,7 +798,7 @@ def test_absent_tolerates_disappearing_prerequisites():
                 "Status": "ACTIVE",
             },
         ),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -849,7 +843,7 @@ def test_absent_deletion_protection_race_after_disassociation_reports_changed():
     with (
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
         patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -880,7 +874,7 @@ def test_absent_release_race_reports_whether_the_number_was_changed(deletion_pro
             "wait_for_phone_number_active",
             return_value=existing_number(DeletionProtectionEnabled=deletion_protection_enabled),
         ),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -930,7 +924,7 @@ def test_explicit_number_tags_preserve_resource_identity():
                 patch.object(plugin, "require_client_methods"),
                 pytest.raises(ModuleExit) as raised,
             ):
-                plugin.ensure_present(client, module)
+                run_ensure_present(client, module)
 
             values = raised.value.values
             assert values["changed"]
@@ -1002,7 +996,7 @@ def test_changed_settings_update_the_matched_number_instead_of_requesting_anothe
         patch.object(plugin, "require_client_methods") as require_methods,
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert result.value.values["changed"] is True
     assert result.value.values["phone_number"]["deletion_protection_enabled"] is False
@@ -1030,7 +1024,7 @@ def test_omitted_settings_leave_the_matched_number_unchanged():
         patch.object(plugin, "query_list", return_value=[existing_number()]),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert result.value.values["changed"] is False
     client.update_phone_number.assert_not_called()
@@ -1046,7 +1040,7 @@ def test_new_number_request_omits_unset_settings():
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit),
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     request = client.request_phone_number.call_args.kwargs
     assert "DeletionProtectionEnabled" not in request
@@ -1068,7 +1062,7 @@ def test_registration_arn_matches_a_number_with_the_registration_id(phone_number
         patch.object(plugin, "get_phone_number", return_value=number),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert result.value.values["changed"] is False
     assert result.value.values["phone_number"]["phone_number_id"] == "phone-1"
@@ -1084,7 +1078,7 @@ def test_registration_arn_mismatch_requests_a_number_with_the_given_value():
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert result.value.values["changed"] is True
     client.request_phone_number.assert_called_once()
@@ -1107,7 +1101,7 @@ def test_absent_waits_for_disassociation_before_release():
             return_value={"PhoneNumberId": "phone-1", "PoolId": "pool-1", "Status": "ACTIVE"},
         ),
         patch.object(plugin, "wait_for_phone_number_active", events.wait),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1129,7 +1123,7 @@ def test_absent_stops_when_number_disappears_after_disassociation():
             return_value={"PhoneNumberId": "phone-1", "PoolId": "pool-1", "Status": "ACTIVE"},
         ),
         patch.object(plugin, "wait_for_phone_number_active", return_value={}),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1182,7 +1176,7 @@ def test_pooled_number_setting_changes_fail_before_mutation(check_mode):
         patch.object(plugin, "phone_number_tags", return_value={"Name": "x"}),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     message = "Unable to update deletion_protection_enabled, opt_out_list_name for Pinpoint SMS Voice V2 phone number phone-1 in pool pool-1"
     assert raised.value.values["msg"] == message
@@ -1199,7 +1193,7 @@ def test_pooled_number_without_setting_changes_is_unchanged():
         patch.object(plugin, "query_list", return_value=[existing_number(PoolId="pool-1")]),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is False
     client.update_phone_number.assert_not_called()
@@ -1217,7 +1211,7 @@ def test_missing_explicit_number_reports_the_module_message():
         patch.object(plugin, "query_list") as query_list,
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["msg"] == (
         "The specified phone number was not found or does not match the requested attributes"
@@ -1253,7 +1247,7 @@ def test_tag_matched_number_lists_tags_once(status):
         patch.object(plugin, "phone_number_tags", return_value={"Name": "x"}) as list_tags,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     list_tags.assert_called_once()
     assert raised.value.values["changed"] is False
@@ -1283,7 +1277,7 @@ def test_tag_failure_reports_whether_the_number_was_updated(deletion_protection_
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["msg"] == "Unable to tag phone number arn:phone"
     assert raised.value.values["changed"] is changed
@@ -1306,7 +1300,7 @@ def test_unsupported_tagging_fails_before_updating_settings():
         patch.object(plugin, "require_client_methods", side_effect=require),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is False
     client.update_phone_number.assert_not_called()
@@ -1324,7 +1318,7 @@ def test_wait_timeout_after_request_reports_changed():
         patch.object(plugin.time, "monotonic", side_effect=[0, 0, 0, 2]),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"].startswith(
@@ -1344,7 +1338,7 @@ def test_release_failure_reports_whether_the_number_was_disassociated(pool_id, c
         patch.object(
             plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
         ),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1364,7 +1358,7 @@ def test_unsupported_release_fails_before_disassociating():
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods", side_effect=require),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1409,7 +1403,7 @@ def test_name_matched_number_converges_tags_instead_of_requesting(tags, purge_ta
         patch.object(plugin, "reconcile_arn_tags") as reconcile,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     expected = dict(named_tags({"PhoneNumberArn": "arn:phone-1"}), **tags_to_set)
     for key in tag_keys_to_unset:
@@ -1435,7 +1429,7 @@ def test_number_without_the_requested_name_is_not_adopted():
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
     assert "phone_number_id" not in raised.value.values
@@ -1457,7 +1451,7 @@ def test_ambiguous_name_match_fails_before_mutation():
         patch.object(plugin, "phone_number_tags", return_value={"Name": "sms"}),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["msg"] == (
         "Multiple Pinpoint SMS Voice V2 phone numbers matched name sms: phone-1, phone-2"
@@ -1480,7 +1474,7 @@ def test_check_mode_projects_the_opt_out_list_name_from_an_arn():
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["phone_number"]["opt_out_list_name"] == "list-1"
@@ -1507,7 +1501,7 @@ def test_changes_wait_for_an_active_number_even_without_wait(status):
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert [name for name, args, kwargs in events.mock_calls] == ["wait", "update"]
     assert raised.value.values["changed"] is True
@@ -1524,7 +1518,7 @@ def test_number_given_by_arn_is_waited_on_and_updated_by_that_arn():
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     wait.assert_called_once_with(client, module, PHONE_NUMBER_ARN, tags=[{"Key": "Name", "Value": "sms"}])
     client.update_phone_number.assert_called_once_with(
@@ -1549,7 +1543,7 @@ def test_unchanged_number_does_not_wait_without_wait():
         patch.object(plugin, "wait_for_phone_number_active") as wait_for_active,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is False
     wait_for_active.assert_not_called()
@@ -1607,11 +1601,10 @@ def test_absent_fails_without_mutation_for_last_phone_number_in_pool(check_mode)
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
     with (
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_query(LAST_PHONE_NUMBER_POOL, None)),
         patch.object(
             pinpoint_sms_voice,
             "paginated_query_with_retries",
-            side_effect=pool_query(None, {"Pools": [{"PoolId": "pool-1", "Status": "ACTIVE"}]}),
+            side_effect=pool_query(LAST_PHONE_NUMBER_POOL, {"Pools": [{"PoolId": "pool-1", "Status": "ACTIVE"}]}),
         ),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
@@ -1637,7 +1630,7 @@ def test_absent_proceeds_when_other_phone_numbers_remain_in_pool(check_mode):
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
         patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             side_effect=pool_query(pool_with_other_phone_number(), None),
         ),
@@ -1661,11 +1654,10 @@ def test_absent_releases_number_beside_sender_id_in_pool(check_mode):
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
         patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             side_effect=pool_query(PHONE_NUMBER_BESIDE_SENDER_ID_POOL, None),
-        ),
-        patch.object(pinpoint_sms_voice, "paginated_query_with_retries") as describe_pools,
+        ) as query,
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1674,7 +1666,8 @@ def test_absent_releases_number_beside_sender_id_in_pool(check_mode):
     assert raised.value.values["changed"] is True
     assert client.disassociate_origination_identity.called is not check_mode
     assert client.release_phone_number.called is not check_mode
-    describe_pools.assert_not_called()
+    # The pool is not described, because the number is not its last origination identity.
+    assert [entry.args[1] for entry in query.call_args_list] == ["list_pool_origination_identities"]
 
 
 @pytest.mark.parametrize(
@@ -1693,8 +1686,11 @@ def test_absent_releases_last_phone_number_of_a_pool_being_deleted(pools_result)
         patch.object(
             plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
         ),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_query(LAST_PHONE_NUMBER_POOL, None)),
-        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=pool_query(None, pools_result)),
+        patch.object(
+            pinpoint_sms_voice,
+            "paginated_query_with_retries",
+            side_effect=pool_query(LAST_PHONE_NUMBER_POOL, pools_result),
+        ),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1714,8 +1710,11 @@ def test_absent_check_mode_reports_release_of_last_phone_number_of_a_pool_being_
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=True)
     with (
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=pool_query(LAST_PHONE_NUMBER_POOL, None)),
-        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=pool_query(None, pools_result)),
+        patch.object(
+            pinpoint_sms_voice,
+            "paginated_query_with_retries",
+            side_effect=pool_query(LAST_PHONE_NUMBER_POOL, pools_result),
+        ),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1743,7 +1742,7 @@ def test_absent_maps_last_phone_number_conflict_to_clear_failure():
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1763,7 +1762,7 @@ def test_absent_reports_other_disassociate_conflicts_from_aws():
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
         patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1797,7 +1796,7 @@ def test_new_number_with_arns_returns_ids_and_names_in_every_mode(check_mode):
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     phone_number = result.value.values["phone_number"]
     assert result.value.values["changed"] is True
@@ -1828,7 +1827,7 @@ def test_resulting_tag_limit_fails_before_updating_settings(check_mode):
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["msg"] == (
         "The resulting Pinpoint SMS Voice V2 phone number tags must contain at most 200 entries"
@@ -1861,7 +1860,7 @@ def run_present_on_transitional_number(check_mode, status, **overrides):
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     return raised.value.values, wait.called
 
@@ -1961,7 +1960,9 @@ def test_absent_check_mode_predicts_the_release_response(pool_id, deletion_prote
                 return_value={key: value for key, value in described.items() if key != "PoolId"},
             ),
             patch.object(
-                plugin, "paginated_query_with_retries", side_effect=pool_query(pool_with_other_phone_number(), None)
+                pinpoint_sms_voice,
+                "paginated_query_with_retries",
+                side_effect=pool_query(pool_with_other_phone_number(), None),
             ),
             patch.object(plugin, "require_client_methods"),
             pytest.raises(ModuleExit) as raised,
@@ -2051,7 +2052,7 @@ def request_new_number(check_mode, legacy, pool_id, wait):
         ) as wait_for_active,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["changed"] is True
     assert client.request_phone_number.called is not check_mode
@@ -2098,7 +2099,7 @@ def test_reserved_tag_key_fails_before_updating_settings(key, check_mode):
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["msg"] == "tag keys beginning with aws: are reserved and cannot be set"
     assert raised.value.values.get("changed", False) is False
@@ -2130,7 +2131,7 @@ def test_check_mode_runs_the_sdk_checks_the_real_run_fails_on(existing, check_mo
         patch.object(plugin, "require_client_methods", side_effect=require_without_international_sending),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     method = "update_phone_number" if existing else "request_phone_number"
     assert raised.value.values == {
@@ -2165,7 +2166,7 @@ def test_client_token_reused_after_a_release_fails_naming_the_token(wait, descri
         patch.object(plugin, "get_phone_number", side_effect=described) as get_phone_number,
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values == {
         "msg": (
@@ -2189,7 +2190,7 @@ def test_new_number_with_a_client_token_is_described_until_visible():
         patch.object(plugin, "get_phone_number", side_effect=[None, existing_number(Status="PENDING")]),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert result.value.values["changed"] is True
     sleep.assert_called_once_with(pinpoint_sms_voice.REPLAY_CHECK_DELAY)
@@ -2205,7 +2206,7 @@ def test_new_number_without_a_client_token_is_not_described():
         patch.object(plugin, "get_phone_number", side_effect=AssertionError("Unexpected describe")),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert result.value.values["changed"] is True
 
@@ -2224,7 +2225,7 @@ def test_client_token_reused_for_a_number_that_no_longer_matches_fails_without_c
         patch.object(plugin, "get_phone_number", return_value=existing_number()),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values == {
         "msg": (
@@ -2260,7 +2261,7 @@ def test_absent_without_phone_number_id_releases_the_number_with_the_name_tag():
         patch.object(
             plugin, "wait_for_phone_number_active", return_value=existing_number(PhoneNumberId="phone-2")
         ) as wait,
-        patch.object(plugin, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -2420,7 +2421,7 @@ def test_name_overrides_a_name_entry_in_tags_when_requesting(check_mode):
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     tags = [{"Key": "Env", "Value": "test"}, {"Key": "Name", "Value": "real"}]
     if check_mode:
@@ -2447,7 +2448,7 @@ def test_name_overrides_a_name_entry_in_tags_when_updating(phone_number_id, chec
         patch.object(plugin, "reconcile_arn_tags") as reconcile,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     tags_to_set = {"Env": "test"} if current_name == "real" else {"Env": "test", "Name": "real"}
     assert raised.value.values["changed"] is True
@@ -2473,7 +2474,7 @@ def test_omitted_tags_manage_only_the_name_tag(phone_number_id):
         patch.object(plugin, "reconcile_arn_tags") as reconcile,
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(client, module)
+        run_ensure_present(client, module)
 
     assert raised.value.values["phone_number"]["tags"] == {"Env": "keep", "Name": "sms"}
     if phone_number_id:

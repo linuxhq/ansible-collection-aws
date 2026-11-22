@@ -23,8 +23,8 @@
     - _resolver_rule_association.resolver_rule_id is defined
     - _resolver_rule_association.vpc_id is defined
   changed_when:
-    - ansible_check_mode | bool
     - __route53_resolver_rule_associate_result.changed | bool
+    - __route53_resolver_rule_associate_result.finished | d(true) | bool
 
 - name: Ensure managed aws route53 resolver rule association jobs are complete
   tags:
@@ -40,6 +40,7 @@
   retries: "{{ route53_resolver_rule_associate_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __route53_resolver_rule_associate_status.finished | bool
 ...

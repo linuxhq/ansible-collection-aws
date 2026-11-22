@@ -1,0 +1,5 @@
+---
+trivial:
+  - Tag validation - count the requested tags only for a create that sends them, and otherwise only the tags a write
+    would leave, instead of counting both.
+  - require_non_blank - drop the unused list form.
