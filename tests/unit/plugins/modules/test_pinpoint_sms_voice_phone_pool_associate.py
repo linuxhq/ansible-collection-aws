@@ -418,6 +418,17 @@ def test_absent_does_not_return_association_that_disappeared():
     assert raised.value.values["changed"] is False
 
 
+def test_rejects_lowercase_country_code():
+    module = FakeModule({"iso_country_code": "us", "state": "present"})
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert "uppercase" in raised.value.values["msg"]
+
+
 def associate_params(**overrides):
     params = {
         "client_token": None,
@@ -431,45 +442,22 @@ def associate_params(**overrides):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize(
-    "overrides",
-    [{"origination_identity": ""}, {"origination_identity": "  "}, {"iso_country_code": "us"}],
-    ids=["empty-identity", "blank-identity", "lowercase-country"],
-)
-def test_present_leaves_identity_and_country_validation_to_aws(overrides, check_mode):
-    # ansible-core turns an explicit null origination_identity into "". AWS rejects these on
-    # AssociateOriginationIdentity, the run's only write.
+@pytest.mark.parametrize("origination_identity", ["", "  "])
+def test_present_rejects_empty_origination_identity_before_any_aws_call(origination_identity, check_mode):
     client = Mock()
-    client.associate_origination_identity.return_value = {"PoolId": "pool-1"}
-    module = FakeModule(associate_params(**overrides), check_mode=check_mode, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": []}),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["changed"] is True
-    assert client.associate_origination_identity.called is not check_mode
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("iso_country_code", ["us", "USA", ""])
-def test_absent_rejects_a_malformed_country_before_matching(iso_country_code, check_mode):
-    # A removal matches the association by country locally, so AWS never sees the code.
     module = FakeModule(
-        associate_params(iso_country_code=iso_country_code, state="absent"), check_mode=check_mode, client=Mock()
+        associate_params(origination_identity=origination_identity), check_mode=check_mode, client=client
     )
-    module.client = Mock()
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(module, "client") as connect,
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "iso_country_code must be exactly two uppercase letters"
-    module.client.assert_not_called()
+    assert raised.value.values["msg"] == "origination_identity must not be empty"
+    connect.assert_not_called()
+    assert client.mock_calls == []
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -880,10 +868,8 @@ PHONE_NUMBER_ARN = f"arn:aws:sms-voice:us-east-1:123456789012:phone-number/{PHON
 
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("origination_identity", [PHONE_NUMBER_ID, PHONE_NUMBER_ARN], ids=["id", "arn"])
-def test_present_leaves_a_phone_number_without_a_country_to_aws(origination_identity, check_mode):
-    # AWS rejects associating a phone number without its country on AssociateOriginationIdentity, the only write.
+def test_present_requires_a_country_to_associate_a_phone_number(origination_identity, check_mode):
     client = Mock()
-    client.associate_origination_identity.return_value = {"OriginationIdentity": PHONE_NUMBER_ID, "PoolId": "pool-1"}
     module = FakeModule(
         associate_params(iso_country_code=None, origination_identity=origination_identity), check_mode=check_mode
     )
@@ -891,17 +877,17 @@ def test_present_leaves_a_phone_number_without_a_country_to_aws(origination_iden
         patch.object(
             pinpoint_sms_voice, "paginated_query_with_retries", return_value={"OriginationIdentities": [PHONE_1]}
         ),
-        pytest.raises(ModuleExit) as raised,
+        pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
 
-    assert raised.value.values["changed"] is True
-    if check_mode:
-        client.associate_origination_identity.assert_not_called()
-    else:
-        client.associate_origination_identity.assert_called_once_with(
-            OriginationIdentity=origination_identity, PoolId="pool-1", aws_retry=True
+    assert raised.value.values == {
+        "msg": (
+            f"iso_country_code is required to associate phone number {origination_identity} "
+            "with Pinpoint SMS Voice V2 pool pool-1"
         )
+    }
+    client.associate_origination_identity.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

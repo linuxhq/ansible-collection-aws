@@ -104,25 +104,17 @@ def test_null_required_ids_are_rejected_before_aws_calls():
         ({"hosted_zone_id": " "}, "hosted_zone_id must identify a hosted zone"),
         ({"hosted_zone_id": "/hostedzone/"}, "hosted_zone_id must identify a hosted zone"),
         ({"hosted_zone_id": "/hostedzone/ "}, "hosted_zone_id must identify a hosted zone"),
+        ({"vpc_id": ""}, "vpc_id must not be empty"),
+        ({"vpc_id": " "}, "vpc_id must not be empty"),
+        ({"vpc_id": "\t"}, "vpc_id must not be empty"),
     ],
 )
-def test_empty_or_blank_zone_id_is_rejected_before_aws_calls(check_mode, state, overrides, message):
-    # No hosted zone has a blank ID, so check mode must not predict an association that AWS rejects.
+def test_empty_or_blank_zone_or_vpc_id_is_rejected_before_aws_calls(check_mode, state, overrides, message):
+    # No hosted zone or VPC has a blank ID, so check mode must not predict an association that AWS rejects.
     module = FakeModule(params(state=state, **overrides), check_mode=check_mode)
     module.client = Mock()
 
     assert run_main(module) == message
-    module.client.assert_not_called()
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("vpc_id", ["", " "])
-def test_blank_vpc_id_is_rejected_before_a_removal(check_mode, vpc_id):
-    # A blank VPC ID matches no association, so a removal would report success without calling Route 53.
-    module = FakeModule(params(state="absent", vpc_id=vpc_id), check_mode=check_mode)
-    module.client = Mock()
-
-    assert run_main(module) == "vpc_id must not be empty"
     module.client.assert_not_called()
 
 

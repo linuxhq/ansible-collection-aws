@@ -38,7 +38,10 @@ options:
         country-specific.
       - Creating a pool without this requires botocore 1.42.80 or later; the
         module checks this before any change, including in check mode.
-      - AWS requires this to create a pool from a phone number.
+      - AWS requires this to create a pool from a phone number, so the module
+        fails without changes, including in check mode, when this is omitted,
+        O(origination_identity) is a phone number ID or ARN, and no matching
+        pool exists.
       - This is used only to find or create a pool when O(pool_id) is not
         provided, and is ignored when O(pool_id) is provided.
     type: str
@@ -65,6 +68,7 @@ options:
       - This can be a phone number ID, phone number ARN, sender ID, or sender
         ID ARN.
       - This is required when O(state=present) and O(pool_id) is not provided.
+      - This must not be empty when O(state=present) and O(pool_id) is not provided.
       - This is used only to find or create a pool when O(pool_id) is not
         provided, and is ignored when O(pool_id) is provided.
       - A pool matches when it holds this identity, its C(Name) tag equals
@@ -299,6 +303,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
     identity_matches,
     is_phone_number_identity,
+    is_phone_number_reference,
     is_replayed_deleted_resource,
     list_pool_origination_identities,
     list_tags,
@@ -312,6 +317,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
@@ -689,6 +695,19 @@ def ensure_present(client, module, tags):
     if current is None and module.params.get("pool_id") is not None:
         module.fail_json(msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist")
 
+    # AWS rejects creating a pool from a phone number without its country, which check mode would otherwise predict.
+    if (
+        current is None
+        and module.params["iso_country_code"] is None
+        and is_phone_number_reference(module.params["origination_identity"])
+    ):
+        module.fail_json(
+            msg=(
+                "iso_country_code is required to create a Pinpoint SMS Voice V2 pool from phone number "
+                f"{module.params['origination_identity']}"
+            )
+        )
+
     # botocore before 1.42.80 requires IsoCountryCode for CreatePool and refuses the request without it.
     if current is None and module.params["iso_country_code"] is None:
         module.require_botocore_at_least(
@@ -891,9 +910,10 @@ def main():
         tags = dict(module.params["tags"] or {}, Name=module.params["name"])
         require_valid_tags(module, tags, restricted_characters=True)
 
-        # required_if counts only supplied keys, so an explicit null passes it.
-        if module.params["pool_id"] is None and module.params["origination_identity"] is None:
-            module.fail_json(msg="state is present but any of the following are missing: origination_identity, pool_id")
+        # AWS rejects an empty origination identity, which check mode would otherwise predict as a new pool.
+        # required_if accepts an explicit null, so a null identity is rejected the same way.
+        if module.params["pool_id"] is None:
+            require_non_blank(module, module.params["origination_identity"] or "", "origination_identity")
 
     require_positive_wait_bounds(module, always=True)
 

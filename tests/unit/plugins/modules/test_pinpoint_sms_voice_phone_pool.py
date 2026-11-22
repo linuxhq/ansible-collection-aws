@@ -131,10 +131,10 @@ def main_params(**overrides):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_present_rejects_a_null_origination_identity_before_any_aws_call(check_mode):
-    # required_if counts only supplied keys, so an explicit null passes it and would otherwise reach the pool search.
+@pytest.mark.parametrize("origination_identity", ["", "  ", None])
+def test_present_rejects_empty_origination_identity_before_any_aws_call(origination_identity, check_mode):
     client = Mock()
-    module = FakeModule(main_params(origination_identity=None), check_mode=check_mode, client=client)
+    module = FakeModule(main_params(origination_identity=origination_identity), check_mode=check_mode, client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(module, "client") as connect,
@@ -142,28 +142,9 @@ def test_present_rejects_a_null_origination_identity_before_any_aws_call(check_m
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == (
-        "state is present but any of the following are missing: origination_identity, pool_id"
-    )
+    assert raised.value.values["msg"] == "origination_identity must not be empty"
     connect.assert_not_called()
     assert client.mock_calls == []
-
-
-@pytest.mark.parametrize("origination_identity", ["", "  "])
-def test_check_mode_predicts_a_pool_from_an_empty_origination_identity(origination_identity):
-    # AWS rejects an empty origination identity on CreatePool, the run's only write.
-    client = Mock()
-    module = FakeModule(main_params(origination_identity=origination_identity), check_mode=True, client=client)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "find_pool", return_value=None),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["changed"] is True
-    client.create_pool.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1442,25 +1423,30 @@ def test_absent_check_mode_predicts_the_delete_pool_response(deletion_protection
 PHONE_NUMBER_ID = "phone-720f0a64a09b4e1ebdcc8273b27bd3fc"
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
     "origination_identity",
     [PHONE_NUMBER_ID, f"arn:aws:sms-voice:us-east-1:123456789012:phone-number/{PHONE_NUMBER_ID}"],
     ids=["id", "arn"],
 )
-def test_check_mode_predicts_a_pool_from_a_phone_number_without_a_country(origination_identity):
-    # AWS rejects creating a pool from a phone number without its country on CreatePool, the run's only write.
+def test_new_pool_from_a_phone_number_requires_a_country_before_any_write(origination_identity, check_mode):
     client = Mock()
-    module = FakeModule(main_params(iso_country_code=None, origination_identity=origination_identity), check_mode=True)
+    module = FakeModule(
+        main_params(iso_country_code=None, origination_identity=origination_identity), check_mode=check_mode
+    )
     with (
         patch.object(plugin, "find_pool", return_value=None),
-        patch.object(module, "require_botocore_at_least") as require_botocore,
-        pytest.raises(ModuleExit) as raised,
+        pytest.raises(ModuleFail) as raised,
     ):
         run_ensure_present(client, module)
 
-    assert raised.value.values["changed"] is True
-    require_botocore.assert_called_once()
-    client.create_pool.assert_not_called()
+    assert raised.value.values == {
+        "msg": (
+            "iso_country_code is required to create a Pinpoint SMS Voice V2 pool from phone number "
+            f"{origination_identity}"
+        )
+    }
+    assert client.mock_calls == []
 
 
 def test_existing_pool_holding_a_phone_number_is_adopted_without_a_country():

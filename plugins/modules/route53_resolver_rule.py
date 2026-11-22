@@ -56,6 +56,7 @@ options:
     description:
       - The target IP definitions for forwarding rules.
       - This is required when O(state=present).
+      - This must contain at least one entry.
       - On update, an entry keeps the current values of the fields it omits
         only when it matches a current target, that is, when every value it
         sets equals that target's value. An entry that matches no current
@@ -902,6 +903,9 @@ def main():
         # Live: UpdateResolverRule keeps the current endpoint for a whitespace-only ID, so every run would fail after
         # updating the rule.
         require_non_blank(module, module.params["resolver_endpoint_id"], "resolver_endpoint_id")
+
+        if not module.params["target_ips"]:
+            module.fail_json(msg="target_ips must contain at least one entry")
 
         for target_ip in module.params["target_ips"]:
             # ansible-core counts an explicit null as set for required_one_of, and a target without an address would

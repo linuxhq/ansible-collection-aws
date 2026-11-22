@@ -11,6 +11,8 @@ description:
   - Manages AWS Notifications hubs.
   - Requires botocore 1.35.67 or later.
   - The module always uses the C(us-east-1) AWS Notifications endpoint.
+  - AWS does not allow deregistering the last C(ACTIVE) notification hub, so
+    O(state=absent) fails without changes for that hub.
 author:
   - Taylor Kimball (@tkimball83)
 options:
@@ -142,9 +144,18 @@ def hub_status(hub):
 
 def ensure_absent(client, module):
     region = module.params["region"]
-    hub = find_notification_hub(list_notification_hubs(client, module), region)
+    hubs = list_notification_hubs(client, module)
+    hub = find_notification_hub(hubs, region)
     status = hub_status(hub)
     changed = hub is not None and status not in ("DEREGISTERING", "INACTIVE")
+
+    if status == "ACTIVE" and not any(
+        hub_status(other) == "ACTIVE" for other in hubs if other["notificationHubRegion"] != region
+    ):
+        module.fail_json(
+            changed=False,
+            msg=f"Unable to delete AWS Notifications hub {region}: AWS does not allow deregistering the last ACTIVE hub",
+        )
 
     if changed and not module.check_mode:
         require_client_methods(

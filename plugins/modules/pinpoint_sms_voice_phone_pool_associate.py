@@ -31,13 +31,16 @@ options:
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
-      - When provided with O(state=absent), this must be exactly two uppercase letters.
+      - When provided, this must be exactly two uppercase letters.
       - This is optional for origination identities that are not
         country-specific.
       - Without this, associating an origination identity, or disassociating
         one that is not a phone number, requires botocore 1.42.80 or later;
         the module checks this before any change, including in check mode.
-      - AWS requires this to associate a phone number.
+      - AWS requires this to associate a phone number, so with
+        O(state=present) the module fails without changes, including in check
+        mode, when this is omitted and O(origination_identity) is a phone
+        number ID or ARN that is not yet associated with the pool.
       - With O(state=absent), when this is omitted for a phone number, the
         country AWS lists for it in the pool is used.
     type: str
@@ -49,6 +52,7 @@ options:
       - AWS treats sender IDs without letter case, so a sender ID or sender ID
         ARN matches an association in any letter case. Phone number IDs and
         ARNs match exactly.
+      - This must not be empty when O(state=present).
     required: true
     type: str
   pool_id:
@@ -187,6 +191,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 # Listed association fields that the DisassociateOriginationIdentity response does not model.
 DISASSOCIATE_OMITTED_FIELDS = ("NumberCapabilities", "PhoneNumber")
@@ -263,6 +268,15 @@ def ensure_present(client, module):
     pool, current = current_associations(client, module)
     association = current_association(module, current)
     changed = association is None
+
+    # AWS rejects associating a phone number without its country, which check mode would otherwise predict.
+    if changed and module.params["iso_country_code"] is None and is_phone_number_reference(origination_identity):
+        module.fail_json(
+            msg=(
+                f"iso_country_code is required to associate phone number {origination_identity} "
+                f"with Pinpoint SMS Voice V2 pool {module.params['pool_id']}"
+            )
+        )
 
     # botocore before 1.42.80 requires IsoCountryCode for AssociateOriginationIdentity and refuses the request without it.
     if changed and module.params["iso_country_code"] is None:
@@ -405,11 +419,14 @@ def main():
     )
     state = module.params["state"]
 
-    # A removal matches the current association by country locally, so AWS never sees a malformed code, and one that
-    # differs only in case would leave the association in place while reporting no change.
-    iso_country_code = module.params["iso_country_code"]
-    if state == "absent" and iso_country_code is not None and not re.fullmatch(r"[A-Z]{2}", iso_country_code):
+    if module.params["iso_country_code"] is not None and not re.fullmatch(
+        r"[A-Z]{2}", module.params["iso_country_code"]
+    ):
         module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
+
+    # AWS rejects an empty origination identity, which check mode would otherwise predict as a new association.
+    if state == "present":
+        require_non_blank(module, module.params["origination_identity"], "origination_identity")
 
     client = module.client(
         "pinpoint-sms-voice-v2",

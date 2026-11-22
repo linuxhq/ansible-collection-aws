@@ -14,6 +14,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
     assert_module_contract,
+    assert_module_rejects,
 )
 
 
@@ -101,6 +102,14 @@ def test_command_normalization_preserves_compatible_request_keys():
     }
 
 
+def test_empty_instance_ids_and_targets_are_rejected():
+    assert_module_rejects(
+        plugin,
+        send_params(instance_ids=[], targets=[]),
+        "instance_ids or targets must contain at least one entry",
+    )
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -113,8 +122,6 @@ def test_command_normalization_preserves_compatible_request_keys():
         {"max_errors": " "},
         {"parameters": {"commands": "uptime"}},
         {"timeout_seconds": 29},
-        {"instance_ids": []},
-        {"instance_ids": None, "targets": []},
     ],
     ids=[
         "document-name",
@@ -126,8 +133,6 @@ def test_command_normalization_preserves_compatible_request_keys():
         "errors",
         "parameters",
         "timeout",
-        "empty-instance-ids",
-        "empty-targets",
     ],
 )
 def test_check_mode_leaves_send_command_validation_to_aws(overrides):

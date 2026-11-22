@@ -32,7 +32,7 @@ options:
   state:
     description:
       - Desired opt-in status for the region.
-      - AWS rejects disabling a default Region with C(ENABLED_BY_DEFAULT) status.
+      - Default Regions with C(ENABLED_BY_DEFAULT) status cannot be disabled.
       - Requires botocore 1.29.70 or later.
     choices:
       - present
@@ -290,6 +290,11 @@ def ensure_present(client, module):
 def ensure_absent(client, module):
     region_name = region_target(module)
     previous_status = get_region_opt_status(client, module)
+
+    if previous_status == "ENABLED_BY_DEFAULT":
+        module.fail_json(
+            msg=f"Unable to disable AWS account region {region_name} because default Regions cannot be disabled",
+        )
 
     changed = previous_status not in ABSENT_STATUSES
 

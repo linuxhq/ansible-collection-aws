@@ -36,8 +36,11 @@ EC2_BLANK_CHARACTERS = (
 EC2_BLANK_TAG_VALUE_CHARACTERS = " \t\n\r"
 
 
-def require_valid_tags(module, tags, restricted_characters=False, ec2=False):
-    """Fail unless tags are non-null, unique as strings, and within the AWS lengths.
+def require_valid_tags(module, tags, max_tags=None, restricted_characters=False, ec2=False):
+    """Fail unless tags are non-null, unique as strings, at most max_tags when set, and within the AWS lengths.
+
+    max_tags is for a create that sends its tags, so check mode fails as the create would; other writes are
+    checked with require_resulting_tag_limit against the tags they would leave.
 
     Keys and values are normalized to strings in place. restricted_characters also requires the characters of the SSM,
     IAM, and ACM tag pattern, which those services, EKS, Global Accelerator, Notifications Contacts, Pinpoint SMS Voice
@@ -57,7 +60,10 @@ def require_valid_tags(module, tags, restricted_characters=False, ec2=False):
 
     tags.clear()
     tags.update(normalized)
-    # The tag count is checked by require_resulting_tag_limit, or left to AWS on a create that sends its tags.
+    # AWS reserves the aws: prefix, and those tags do not count against the per-resource limit.
+    if max_tags is not None and sum(not key.lower().startswith("aws:") for key in tags) > max_tags:
+        module.fail_json(msg=f"tags must contain at most {max_tags} entries")
+
     if any(not 1 <= len(key) <= 128 or len(value) > 256 for key, value in tags.items()):
         module.fail_json(msg="tag keys must contain 1 to 128 characters and values at most 256 characters")
 

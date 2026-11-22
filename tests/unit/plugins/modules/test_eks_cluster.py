@@ -74,6 +74,23 @@ def test_sdk_validation_checks_nested_vpc_parameters():
     )
 
 
+def test_tag_limits_are_rejected_before_client_creation():
+    module = FakeModule(
+        {
+            "encryption_config": None,
+            "state": "present",
+            "tags": {str(index): "" for index in range(51)},
+        }
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "tags must contain at most 50 entries"
+
+
 def test_absent_does_not_validate_unused_create_options():
     params = dict.fromkeys(plugin.CREATE_FIELDS)
     params.update(
@@ -1886,6 +1903,31 @@ def test_auto_mode_node_pools_without_a_node_role_fail_before_any_update(current
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+def test_create_with_auto_mode_node_pools_without_a_node_role_fails_before_any_aws_call(check_mode):
+    params = eks_params(
+        compute_config={"enabled": True, "node_pools": ["general-purpose"]},
+        kubernetes_network_config={"elastic_load_balancing": {"enabled": True}},
+        resources_vpc_config={"subnet_ids": ["subnet-a", "subnet-b"]},
+        role_arn="arn:role",
+        storage_config={"block_storage": {"enabled": True}},
+    )
+    client = Mock()
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+
+    assert raised.value.values == {
+        "msg": (
+            "compute_config.node_pools requires a node role while EKS Auto Mode compute is enabled for new EKS "
+            "cluster example; set compute_config.node_role_arn"
+        )
+    }
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 def test_auto_mode_node_role_is_allowed_with_node_pools_when_the_cluster_has_no_node_role(check_mode):
     # Live probe: EKS accepts a node role with node pools on an enabled cluster that has no node pools or node role.
     params = eks_params(
@@ -2856,39 +2898,42 @@ def test_rerun_after_disabling_auto_mode_with_matching_node_settings_is_unchange
     assert client.mock_calls == []
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
-    "compute_config, expected",
+    "compute_config",
     [
-        (
-            {"enabled": True, "node_pools": ["general-purpose"]},
-            {"enabled": True, "nodePools": ["general-purpose"]},
-        ),
-        (
-            {"enabled": False, "node_pools": ["general-purpose"]},
-            {"enabled": False, "nodePools": ["general-purpose"]},
-        ),
-        ({"enabled": False, "node_role_arn": "arn:node"}, {"enabled": False, "nodeRoleArn": "arn:node"}),
-        (
-            {"node_pools": ["general-purpose"], "node_role_arn": "arn:node"},
-            {"nodePools": ["general-purpose"], "nodeRoleArn": "arn:node"},
-        ),
+        {"enabled": False, "node_pools": ["general-purpose"]},
+        {"enabled": False, "node_role_arn": "arn:node"},
+        {"node_pools": ["general-purpose"], "node_role_arn": "arn:node"},
     ],
-    ids=["node-pools-without-node-role", "disabled-node-pools", "disabled-node-role", "omitted"],
+    ids=["disabled-node-pools", "disabled-node-role", "omitted"],
 )
-def test_create_leaves_node_settings_eks_rejects_to_create_cluster(compute_config, expected):
-    # CreateCluster rejects these with nothing created, so check mode predicts the create.
-    params = eks_params(
-        compute_config=compute_config,
-        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
-        role_arn="arn:role",
+def test_node_settings_without_enabled_compute_fail_before_create(check_mode, compute_config):
+    client = Mock()
+    module = FakeModule(
+        eks_params(
+            compute_config=compute_config,
+            resources_vpc_config={"subnet_ids": ["subnet-a", "subnet-b"]},
+            role_arn="arn:role",
+        ),
+        check_mode=check_mode,
     )
-    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
-    client = run_present(FakeModule(params), [None, DESCRIBED_CLUSTER], client)[0]
-    check_client, check = run_present(FakeModule(params, check_mode=True), [None])
+    with (
+        patch.object(plugin, "describe_cluster", return_value=None),
+        patch.object(plugin, "require_client_methods") as require_client_methods,
+        patch.object(plugin, "require_nested_request_parameters"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module)
 
-    assert client.create_cluster.call_args.kwargs["computeConfig"] == expected
-    assert check_client.mock_calls == []
-    assert check["changed"] is True
+    assert raised.value.values == {
+        "msg": (
+            "compute_config.node_pools and compute_config.node_role_arn require EKS Auto Mode compute to be enabled "
+            "for new EKS cluster example"
+        )
+    }
+    assert client.mock_calls == []
+    require_client_methods.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -3899,47 +3944,30 @@ RANGE_MESSAGE = "must contain CIDR blocks within 10.0.0.0/8, 172.16.0.0/12, 192.
         "service-cidr",
     ],
 )
-def test_remote_network_cidrs_eks_rejects_fail_before_any_update(
+def test_remote_network_cidrs_eks_rejects_fail_before_any_aws_call(
     node_cidrs, pod_cidrs, service_cidr, message, check_mode
 ):
     # UpdateClusterConfig rejects these after other updates were applied (live), and check mode predicted success.
-    current = dict(STANDARD_CLUSTER, accessConfig={"authenticationMode": "API"})
-    if service_cidr:
-        current["kubernetesNetworkConfig"] = dict(current["kubernetesNetworkConfig"], serviceIpv4Cidr=service_cidr)
-
     config = {
         "remote_node_networks": [{"cidrs": node_cidrs}],
         "remote_pod_networks": [{"cidrs": pod_cidrs}] if pod_cidrs else None,
     }
-    params = eks_params(deletion_protection=True, remote_network_config=config)
-    client = Mock()
+    params = eks_params(
+        deletion_protection=True,
+        kubernetes_network_config={"service_ipv4_cidr": service_cidr} if service_cidr else None,
+        remote_network_config=config,
+        state="present",
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    module.client = Mock()
     with (
-        patch.object(plugin, "describe_cluster", return_value=current),
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
+        plugin.main()
 
     assert raised.value.values == {"msg": f"remote_network_config.{message}"}
-    assert client.mock_calls == []
-
-
-def test_remote_network_cidrs_eks_rejects_are_left_to_create_cluster():
-    # CreateCluster rejects these with nothing created, so check mode predicts the create.
-    config = {"remote_node_networks": [{"cidrs": ["8.8.8.0/24"]}], "remote_pod_networks": None}
-    params = eks_params(
-        remote_network_config=config,
-        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
-        role_arn="arn:role",
-    )
-    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
-    client = run_present(FakeModule(params), [None, DESCRIBED_CLUSTER], client)[0]
-    check_client, check = run_present(FakeModule(params, check_mode=True), [None])
-
-    assert client.create_cluster.call_args.kwargs["remoteNetworkConfig"] == {
-        "remoteNodeNetworks": [{"cidrs": ["8.8.8.0/24"]}]
-    }
-    assert check_client.mock_calls == []
-    assert check["changed"] is True
+    module.client.assert_not_called()
 
 
 def test_cgnat_remote_network_cidr_is_accepted():

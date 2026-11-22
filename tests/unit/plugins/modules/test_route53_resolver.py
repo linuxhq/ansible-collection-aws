@@ -358,6 +358,10 @@ def test_endpoint_list_limits_are_rejected():
             "ip_addresses entries must be unique",
         ),
         (
+            dict(base, security_group_ids=[]),
+            "security_group_ids must contain at least one entry",
+        ),
+        (
             dict(
                 base,
                 ip_addresses=[

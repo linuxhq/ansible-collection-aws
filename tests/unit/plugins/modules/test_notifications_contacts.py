@@ -9,7 +9,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -406,7 +405,7 @@ def test_tags_with_characters_aws_accepts_reach_aws():
     assert module.params["tags"] == tags
 
 
-def test_tag_count_is_not_checked_before_the_client_is_created():
+def test_tags_are_limited_to_the_50_a_contact_can_hold():
     # Live: TagResource rejects a 51st user tag ("The resultant tag set must not have more than 50 user tags").
     tags = {f"key{index}": "" for index in range(51)}
     params = {
@@ -416,14 +415,7 @@ def test_tag_count_is_not_checked_before_the_client_is_created():
         "state": "present",
         "tags": tags,
     }
-    module = FakeModule(params)
-    # The tag count is checked against the tags a write would leave, or left to AWS on a create that sends the tags.
-    module.client = Mock(side_effect=ModuleInitialized)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleInitialized),
-    ):
-        plugin.main()
+    assert_module_rejects(plugin, params, "tags must contain at most 50 entries")
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

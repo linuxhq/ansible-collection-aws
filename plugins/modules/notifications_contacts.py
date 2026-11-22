@@ -355,7 +355,7 @@ def main():
     if state == "present" and module.params["name"] is None:
         module.fail_json(msg="state is present but all of the following are missing: name")
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, restricted_characters=True)
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, restricted_characters=True)
     client = module.client(
         "notificationscontacts",
         retry_decorator=AWSRetry.jittered_backoff(),

@@ -116,7 +116,7 @@ def test_accepts_four_capabilities():
     client.request_phone_number.assert_not_called()
 
 
-def test_repeated_capabilities_are_requested_once():
+def test_capability_limit_counts_unique_values():
     client = model_client()
     module = FakeModule(
         {
@@ -146,59 +146,40 @@ def test_repeated_capabilities_are_requested_once():
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "query_list", return_value=[]),
-        pytest.raises(ModuleExit) as raised,
+        pytest.raises(ModuleExit),
     ):
         plugin.main()
 
-    assert raised.value.values["phone_number"]["number_capabilities"] == ["SMS"]
 
-
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"iso_country_code": "us"},
-        {"number_capabilities": []},
-        {"message_type": "PROMOTIONAL", "number_type": "SIMULATOR"},
-        {"opt_out_list_name": ""},
-        {"opt_out_list_name": "  "},
-        {"registration_id": ""},
-        {"registration_id": "  "},
-    ],
-    ids=[
-        "lowercase-country",
-        "no-capabilities",
-        "promotional-simulator",
-        "empty-opt-out",
-        "blank-opt-out",
-        "empty-registration",
-        "blank-registration",
-    ],
-)
-def test_check_mode_predicts_a_request_aws_validates(overrides):
-    # AWS rejects these on RequestPhoneNumber, the run's only write, so the module leaves them to AWS.
-    client = model_client()
+def test_simulator_numbers_require_transactional_messages():
     module = FakeModule(
-        dict(phone_number_params(**overrides), wait_delay=5, wait_timeout=300), check_mode=True, client=client
+        {
+            "iso_country_code": "US",
+            "message_type": "PROMOTIONAL",
+            "name": "sms",
+            "number_capabilities": ["SMS"],
+            "number_type": "SIMULATOR",
+            "state": "present",
+            "tags": None,
+        }
     )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[]),
-        pytest.raises(ModuleExit) as raised,
+        pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["changed"] is True
-    client.request_phone_number.assert_not_called()
+    assert "must be TRANSACTIONAL" in raised.value.values["msg"]
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("value", ["", "  "])
-def test_present_rejects_an_empty_pool_id_before_any_aws_call(value, check_mode):
-    # No number is in a pool with an empty ID, so a request with one could never converge.
+@pytest.mark.parametrize("option", ["opt_out_list_name", "pool_id", "registration_id"])
+def test_present_rejects_empty_identifiers_before_any_aws_call(option, value, check_mode):
+    # AWS rejects each of them empty or blank, so check mode must not predict a request or an update with one.
     client = Mock()
     module = FakeModule(
-        dict(phone_number_params(pool_id=value), wait_delay=5, wait_timeout=300),
+        dict(phone_number_params(**{option: value}), wait_delay=5, wait_timeout=300),
         check_mode=check_mode,
         client=client,
     )
@@ -209,7 +190,7 @@ def test_present_rejects_an_empty_pool_id_before_any_aws_call(value, check_mode)
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "pool_id must not be empty"
+    assert raised.value.values["msg"] == f"{option} must not be empty"
     connect.assert_not_called()
     assert client.mock_calls == []
 

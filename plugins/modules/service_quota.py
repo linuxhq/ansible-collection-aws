@@ -14,6 +14,7 @@ description:
   - Falls back to the AWS default quota when the quota has no applied value.
   - Fails when the quota has neither an applied value nor an AWS default
     value.
+  - Fails before requesting an increase for a quota that is not adjustable.
   - Warns when an open or pending request asks for less than O(value).
 author:
   - Taylor Kimball (@tkimball83)
@@ -45,7 +46,6 @@ options:
     description:
       - The desired quota value.
       - AWS accepts values from 0 to 10000000000.
-      - A NaN or infinite value fails before AWS is called.
     required: true
     type: float
 extends_documentation_fragment:
@@ -455,8 +455,7 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
-    # A NaN or negative infinite value is never larger than the current quota, so the run would silently request
-    # nothing, and an infinite value would make the result invalid JSON.
+    # A NaN value compares as never larger than the current quota, so the run would silently request nothing.
     if not math.isfinite(module.params["value"]):
         module.fail_json(msg="value must be a finite number")
 
@@ -518,6 +517,11 @@ def main():
 
     has_pending_request = bool(pending_requests)
     changed = not has_pending_request and desired_value > current_value
+
+    if changed and current_quota.get("Adjustable") is False:
+        module.fail_json(
+            msg=f"AWS service quota {identifier} is not adjustable, so it cannot be increased to {desired_value}"
+        )
 
     smaller_requests = [
         request["DesiredValue"]

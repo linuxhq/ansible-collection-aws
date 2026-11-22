@@ -56,6 +56,7 @@ options:
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
+      - This must be exactly two uppercase letters.
       - This is required when O(state=present).
     type: str
   message_type:
@@ -74,6 +75,7 @@ options:
       - VOICE
     description:
       - The capabilities requested for the phone number.
+      - This must contain 1 to 4 capabilities.
       - This is required when O(state=present).
     elements: str
     type: list
@@ -95,6 +97,7 @@ options:
       - TOLL_FREE
     description:
       - The type of phone number to request.
+      - When set to C(SIMULATOR), O(message_type) must be C(TRANSACTIONAL).
       - This is required when O(state=present).
     type: str
   opt_out_list_name:
@@ -102,6 +105,7 @@ options:
       - The OptOutList name or ARN to associate with the phone number.
       - When omitted for an existing number, the current OptOutList is left unchanged.
       - This cannot be changed on an existing number that is associated with a pool.
+      - This must not be empty when provided with O(state=present).
     type: str
   phone_number_id:
     description:
@@ -127,6 +131,7 @@ options:
   registration_id:
     description:
       - The registration ID or ARN to attach to the phone number request.
+      - This must not be empty when provided with O(state=present).
     type: str
   state:
     description:
@@ -340,6 +345,7 @@ state:
   type: str
 """
 
+import re
 import time
 
 try:
@@ -1042,12 +1048,22 @@ def main():
         if module.params["iso_country_code"] is None:
             module.fail_json(msg="state is present but all of the following are missing: iso_country_code")
 
-        # No number is in a pool with an empty ID, so a request with an empty pool_id could never converge.
-        require_non_blank(module, module.params["pool_id"], "pool_id")
+        if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"]):
+            module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
+
+        if not 1 <= len(set(module.params["number_capabilities"])) <= 4:
+            module.fail_json(msg="number_capabilities must contain 1 to 4 capabilities")
+
+        if module.params["number_type"] == "SIMULATOR" and module.params["message_type"] != "TRANSACTIONAL":
+            module.fail_json(msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR")
+
+        # AWS rejects empty identifiers, which check mode would otherwise predict as a new request or an update.
+        for option in ("opt_out_list_name", "pool_id", "registration_id"):
+            require_non_blank(module, module.params[option], option)
 
         # name replaces any Name entry in tags, so only the tags sent to AWS are checked.
         tags = dict(module.params["tags"] or {}, Name=module.params["name"])
-        require_valid_tags(module, tags, restricted_characters=True)
+        require_valid_tags(module, tags, 200, restricted_characters=True)
 
     require_positive_wait_bounds(module, always=True)
 

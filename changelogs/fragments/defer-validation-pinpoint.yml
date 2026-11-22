@@ -1,19 +1,4 @@
 ---
-minor_changes:
-  - pinpoint_sms_voice_phone_number - an O(iso_country_code) other than two uppercase letters, O(number_capabilities)
-    without 1 to 4 capabilities, O(number_type=SIMULATOR) without O(message_type=TRANSACTIONAL), and an empty
-    O(opt_out_list_name) or O(registration_id) are now rejected by AWS End User Messaging SMS instead of by the module.
-  - pinpoint_sms_voice_phone_pool - an empty O(origination_identity), and a pool created from a phone number without
-    O(iso_country_code), are now rejected by AWS End User Messaging SMS instead of by the module.
-  - pinpoint_sms_voice_phone_pool_associate - an O(iso_country_code) other than two uppercase letters, an empty
-    O(origination_identity), and a phone number associated without O(iso_country_code) are now rejected by AWS End
-    User Messaging SMS instead of by the module when O(state=present); a malformed O(iso_country_code) still fails
-    before any call when O(state=absent).
-  - pinpoint_sms_voice_sender_id - an O(sender_id) other than 1 to 11 letters, numbers, hyphens, or underscores, an
-    O(iso_country_code) other than two uppercase letters, and an C(aws:) tag key on a new sender ID are now rejected
-    by AWS End User Messaging SMS instead of by the module.
-  - pinpoint_sms_voice_sender_id - releasing a sender ID with deletion protection enabled is now refused by AWS End
-    User Messaging SMS instead of by the module, so check mode reports the release as a change.
 trivial:
   - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate, and
     pinpoint_sms_voice_sender_id - return the resource AWS describes or returns without comparing its identifier to

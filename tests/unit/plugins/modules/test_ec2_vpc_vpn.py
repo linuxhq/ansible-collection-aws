@@ -1280,12 +1280,14 @@ def test_ipv6_creation_accepts_a_vpn_concentrator(params):
     plugin.validate_configuration(FakeModule(params))
 
 
-@pytest.mark.parametrize("gateway", [{"vpn_gateway_id": "vgw-123"}, {}], ids=["vpn_gateway", "no_gateway"])
-def test_ipv6_creation_without_a_transit_gateway_is_left_to_ec2(params, gateway):
-    # Live: EC2 accepts an IPv6 connection attached to no gateway; it rejects an unsupported one on the create itself.
-    params.update(customer_gateway_id="cgw-123", tunnel_inside_ip_version="ipv6", **gateway)
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_ipv6_creation_without_a_transit_gateway_fails_before_any_aws_call(params, check_mode):
+    params.update(customer_gateway_id="cgw-123", vpn_gateway_id="vgw-123", tunnel_inside_ip_version="ipv6")
     client = Mock()
-    assert ensure(client, FakeModule(params, check_mode=True), None) == {"changed": True, "vpn_connection": {}}
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), None)
+
+    assert raised.value.values == {"changed": False, "msg": "IPv6 VPN connections require a transit gateway"}
     assert client.mock_calls == []
 
 

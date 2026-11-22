@@ -46,7 +46,7 @@ options:
     description:
       - The OIDC provider URL.
       - The URL must begin with C(https://) when O(state=present).
-      - The URL must identify a host that is not empty.
+      - The URL must identify a host that is not empty or whitespace-only.
       - AWS accepts at most 255 characters.
       - An existing provider matches only when its URL equals O(url) exactly,
         apart from the C(https://) prefix, whose case is ignored. AWS STS
@@ -506,7 +506,8 @@ def main():
         if not module.params["url"].lower().startswith("https://"):
             module.fail_json(msg="url must begin with https://")
 
-        if not provider_url(module.params["url"]).partition("/")[0]:
+        # IAM rejects a whitespace-only host, which identifies no provider either.
+        if not provider_url(module.params["url"]).partition("/")[0].strip():
             module.fail_json(msg="url must identify an OIDC provider host")
 
         if len(set(module.params["client_id_list"] or [])) > 100:

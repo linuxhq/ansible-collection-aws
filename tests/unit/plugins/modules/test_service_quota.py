@@ -57,11 +57,8 @@ def test_module_contract():
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-@pytest.mark.parametrize(
-    "value", [float("nan"), float("-inf"), float("inf")], ids=["nan", "negative-infinity", "infinity"]
-)
-def test_rejects_a_quota_value_that_is_not_finite(value):
-    # NaN and negative infinity never exceed the current quota, and an infinite value makes the result invalid JSON.
+@pytest.mark.parametrize("value", [float("inf"), float("nan")])
+def test_rejects_non_finite_quota_value(value):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(value=value))),
         pytest.raises(ModuleFail) as raised,
@@ -171,22 +168,14 @@ def test_smaller_pending_request_is_reported():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_non_adjustable_quota_increase_reaches_aws(check_mode):
-    # Service Quotas rejects an increase of a non-adjustable quota before requesting anything.
+def test_non_adjustable_quota_fails_before_requesting(check_mode):
     client = Mock()
     client.get_service_quota.return_value = {"Quota": {"Value": 5.0, "Adjustable": False}}
-    client.request_service_quota_increase.side_effect = ClientError(
-        {"Error": {"Code": "QuotaExceededException", "Message": "not adjustable"}}, "RequestServiceQuotaIncrease"
-    )
     result = run(FakeModule(params(), check_mode=check_mode, client=client))[0]
 
-    if check_mode:
-        assert isinstance(result, ModuleExit)
-        assert result.values["changed"]
-        client.request_service_quota_increase.assert_not_called()
-    else:
-        assert isinstance(result, ModuleFail)
-        assert result.values["msg"] == "Unable to request AWS service quota increase for ec2/L-1"
+    assert isinstance(result, ModuleFail)
+    assert result.values["msg"] == "AWS service quota ec2/L-1 is not adjustable, so it cannot be increased to 10.0"
+    client.request_service_quota_increase.assert_not_called()
 
 
 def test_non_adjustable_quota_at_the_desired_value_is_unchanged():

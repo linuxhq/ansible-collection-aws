@@ -1,12 +1,7 @@
 ---
 minor_changes:
-  - route53_resolver - an empty O(security_group_ids) list is now rejected by Route 53 Resolver instead of by the
-    module.
-  - route53_resolver_rule - an empty O(target_ips) list is now rejected by Route 53 Resolver instead of by the
-    module, and a O(target_ips) entry that sets O(target_ips[].ip) and O(target_ips[].ipv6) explicitly to null no
-    longer fails when O(state=absent).
-  - route53_zone_associate - an empty or whitespace-only O(vpc_id) is now rejected by Route 53 instead of by the
-    module when O(state=present); it still fails before any call when O(state=absent).
+  - route53_resolver_rule - a O(target_ips) entry that sets O(target_ips[].ip) and O(target_ips[].ipv6) explicitly to
+    null no longer fails when O(state=absent), which does not use the targets.
 bugfixes:
   - route53_resolver - pair the requested O(ip_addresses) with the current endpoint addresses the same way the
     configuration comparison does, so a subnet-only entry no longer causes the replacement of an address that another

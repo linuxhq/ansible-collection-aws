@@ -2,9 +2,6 @@
 minor_changes:
   - account_name and aws_account_info - return every field of the AWS Account C(GetAccountInformation) response
     instead of a fixed list of fields.
-  - account_region - disabling a default Region with C(ENABLED_BY_DEFAULT) status is now rejected by AWS Account
-    instead of by the module, so check mode predicts a change.
-  - iam_oidc_provider - an O(url) whose host is only whitespace is now rejected by IAM instead of by the module.
   - iam_oidc_provider - O(thumbprint_list) entries now only need to be 40 characters long; IAM accepts thumbprints
     that are not hexadecimal.
 trivial:

@@ -47,7 +47,7 @@ options:
     description:
       - Destination options for flow logs delivered to Amazon S3.
       - Requires O(log_destination_type).
-      - EC2 rejects them when O(log_destination_type) is not C(s3).
+      - O(log_destination_type) must be C(s3) when O(state=present).
       - Requires botocore 1.21.61 or later.
     suboptions:
       file_format:
@@ -101,7 +101,7 @@ options:
   max_aggregation_interval:
     description:
       - The maximum interval, in seconds, during which packets are captured and aggregated.
-      - EC2 accepts only C(60) when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
+      - This must be C(60) when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
     choices:
       - 60
       - 600
@@ -180,7 +180,7 @@ options:
   traffic_type:
     description:
       - The type of traffic to log.
-      - EC2 rejects it when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
+      - This is not supported when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
       - When omitted, a flow log with any traffic type matches, and a replacement keeps the traffic type of the
         flow log it replaces. A new flow log on a C(VPC), C(Subnet), C(NetworkInterface), or C(RegionalNatGateway)
         resource logs C(ALL) traffic.
@@ -1099,6 +1099,8 @@ def main():
     )
     state = module.params["state"]
     resource_ids = normalized_resource_ids(module)
+    resource_type = module.params["resource_type"]
+    destination_options = comparable_destination_options(module)
 
     if not resource_ids:
         module.fail_json(msg="resource_ids must contain at least one item")
@@ -1119,6 +1121,19 @@ def main():
 
             require_non_blank(module, module.params[option], option)
 
+        if module.params["traffic_type"] is not None and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
+            module.fail_json(
+                msg="traffic_type is not supported when resource_type is TransitGateway or TransitGatewayAttachment"
+            )
+
+        if module.params["max_aggregation_interval"] == 600 and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
+            module.fail_json(
+                msg="max_aggregation_interval must be 60 when resource_type is TransitGateway or TransitGatewayAttachment"
+            )
+
+        if destination_options and module.params["log_destination_type"] != "s3":
+            module.fail_json(msg="destination_options requires log_destination_type to be s3 when state is present")
+
     name = module.params["name"]
     tags = module.params["tags"]
     # EC2 would store the Name tag as "", so the flow log could never be found by this name again.
@@ -1128,7 +1143,7 @@ def main():
     if state == "present":
         # name replaces any Name key in tags, and the Name tag counts toward the EC2 tag limit.
         named_tags = dict(tags or {}, Name=name)
-        require_valid_tags(module, named_tags, ec2=True)
+        require_valid_tags(module, named_tags, 50, ec2=True)
         if tags is not None:
             # Matching, requests, and check-mode results use the tags as normalized.
             module.params["tags"] = named_tags

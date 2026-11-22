@@ -182,27 +182,22 @@ def test_active_hub_does_not_require_register():
         [{"notificationHubRegion": "us-west-2", "statusSummary": {"reason": "", "status": "INACTIVE"}}],
     ],
 )
-def test_last_active_hub_deregistration_is_left_to_aws(others, check_mode):
-    # Live: DeregisterNotificationHub rejects the last ACTIVE hub with a ConflictException and changes nothing.
+def test_last_active_hub_is_not_deregistered(others, check_mode):
     client = Mock()
-    client.deregister_notification_hub.side_effect = plugin.ClientError(
-        {"Error": {"Code": "ConflictException", "Message": "Cannot deregister last ACTIVE notification hub"}},
-        "DeregisterNotificationHub",
-    )
     module = FakeModule({"region": "us-east-1"}, check_mode=check_mode)
     with (
         patch.object(plugin, "list_notification_hubs", return_value=[ACTIVE_US_EAST_1] + others),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleExit if check_mode else ModuleFail) as raised,
+        patch.object(plugin, "require_client_methods") as require,
+        pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_absent(client, module)
 
-    if check_mode:
-        assert raised.value.values["changed"] is True
-        client.deregister_notification_hub.assert_not_called()
-    else:
-        assert raised.value.values["msg"] == "Unable to delete AWS Notifications hub us-east-1"
-        client.deregister_notification_hub.assert_called_once_with(notificationHubRegion="us-east-1", aws_retry=True)
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["msg"] == (
+        "Unable to delete AWS Notifications hub us-east-1: AWS does not allow deregistering the last ACTIVE hub"
+    )
+    client.deregister_notification_hub.assert_not_called()
+    require.assert_not_called()
 
 
 def test_active_hub_is_deregistered_when_another_hub_is_active():

@@ -128,34 +128,19 @@ def test_pending_transition_in_the_requested_direction_waits_for_the_steady_stat
     assert raised.value.values["region_opt_status"] == statuses[-1]
 
 
-def test_default_region_disable_is_left_to_aws():
-    module = FakeModule({"name": "us-east-1", "wait": False})
-    client = Mock()
-    client.disable_region.side_effect = plugin.ClientError(
-        {"Error": {"Code": "ValidationException", "Message": "default Region"}}, "DisableRegion"
-    )
+def test_default_region_cannot_be_disabled():
+    module = FakeModule({"name": "us-east-1", "wait": True})
     with (
-        patch.object(plugin, "get_region_opt_status", return_value="ENABLED_BY_DEFAULT"),
-        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "get_region_opt_status",
+            return_value="ENABLED_BY_DEFAULT",
+        ),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_absent(client, module)
+        plugin.ensure_absent(Mock(), module)
 
-    client.disable_region.assert_called_once_with(RegionName="us-east-1", aws_retry=True)
-    assert raised.value.values["msg"] == "Unable to disable AWS account region us-east-1"
-
-
-def test_check_mode_predicts_disabling_a_default_region():
-    module = FakeModule({"name": "us-east-1", "wait": False}, check_mode=True)
-    client = Mock()
-    with (
-        patch.object(plugin, "get_region_opt_status", return_value="ENABLED_BY_DEFAULT"),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_absent(client, module)
-
-    client.disable_region.assert_not_called()
-    assert raised.value.values["changed"] is True
+    assert "default Regions cannot be disabled" in raised.value.values["msg"]
 
 
 def test_enable_waits_for_disabling_region_even_without_final_wait():

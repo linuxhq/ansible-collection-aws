@@ -23,15 +23,20 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
-def test_tag_lengths_are_rejected():
-    with pytest.raises(ModuleFail) as raised:
-        require_valid_tags(FakeModule({}), {"long": "v" * 257})
+def test_tag_limits_are_rejected():
+    module = FakeModule({})
+    for tags, message in (
+        ({"one": "", "two": ""}, "tags must contain at most 1 entries"),
+        ({"long": "v" * 257}, "tag keys must contain 1 to 128 characters and values at most 256 characters"),
+    ):
+        with pytest.raises(ModuleFail) as raised:
+            require_valid_tags(module, tags, 1)
 
-    assert raised.value.values["msg"] == "tag keys must contain 1 to 128 characters and values at most 256 characters"
+        assert raised.value.values["msg"] == message
 
 
-def test_tag_count_is_left_to_the_resulting_limit():
-    # require_resulting_tag_limit counts the tags a write would leave, so the tags alone are not counted.
+def test_tag_count_is_not_checked_without_max_tags():
+    # Callers that do not send tags in a create check the tags a write would leave with require_resulting_tag_limit.
     tags = {f"key{index}": "" for index in range(201)}
     require_valid_tags(FakeModule({}), tags)
     assert len(tags) == 201
@@ -49,6 +54,15 @@ def test_tag_keys_outside_1_to_128_characters_are_rejected(key):
         require_valid_tags(FakeModule({}), {key: "v"})
 
     assert raised.value.values["msg"] == "tag keys must contain 1 to 128 characters and values at most 256 characters"
+
+
+def test_aws_reserved_tags_do_not_count_against_the_limit():
+    require_valid_tags(FakeModule({}), {"aws:cloudformation:stack-name": "stack", "AWS:other": "x", "Name": ""}, 1)
+
+    with pytest.raises(ModuleFail) as raised:
+        require_valid_tags(FakeModule({}), {"aws:reserved": "x", "one": "", "two": ""}, 1)
+
+    assert raised.value.values["msg"] == "tags must contain at most 1 entries"
 
 
 def test_resulting_tag_limit_counts_current_tags_after_deltas():

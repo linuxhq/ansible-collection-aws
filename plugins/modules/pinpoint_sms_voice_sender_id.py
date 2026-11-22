@@ -26,12 +26,13 @@ options:
       - Whether deletion protection is enabled for the sender ID.
       - When omitted while requesting a sender ID, AWS disables deletion protection.
       - When omitted for an existing sender ID, the current setting is left unchanged.
-      - With O(state=absent), this is ignored. AWS refuses to release a sender ID that has deletion
-        protection enabled; disable it with O(state=present) first.
+      - With O(state=absent), this is ignored. The module fails without changes when the sender ID
+        has deletion protection enabled; disable it with O(state=present) first.
     type: bool
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code of the sender ID.
+      - This must be exactly two uppercase letters.
     required: true
     type: str
   message_types:
@@ -50,6 +51,7 @@ options:
   sender_id:
     description:
       - The sender ID to request, update, or release.
+      - This must contain 1 to 11 letters, numbers, hyphens, or underscores.
     required: true
     type: str
   state:
@@ -178,6 +180,8 @@ state:
   type: str
 """
 
+import re
+
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -300,6 +304,8 @@ def ensure_present(client, module, current):
     tags = module.params["tags"]
 
     if current is None:
+        # Live: SMS Voice V2 rejects these keys.
+        require_no_reserved_tag_keys(module, tags or {})
         request = scrub_none_parameters(
             {
                 "DeletionProtectionEnabled": deletion_protection_enabled,
@@ -380,6 +386,14 @@ def ensure_absent(client, module, current):
     if current is None:
         exit_result(module, False, None)
 
+    if current.get("DeletionProtectionEnabled"):
+        module.fail_json(
+            msg=(
+                f"Unable to release {describe_name(module)} because deletion protection is enabled; "
+                "set deletion_protection_enabled to false with state=present first"
+            )
+        )
+
     if module.check_mode:
         # A real run returns the ReleaseSenderId response, and botocore drops the members its model lacks, so keep
         # only the described fields that response models.
@@ -424,11 +438,18 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
+    # required counts only supplied keys, so an explicit null passes it.
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,11}", module.params["sender_id"] or ""):
+        module.fail_json(msg="sender_id must contain 1 to 11 letters, numbers, hyphens, or underscores")
+
+    if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"] or ""):
+        module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
+
     if module.params["state"] == "present":
         if module.params["message_types"] == []:
             module.fail_json(msg="message_types must not be empty")
 
-        require_valid_tags(module, module.params["tags"], restricted_characters=True)
+        require_valid_tags(module, module.params["tags"], 200, restricted_characters=True)
 
     client = module.client("pinpoint-sms-voice-v2", retry_decorator=AWSRetry.jittered_backoff())
     require_client_methods(module, client, SERVICE, {"describe_sender_ids": ("MaxResults", "NextToken", "SenderIds")})

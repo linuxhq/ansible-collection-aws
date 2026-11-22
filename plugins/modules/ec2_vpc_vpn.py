@@ -155,7 +155,7 @@ options:
   tunnel_inside_ip_version:
     description:
       - The tunnel address family. AWS defaults to IPv4 on creation.
-      - EC2 also creates an IPv6 connection attached to no gateway, which Cloud WAN can attach later.
+      - IPv6 requires O(transit_gateway_id) or O(vpn_concentrator_id) when creating a connection.
       - IPv6 together with O(vpn_concentrator_id) has not been tested.
     type: str
     choices: [ipv4, ipv6]
@@ -1520,6 +1520,10 @@ def validate_configuration(module, connection=None, changed=False):
                 msg=f"VPN connection {name} would have {len(routes)} static routes; a virtual private gateway "
                 f"connection allows at most {MAX_STATIC_ROUTES}",
             )
+
+    # Live, EC2 also accepts an IPv6 connection attached to no gateway, which Cloud WAN can attach later.
+    if connection is None and family == "ipv6" and not transit_gateway:
+        module.fail_json(changed=changed, msg="IPv6 VPN connections require a transit gateway")
 
     for tunnel in module.params["tunnel_options"] or []:
         if tunnel.get("tunnel_inside_ipv6_cidr") is not None and family != "ipv6":

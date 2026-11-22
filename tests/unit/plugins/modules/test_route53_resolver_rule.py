@@ -18,6 +18,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleInitialized,
     assert_documents_shape,
     assert_module_contract,
+    assert_module_rejects,
     documented_returns,
 )
 
@@ -216,17 +217,19 @@ def test_target_without_an_address_is_rejected_before_aws():
     module.client.assert_not_called()
 
 
-def test_empty_target_ips_reach_the_provider():
-    # botocore rejects an empty target list before anything changes.
-    module = FakeModule(rule_params(target_ips=[]))
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "ensure_present") as ensure_present,
-    ):
-        plugin.main()
-
-    ensure_present.assert_called_once()
+def test_empty_target_ips_are_rejected():
+    assert_module_rejects(
+        plugin,
+        {
+            "domain_name": "example.com",
+            "name": "rule",
+            "resolver_endpoint_id": "rslvr-out-1",
+            "state": "present",
+            "tags": None,
+            "target_ips": [],
+        },
+        "target_ips must contain at least one entry",
+    )
 
 
 def test_no_wait_present_still_validates_internal_wait_bounds():

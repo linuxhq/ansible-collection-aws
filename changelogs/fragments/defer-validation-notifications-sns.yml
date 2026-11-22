@@ -1,7 +1,4 @@
 ---
-minor_changes:
-  - notifications_hub - deregistering the last C(ACTIVE) notification hub is now rejected by AWS User Notifications
-    instead of by the module, so check mode no longer reports it as an error.
 trivial:
   - notifications_contacts and notifications_contacts_info - apply tag changes to the contact result directly instead
     of through a local helper, and drop needless contact copies.

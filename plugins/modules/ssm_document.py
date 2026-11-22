@@ -781,10 +781,11 @@ def main():
     state = module.params["state"]
     tags = module.params["tags"]
 
-    # required_if counts only supplied keys, so an explicit null passes it, and the immutable-field check would then
-    # report a type change.
-    if state == "present" and module.params["document_type"] is None:
-        module.fail_json(msg="state is present but all of the following are missing: document_type")
+    if state == "present":
+        # required_if counts only supplied keys, so an explicit null passes it.
+        missing = [option for option in ("content", "document_type") if module.params[option] is None]
+        if missing:
+            module.fail_json(msg=f"state is present but all of the following are missing: {', '.join(missing)}")
 
     require_valid_tags(module, tags if state == "present" else None, restricted_characters=True)
     # Updated versions are always waited on before they are promoted.

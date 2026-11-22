@@ -153,17 +153,23 @@ def test_present_rejects_url_without_host():
         )
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("url", ["https:// ", "https://\t", "https:// /id"])
-def test_whitespace_only_host_reaches_iam(url):
-    module = FakeModule(oidc_params(state="present", url=url), client=Mock())
+def test_present_rejects_whitespace_only_host_before_aws_calls(check_mode, url):
+    # IAM rejects these URLs on create (InvalidInput or ValidationError), so check mode must not predict a provider.
+    module = FakeModule(
+        oidc_params(client_id_list=["client"], state="present", thumbprint_list=["a" * 40], url=url),
+        check_mode=check_mode,
+    )
+    module.client = Mock()
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "ensure_present") as ensure_present,
+        pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
-    ensure_present.assert_called_once()
+    assert raised.value.values == {"msg": "url must identify an OIDC provider host"}
+    module.client.assert_not_called()
 
 
 def test_provider_list_limits_are_rejected():

@@ -1481,6 +1481,9 @@ def main():
             if len(set(values)) != len(values):
                 module.fail_json(msg="ip_addresses entries must be unique")
 
+        if not module.params["security_group_ids"]:
+            module.fail_json(msg="security_group_ids must contain at least one entry")
+
         for entry in module.params["ip_addresses"]:
             # Likewise for subnet IDs; on an update, AWS refuses the address only after adding the ones before it.
             if not entry["subnet_id"].strip() or len(entry["subnet_id"]) > 32:
