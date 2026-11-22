@@ -95,8 +95,8 @@ def test_main_only_requires_provider_listing_before_reconciliation():
     )
 
 
-# Only the supplied length counts: the lowercase of U+0130 is two characters, but the thumbprint is sent as given.
-@pytest.mark.parametrize("thumbprint", ["z" * 39, "a" * 41, "\u0130" + "a" * 38])
+# The supplied and the lowercased value the module sends must both have 40 characters; U+0130 lowercases to two.
+@pytest.mark.parametrize("thumbprint", ["z" * 39, "a" * 41, "\u0130" + "a" * 38, "\u0130" + "a" * 39])
 def test_thumbprint_of_another_length_is_rejected(thumbprint):
     assert_module_rejects(
         plugin,
