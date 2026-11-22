@@ -462,8 +462,7 @@ def current_document(client, module, include_tags, document_version=None, deadli
 def require_json_readable(client, module, deadline=None):
     """Fail before any change when the document is stored as TEXT, which GetDocument cannot serve as JSON.
 
-    Returns whether the document can be read as JSON, False when a TEXT document that is being deleted will be gone,
-    and its DescribeDocument description, None when there is no document.
+    Returns False when a TEXT document that is being deleted will be gone, so it must not be read as JSON.
     """
     name = module.params["name"]
     existing = describe_ssm_document(module, client, name, DocumentVersion=module.params["document_version"])
@@ -472,7 +471,7 @@ def require_json_readable(client, module, deadline=None):
             if not module.check_mode:
                 wait_for_document(client, module, "deleted", deadline=deadline)
 
-            return False, None
+            return False
 
         module.fail_json(
             changed=False,
@@ -482,7 +481,7 @@ def require_json_readable(client, module, deadline=None):
             ),
         )
 
-    return True, existing
+    return True
 
 
 def ensure_present(client, module):
@@ -491,7 +490,7 @@ def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
     purge_tags = module.params["purge_tags"]
-    readable, description = require_json_readable(client, module, deadline=deadline)
+    readable = require_json_readable(client, module, deadline=deadline)
     current = current_document(client, module, include_tags=tags is not None, deadline=deadline) if readable else None
     desired_comparable = {
         "content": module.params["content"],
@@ -546,22 +545,13 @@ def ensure_present(client, module):
 
             resource_changed = False
 
-    # DescribeDocument reports the default version, so the default version itself need not be read; a description
-    # read before current_document waited for a transitional version is read again, since another writer may have
-    # promoted it meanwhile.
-    if current is not None and (description or {}).get("Status") in TRANSITIONAL_STATUSES:
-        description = describe_ssm_document(module, client, module.params["name"], DocumentVersion="$LATEST")
+    if current is not None and not resource_changed and document_version == "$LATEST":
+        default = get_document(client, module, document_version="$DEFAULT")
+        if (default or {}).get("DocumentVersion") != current.get("DocumentVersion"):
+            default_version_to_promote = current["DocumentVersion"]
 
-    if (
-        current is not None
-        and not resource_changed
-        and document_version == "$LATEST"
-        and (description or {}).get("DefaultVersion") != current.get("DocumentVersion")
-    ):
-        default_version_to_promote = current["DocumentVersion"]
-
-        latest = current
-        changed = True
+            latest = current
+            changed = True
 
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:

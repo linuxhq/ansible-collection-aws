@@ -57,33 +57,18 @@ def test_module_contract():
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-@pytest.mark.parametrize("value", [float("nan"), float("-inf")], ids=["nan", "negative-infinity"])
-def test_rejects_a_quota_value_that_never_exceeds_the_current_one(value):
+@pytest.mark.parametrize(
+    "value", [float("nan"), float("-inf"), float("inf")], ids=["nan", "negative-infinity", "infinity"]
+)
+def test_rejects_a_quota_value_that_is_not_finite(value):
+    # NaN and negative infinity never exceed the current quota, and an infinite value makes the result invalid JSON.
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(value=value))),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "value must be a finite number or infinity"
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-def test_infinite_value_reaches_aws(check_mode):
-    # Service Quotas rejects a value above its maximum before requesting anything.
-    client = Mock()
-    client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
-    client.request_service_quota_increase.side_effect = ClientError(
-        {"Error": {"Code": "ValidationException", "Message": "invalid"}}, "RequestServiceQuotaIncrease"
-    )
-    result = run(FakeModule(params(value=float("inf")), check_mode=check_mode, client=client))[0]
-
-    if check_mode:
-        assert isinstance(result, ModuleExit)
-        assert result.values["changed"]
-    else:
-        assert isinstance(result, ModuleFail)
-        assert result.values["msg"] == "Unable to request AWS service quota increase for ec2/L-1"
+    assert raised.value.values["msg"] == "value must be a finite number"
 
 
 def test_value_above_the_api_maximum_reaches_aws():

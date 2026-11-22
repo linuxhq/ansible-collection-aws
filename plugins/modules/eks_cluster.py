@@ -1414,30 +1414,25 @@ def list_cluster_compute(client, module, deadline=None):
             "fargateProfileName",
         ),
     )
-    compute = []
-    try:
-        for list_method, list_key, describe, describe_key, name_key in listings:
-            if deadline is not None and time.monotonic() >= deadline:
-                return [], []
+    compute = ([], [])
+    for (list_method, list_key, describe, describe_key, name_key), active in zip(listings, compute):
+        if deadline is not None and time.monotonic() >= deadline:
+            return [], []
 
-            active = []
+        try:
             for item in paginated_query_with_retries(client, list_method, clusterName=name)[list_key]:
                 if deadline is not None and time.monotonic() >= deadline:
                     return [], []
 
-                if compute_status(describe, describe_key, clusterName=name, **{name_key: item}) not in (
-                    None,
-                    "DELETING",
-                ):
+                status = compute_status(describe, describe_key, clusterName=name, **{name_key: item})
+                if status not in (None, "DELETING"):
                     active.append(item)
+        except (BotoCoreError, ClientError):
+            # The listing only explains the rejection: compute the caller cannot read, or of a cluster that is gone,
+            # is not reported, and DeleteCluster keeps being retried within the wait budget.
+            continue
 
-            compute.append(active)
-    except (BotoCoreError, ClientError):
-        # The listing only explains the rejection: when the cluster is gone or the caller cannot read its compute,
-        # DeleteCluster keeps being retried within the wait budget, as before the listing existed.
-        return [], []
-
-    return compute[0], compute[1]
+    return compute
 
 
 def compute_status(operation, result_key, **request):

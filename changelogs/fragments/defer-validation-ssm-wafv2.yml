@@ -12,8 +12,7 @@ minor_changes:
 trivial:
   - ssm_association and ssm_document - reuse the tag changes calculated before the write instead of calculating them
     again, and skip them after a create, which sends its tags.
-  - ssm_document - read the default version from the C(DescribeDocument) response instead of calling C(GetDocument)
-    for it, and always convert the returned document.
+  - ssm_document - always convert the returned document.
   - ssm_document_info - clarify the RV(document) return description.
   - wafv2_web_acl_logging - compare only the logging destinations, which AWS always returns.
   - Custom waiters - drop explicit retry acceptors for statuses, which botocore already keeps polling, and fold the
