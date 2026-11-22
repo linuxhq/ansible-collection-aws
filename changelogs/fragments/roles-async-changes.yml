@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - Roles with ``<role>_async`` and ``<role>_poll`` - report a change when ``<role>_async`` is ``0``, and wait only for
+    unfinished jobs so a ``<role>_poll`` above ``0`` no longer fails with "could not find job". The defaults and check
+    mode behave as before.

@@ -25,8 +25,8 @@
     - _sender_id.sender_id is defined
     - _sender_id.iso_country_code is defined
   changed_when:
-    - ansible_check_mode | bool
     - __pinpoint_sms_voice_sender_id_result.changed | bool
+    - __pinpoint_sms_voice_sender_id_result.finished | d(true) | bool
 
 - name: Ensure managed aws end user messaging sms sender id jobs are complete
   tags:
@@ -42,6 +42,7 @@
   retries: "{{ pinpoint_sms_voice_sender_id_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __pinpoint_sms_voice_sender_id_status.finished | bool
 ...

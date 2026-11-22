@@ -18,8 +18,8 @@
   async: "{{ ansible_check_mode | ternary(0, iam_oidc_provider_async) }}"
   poll: "{{ iam_oidc_provider_poll }}"
   changed_when:
-    - ansible_check_mode | bool
     - __iam_oidc_provider_result.changed | bool
+    - __iam_oidc_provider_result.finished | d(true) | bool
   when:
     - _provider.url is defined
     - _provider.name is defined
@@ -38,6 +38,7 @@
   retries: "{{ iam_oidc_provider_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __iam_oidc_provider_status.finished | bool
 ...

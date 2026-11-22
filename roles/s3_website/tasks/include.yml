@@ -19,8 +19,8 @@
   when:
     - _website.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __s3_website_result.changed | bool
+    - __s3_website_result.finished | d(true) | bool
 
 - name: Ensure managed aws simple storage service bucket website jobs are complete
   tags:
@@ -36,6 +36,7 @@
   retries: "{{ s3_website_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __s3_website_status.finished | bool
   failed_when:

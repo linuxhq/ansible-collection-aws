@@ -30,8 +30,8 @@
   when:
     - _queue.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __sqs_queue_result.changed | bool
+    - __sqs_queue_result.finished | d(true) | bool
 
 - name: Ensure managed aws simple queue service queue jobs are complete
   tags:
@@ -47,6 +47,7 @@
   retries: "{{ sqs_queue_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __sqs_queue_status.finished | bool
 ...

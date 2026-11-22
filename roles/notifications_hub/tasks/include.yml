@@ -16,8 +16,8 @@
   when:
     - _hub.region is defined
   changed_when:
-    - ansible_check_mode | bool
     - __notifications_hub_result.changed | bool
+    - __notifications_hub_result.finished | d(true) | bool
 
 - name: Ensure managed aws notifications hub jobs are complete
   tags:
@@ -33,5 +33,6 @@
   retries: "{{ notifications_hub_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __notifications_hub_status.finished | bool

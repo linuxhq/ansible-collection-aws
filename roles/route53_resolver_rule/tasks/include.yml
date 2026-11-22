@@ -30,8 +30,8 @@
     - _resolver_rule.target_ips is defined
     - _resolver_rule.target_ips | length > 0
   changed_when:
-    - ansible_check_mode | bool
     - __route53_resolver_rule_result.changed | bool
+    - __route53_resolver_rule_result.finished | d(true) | bool
 
 - name: Ensure managed aws route53 resolver rule jobs are complete
   tags:
@@ -47,6 +47,7 @@
   retries: "{{ route53_resolver_rule_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __route53_resolver_rule_status.finished | bool
 ...

@@ -24,8 +24,8 @@
     - _policy.policy is defined
     - _policy.policy | length > 0
   changed_when:
-    - ansible_check_mode | bool
     - __iam_managed_policy_result.changed | bool
+    - __iam_managed_policy_result.finished | d(true) | bool
 
 - name: Ensure managed aws iam managed policy jobs are complete
   tags:
@@ -41,6 +41,7 @@
   retries: "{{ iam_managed_policy_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __iam_managed_policy_status.finished | bool
 ...

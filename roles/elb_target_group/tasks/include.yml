@@ -48,8 +48,8 @@
   when:
     - _tg.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __elb_target_group_result.changed | bool
+    - __elb_target_group_result.finished | d(true) | bool
 
 - name: Ensure managed aws elastic load balancer target group jobs are complete
   tags:
@@ -65,6 +65,7 @@
   retries: "{{ elb_target_group_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __elb_target_group_status.finished | bool
 ...

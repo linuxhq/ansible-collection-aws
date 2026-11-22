@@ -23,8 +23,8 @@
     - _document.content is defined
     - _document.document_type is defined
   changed_when:
-    - ansible_check_mode | bool
     - __ssm_document_result.changed | bool
+    - __ssm_document_result.finished | d(true) | bool
 
 - name: Ensure managed aws systems manager document jobs are complete
   tags:
@@ -40,6 +40,7 @@
   retries: "{{ ssm_document_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ssm_document_status.finished | bool
 ...

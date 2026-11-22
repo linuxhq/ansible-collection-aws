@@ -29,8 +29,8 @@
     - _efs.targets is defined
     - _efs.targets | length > 0
   changed_when:
-    - ansible_check_mode | bool
     - __efs_result.changed | bool
+    - __efs_result.finished | d(true) | bool
 
 - name: Ensure managed aws elastic filesystem jobs are complete
   tags:
@@ -46,6 +46,7 @@
   retries: "{{ efs_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __efs_status.finished | bool
 ...

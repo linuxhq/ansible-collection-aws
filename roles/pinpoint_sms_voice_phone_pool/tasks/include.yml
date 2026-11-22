@@ -30,8 +30,8 @@
   when:
     - _pool.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __pinpoint_sms_voice_phone_pool_result.changed | bool
+    - __pinpoint_sms_voice_phone_pool_result.finished | d(true) | bool
 
 - name: Ensure managed aws end user messaging sms phone pool jobs are complete
   tags:
@@ -47,6 +47,7 @@
   retries: "{{ pinpoint_sms_voice_phone_pool_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __pinpoint_sms_voice_phone_pool_status.finished | bool
 ...

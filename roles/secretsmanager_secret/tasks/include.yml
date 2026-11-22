@@ -29,8 +29,8 @@
     - _secret.secret is defined
     - _secret.secret | length > 0
   changed_when:
-    - ansible_check_mode | bool
     - __secretsmanager_secret_result.changed | bool
+    - __secretsmanager_secret_result.finished | d(true) | bool
 
 - name: Ensure managed aws secrets manager secret jobs are complete
   tags:
@@ -46,6 +46,7 @@
   retries: "{{ secretsmanager_secret_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __secretsmanager_secret_status.finished | bool
 ...

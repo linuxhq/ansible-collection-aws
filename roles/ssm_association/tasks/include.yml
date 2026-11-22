@@ -23,8 +23,8 @@
     - _association.schedule_expression is defined
     - _association.targets is defined
   changed_when:
-    - ansible_check_mode | bool
     - __ssm_association_result.changed | bool
+    - __ssm_association_result.finished | d(true) | bool
 
 - name: Ensure managed aws systems manager association jobs are complete
   tags:
@@ -40,6 +40,7 @@
   retries: "{{ ssm_association_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ssm_association_status.finished | bool
 ...

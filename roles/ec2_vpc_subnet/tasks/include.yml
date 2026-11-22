@@ -29,8 +29,8 @@
     - _subnet.1.cidr is defined
     - _subnet.1.name is defined
   changed_when:
-    - ansible_check_mode | bool
     - __ec2_vpc_subnet_result.changed | bool
+    - __ec2_vpc_subnet_result.finished | d(true) | bool
 
 - name: Ensure managed aws virtual private cloud subnet jobs are complete
   tags:
@@ -46,6 +46,7 @@
   retries: "{{ ec2_vpc_subnet_retries }}"
   when:
     - _jid.ansible_job_id is defined
+    - not _jid.finished | d(false) | bool
   until:
     - __ec2_vpc_subnet_status.finished | bool
 ...
