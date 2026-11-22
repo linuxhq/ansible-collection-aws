@@ -391,6 +391,23 @@ def test_inputs_that_would_fail_after_a_write_are_rejected_before_aws(overrides,
     ensure_present.assert_not_called()
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_without_entries_or_max_entries_fails_before_any_write(check_mode):
+    # max_entries defaults to the number of entries, and EC2 rejects a prefix list that holds none.
+    client = Mock()
+    module = FakeModule(present_params([]), check_mode=check_mode)
+    with (
+        patch.object(plugin, "get_current", return_value=(None, [])),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_present(client, module, OWNER)
+
+    assert raised.value.values["msg"] == (
+        "max_entries is required to create an EC2 VPC managed prefix list without entries"
+    )
+    client.create_managed_prefix_list.assert_not_called()
+
+
 def test_empty_entries_remove_every_entry_of_an_existing_prefix_list():
     client = Mock()
     module = FakeModule(present_params([]))

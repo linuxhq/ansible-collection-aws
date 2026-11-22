@@ -4,8 +4,9 @@ minor_changes:
     that O(name) replaces is no longer validated.
   - ec2_pricing_info - a missing region is now reported by the AWS client connection instead of by the module.
   - ec2_vpc_prefix_list - an empty O(entries) list is now sent to EC2, which creates a prefix list without entries
-    or removes every entry of an existing one, instead of being rejected by the module; an O(max_entries) below C(1)
-    now fails before any change.
+    or removes every entry of an existing one, instead of being rejected by the module; an O(max_entries) below C(1),
+    and creating a prefix list without entries or O(max_entries), still fail before any change, including in check
+    mode.
   - ec2_vpc_vpn - creating a connection without O(vpn_gateway_id), O(transit_gateway_id), or O(vpn_concentrator_id)
     is now left to EC2, which creates a connection attached to no gateway.
 trivial:

@@ -567,6 +567,10 @@ def ensure_present(client, module, owner_id, deadline=None):
         if current is not None:
             max_entries = max(current["MaxEntries"], max_entries)
 
+    # EC2 rejects creating a prefix list that holds no entries, which check mode would otherwise predict.
+    if current is None and max_entries < 1:
+        module.fail_json(msg="max_entries is required to create an EC2 VPC managed prefix list without entries")
+
     desired_prefix_list = {
         "address_family": module.params["address_family"],
         "max_entries": max_entries,
