@@ -9,7 +9,6 @@ minor_changes:
   - ec2_vpc_prefix_list - an empty O(entries) list is now sent to EC2, which creates a prefix list without entries
     or removes every entry of an existing one, instead of being rejected by the module; an O(max_entries) below C(1)
     now fails before any change.
-  - ec2_vpc_prefix_list_info - an O(target_version) below C(1) is now rejected by EC2 instead of by the module.
   - ec2_vpc_vpn - creating a connection without O(vpn_gateway_id), O(transit_gateway_id), or O(vpn_concentrator_id)
     is now left to EC2, which creates a connection attached to no gateway.
   - ec2_vpc_vpn - creating an IPv6 connection without a transit gateway or VPN concentrator is now left to EC2

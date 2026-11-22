@@ -445,6 +445,23 @@ def test_update_in_progress_rejection_is_raised_once_the_wait_budget_ends():
     on_in_use.assert_not_called()
 
 
+def test_delete_is_not_attempted_again_once_the_rejection_check_uses_the_budget():
+    in_use = plugin.ClientError(
+        {"Error": {"Code": "ResourceInUseException", "Message": "update in progress"}}, "DeleteCluster"
+    )
+    operation = Mock(side_effect=in_use)
+    deadline = 100
+    with (
+        patch.object(plugin.time, "monotonic", side_effect=[99, 101]),
+        patch.object(plugin.time, "sleep") as sleep,
+        pytest.raises(plugin.ClientError),
+    ):
+        plugin.retry_while_in_use(FakeModule({}), operation, deadline, on_in_use=Mock(), name="example")
+
+    operation.assert_called_once_with(name="example", aws_retry=True)
+    sleep.assert_not_called()
+
+
 def test_update_does_not_retry_other_errors():
     denied = plugin.ClientError(
         {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "UpdateClusterConfig"

@@ -7,7 +7,8 @@ minor_changes:
     O(iso_country_code), are now rejected by AWS End User Messaging SMS instead of by the module.
   - pinpoint_sms_voice_phone_pool_associate - an O(iso_country_code) other than two uppercase letters, an empty
     O(origination_identity), and a phone number associated without O(iso_country_code) are now rejected by AWS End
-    User Messaging SMS instead of by the module.
+    User Messaging SMS instead of by the module when O(state=present); a malformed O(iso_country_code) still fails
+    before any call when O(state=absent).
   - pinpoint_sms_voice_sender_id - an O(sender_id) other than 1 to 11 letters, numbers, hyphens, or underscores, an
     O(iso_country_code) other than two uppercase letters, and an C(aws:) tag key on a new sender ID are now rejected
     by AWS End User Messaging SMS instead of by the module.

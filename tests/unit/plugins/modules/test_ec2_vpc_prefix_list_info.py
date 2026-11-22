@@ -91,28 +91,18 @@ def test_module_contract():
     assert options["argument_spec"]["target_version"]["type"] == "int"
 
 
-def test_target_version_is_validated_by_ec2():
+def test_target_version_must_be_positive():
     module = FakeModule(
         {"filters": None, "prefix_list_ids": None, "target_version": 0},
         client=Mock(),
     )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[{"OwnerId": "123456789012", "PrefixListId": "pl-1"}]),
-        patch.object(
-            plugin,
-            "paginated_query_with_retries",
-            side_effect=plugin.ClientError(
-                {"Error": {"Code": "InvalidParameterValue", "Message": "bad version"}}, "GetManagedPrefixListEntries"
-            ),
-        ) as query,
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
-    assert query.call_args.kwargs["TargetVersion"] == 0
-    assert raised.value.values["msg"] == "Unable to get EC2 VPC managed prefix list entries for pl-1"
+    assert raised.value.values["msg"] == "target_version must be 1 or greater"
 
 
 def test_target_version_is_used_for_entries():

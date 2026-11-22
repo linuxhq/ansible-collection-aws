@@ -1390,6 +1390,9 @@ def retry_while_in_use(module, operation, deadline, on_in_use=None, **request):
 
             if on_in_use is not None:
                 on_in_use(e)
+                # The check reads AWS, so the budget is checked again before the next attempt.
+                if time.monotonic() >= deadline:
+                    raise
 
             sleep_until_next_poll(module, deadline)
 

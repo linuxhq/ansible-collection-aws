@@ -455,6 +455,24 @@ def test_present_leaves_identity_and_country_validation_to_aws(overrides, check_
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("iso_country_code", ["us", "USA", ""])
+def test_absent_rejects_a_malformed_country_before_matching(iso_country_code, check_mode):
+    # A removal matches the association by country locally, so AWS never sees the code.
+    module = FakeModule(
+        associate_params(iso_country_code=iso_country_code, state="absent"), check_mode=check_mode, client=Mock()
+    )
+    module.client = Mock()
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["msg"] == "iso_country_code must be exactly two uppercase letters"
+    module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
 def test_absent_with_empty_origination_identity_still_reports_no_association(check_mode):
     client = Mock()
     module = FakeModule(associate_params(origination_identity="", state="absent"), check_mode=check_mode, client=client)

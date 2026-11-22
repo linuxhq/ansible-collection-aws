@@ -31,6 +31,7 @@ options:
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
+      - When provided with O(state=absent), this must be exactly two uppercase letters.
       - This is optional for origination identities that are not
         country-specific.
       - Without this, associating an origination identity, or disassociating
@@ -154,6 +155,8 @@ state:
   returned: always
   type: str
 """
+
+import re
 
 try:
     from botocore.exceptions import BotoCoreError, ClientError
@@ -401,6 +404,12 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
+
+    # A removal matches the current association by country locally, so AWS never sees a malformed code, and one that
+    # differs only in case would leave the association in place while reporting no change.
+    iso_country_code = module.params["iso_country_code"]
+    if state == "absent" and iso_country_code is not None and not re.fullmatch(r"[A-Z]{2}", iso_country_code):
+        module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
 
     client = module.client(
         "pinpoint-sms-voice-v2",
