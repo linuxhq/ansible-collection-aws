@@ -527,10 +527,10 @@ def main():
             if not 1 <= len(client_id) <= 255:
                 module.fail_json(msg=f"client_id_list entries must be 1 to 255 characters: {client_id}")
 
-        # IAM accepts any 40 characters, but on update it rejects another length only after earlier writes. The
-        # module sends thumbprints lowercased, which can change the length of a non-ASCII one.
+        # IAM accepts any 40 characters and stores them lowercased (live: also when they are not hexadecimal), but on
+        # update it rejects another length only after earlier writes. The length is that of the value as supplied.
         for thumbprint in module.params["thumbprint_list"] or []:
-            if len(thumbprint.lower()) != 40:
+            if len(thumbprint) != 40:
                 module.fail_json(msg=f"thumbprint_list entries must be exactly 40 characters: {thumbprint}")
 
     require_valid_tags(module, module.params["tags"] if state == "present" else None, restricted_characters=True)
