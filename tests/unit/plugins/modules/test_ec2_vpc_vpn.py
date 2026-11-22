@@ -909,6 +909,19 @@ def test_create_without_a_gateway_is_left_to_ec2(params):
 
 
 @pytest.mark.parametrize("check_mode", [True, False])
+@pytest.mark.parametrize("customer_gateway_id", [None, ""])
+def test_create_requires_a_customer_gateway_before_any_aws_call(params, check_mode, customer_gateway_id):
+    # CreateVpnConnection requires CustomerGatewayId, so check mode must not predict a connection without one.
+    params.update(customer_gateway_id=customer_gateway_id, transit_gateway_id="tgw-123")
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode), None)
+
+    assert raised.value.values["msg"] == "Creation requires customer_gateway_id"
+    assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [True, False])
 @pytest.mark.parametrize("blank", ["", " "])
 @pytest.mark.parametrize(
     "gateways",

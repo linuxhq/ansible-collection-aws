@@ -1561,6 +1561,10 @@ def create_connection(client, module):
     if not module.params["name"]:
         module.fail_json(msg="Creation requires name")
 
+    # CreateVpnConnection requires a customer gateway, which check mode would otherwise predict without one.
+    if not module.params["customer_gateway_id"]:
+        module.fail_json(msg="Creation requires customer_gateway_id")
+
     # Live: EC2 ignores a whitespace-only gateway ID, so no later run could match it.
     for name in ("vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id"):
         require_non_blank(module, module.params[name], name)
