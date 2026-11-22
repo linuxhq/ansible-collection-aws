@@ -141,10 +141,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
 DELETE_RETRY = AWSRetry.jittered_backoff(catch_extra_error_codes=["ConflictException"])
 
 
-def apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset):
-    return dict(contact, tags=updated_tags(contact.get("tags", {}), tags_to_set, tag_keys_to_unset))
-
-
 def get_contact_by_address(client, module):
     email_address = module.params["email_address"]
 
@@ -215,8 +211,6 @@ def ensure_present(client, module):
         )
 
     if contact is not None and tags is not None:
-        contact = dict(contact)
-
         require_client_methods(
             module,
             client,
@@ -321,14 +315,14 @@ def ensure_present(client, module):
                         msg=f"Unable to tag AWS Notifications contact {contact_arn}",
                     )
 
-            contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
+            contact["tags"] = updated_tags(contact["tags"], tags_to_set, tag_keys_to_unset)
     elif changed and module.check_mode:
         if resource_changed:
             contact = dict(desired_contact)
             if tags is not None:
                 contact["tags"] = tags
         else:
-            contact = apply_tag_deltas(contact, tags_to_set, tag_keys_to_unset)
+            contact["tags"] = updated_tags(contact["tags"], tags_to_set, tag_keys_to_unset)
 
     module.exit_json(
         changed=changed,
@@ -361,7 +355,7 @@ def main():
     if state == "present" and module.params["name"] is None:
         module.fail_json(msg="state is present but all of the following are missing: name")
 
-    require_valid_tags(module, module.params["tags"] if state == "present" else None, 50, restricted_characters=True)
+    require_valid_tags(module, module.params["tags"] if state == "present" else None, restricted_characters=True)
     client = module.client(
         "notificationscontacts",
         retry_decorator=AWSRetry.jittered_backoff(),

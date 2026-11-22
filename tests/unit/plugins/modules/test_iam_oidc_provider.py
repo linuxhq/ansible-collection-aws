@@ -95,18 +95,32 @@ def test_main_only_requires_provider_listing_before_reconciliation():
     )
 
 
-def test_non_hexadecimal_thumbprint_is_rejected():
+@pytest.mark.parametrize("thumbprint", ["z" * 39, "a" * 41])
+def test_thumbprint_of_another_length_is_rejected(thumbprint):
     assert_module_rejects(
         plugin,
         {
             "client_id_list": ["client"],
             "state": "present",
             "tags": None,
-            "thumbprint_list": ["z" * 40],
+            "thumbprint_list": [thumbprint],
             "url": "https://example.com/id",
         },
-        f"thumbprint_list entries must be exactly 40 hexadecimal characters: {'z' * 40}",
+        f"thumbprint_list entries must be exactly 40 characters: {thumbprint}",
     )
+
+
+def test_non_hexadecimal_thumbprint_reaches_iam():
+    # Live: IAM accepts a 40-character non-hexadecimal thumbprint on create and on update.
+    module = FakeModule(oidc_params(state="present", thumbprint_list=["z" * 40]), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
 
 
 def test_present_rejects_non_https_url():
@@ -138,23 +152,17 @@ def test_present_rejects_url_without_host():
         )
 
 
-@pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("url", ["https:// ", "https://\t", "https:// /id"])
-def test_present_rejects_whitespace_only_host_before_aws_calls(check_mode, url):
-    # IAM rejects these URLs on create (InvalidInput or ValidationError), so check mode must not predict a provider.
-    module = FakeModule(
-        oidc_params(client_id_list=["client"], state="present", thumbprint_list=["a" * 40], url=url),
-        check_mode=check_mode,
-    )
-    module.client = Mock()
+def test_whitespace_only_host_reaches_iam(url):
+    module = FakeModule(oidc_params(state="present", url=url), client=Mock())
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
     ):
         plugin.main()
 
-    assert raised.value.values == {"msg": "url must identify an OIDC provider host"}
-    module.client.assert_not_called()
+    ensure_present.assert_called_once()
 
 
 def test_provider_list_limits_are_rejected():

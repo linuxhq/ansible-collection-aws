@@ -1,0 +1,11 @@
+---
+minor_changes:
+  - acm_certificate_request, eks_cluster, notifications_contacts, pinpoint_sms_voice_phone_number,
+    pinpoint_sms_voice_sender_id, ec2_flow_log, ec2_transit_gateway_route_table, and ec2_vpc_prefix_list - too many
+    O(tags) for a new resource are now rejected by AWS on the create request that sends them instead of by the module,
+    so check mode no longer reports them as an error; tag changes to an existing resource still fail before any write
+    when the resulting tags would exceed the AWS limit.
+trivial:
+  - Tag validation - count tags only against the tags a write would leave, instead of also counting the requested
+    tags on their own.
+  - require_non_blank - drop the unused list form.

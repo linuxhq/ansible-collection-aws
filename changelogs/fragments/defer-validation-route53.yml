@@ -1,0 +1,19 @@
+---
+minor_changes:
+  - route53_resolver - an empty O(security_group_ids) list is now rejected by Route 53 Resolver instead of by the
+    module.
+  - route53_resolver_rule - an empty O(target_ips) list and a O(target_ips) entry that sets neither
+    O(target_ips[].ip) nor O(target_ips[].ipv6) are now rejected by Route 53 Resolver instead of by the module.
+  - route53_zone_associate - an empty or whitespace-only O(vpc_id) is now rejected by Route 53 instead of by the
+    module.
+bugfixes:
+  - route53_resolver - pair the requested O(ip_addresses) with the current endpoint addresses the same way the
+    configuration comparison does, so a subnet-only entry no longer causes the replacement of an address that another
+    entry requests explicitly.
+  - route53_resolver_rule - require the botocore version that supports O(target_ips[].server_name_indication) only
+    when O(state=present), so deleting a rule no longer fails on an older botocore.
+trivial:
+  - route53_resolver - rely on the resolver endpoint type check for O(ip_addresses) entries that set both
+    O(ip_addresses[].ip) and O(ip_addresses[].ipv6) instead of a second, duplicate check.
+  - route53_resolver, route53_resolver_rule, and route53_resolver_rule_associate - move single-caller helpers out of
+    the shared Route 53 Resolver module utilities and reconcile tags with the shared ARN tag helper directly.

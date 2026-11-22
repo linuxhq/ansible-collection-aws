@@ -38,10 +38,7 @@ options:
         country-specific.
       - Creating a pool without this requires botocore 1.42.80 or later; the
         module checks this before any change, including in check mode.
-      - AWS requires this to create a pool from a phone number, so the module
-        fails without changes, including in check mode, when this is omitted,
-        O(origination_identity) is a phone number ID or ARN, and no matching
-        pool exists.
+      - AWS requires this to create a pool from a phone number.
       - This is used only to find or create a pool when O(pool_id) is not
         provided, and is ignored when O(pool_id) is provided.
     type: str
@@ -68,7 +65,6 @@ options:
       - This can be a phone number ID, phone number ARN, sender ID, or sender
         ID ARN.
       - This is required when O(state=present) and O(pool_id) is not provided.
-      - This must not be empty when O(state=present) and O(pool_id) is not provided.
       - This is used only to find or create a pool when O(pool_id) is not
         provided, and is ignored when O(pool_id) is provided.
       - A pool matches when it holds this identity, its C(Name) tag equals
@@ -303,8 +299,8 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
     identity_matches,
     is_phone_number_identity,
-    is_phone_number_reference,
     is_replayed_deleted_resource,
+    list_pool_origination_identities,
     list_tags,
     predicted_origination_identity,
 )
@@ -316,7 +312,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     require_resulting_tag_limit,
     require_valid_tags,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
@@ -340,32 +335,23 @@ def describe_pools(client, module, changed=False, **request):
     return response.get("Pools", [])
 
 
+def describe_pool(client, module, pool_id, changed=False):
+    """Describe one pool by ID or ARN, or return None; changed reports whether it was already modified."""
+    pools = describe_pools(client, module, changed=changed, PoolIds=[pool_id])
+    return pools[0] if pools else None
+
+
 def pool_with_origination_identities(client, module, pool, changed=False, missing_ok=False):
     """Add origination identities; changed reports whether the pool was already modified, for failure results.
 
     With missing_ok, a pool deleted since it was described returns None instead of failing.
     """
-    pool = dict(pool)
-    pool_id = pool["PoolId"]
+    # A shared pool requires its full ARN.
+    response = list_pool_origination_identities(client, module, pool["PoolArn"], changed=changed, missing_ok=missing_ok)
+    if response is None:
+        return None
 
-    msg = f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}"
-    try:
-        response = paginated_query_with_retries(
-            client,
-            "list_pool_origination_identities",
-            # A shared pool requires its full ARN.
-            PoolId=pool.get("PoolArn") or pool_id,
-        )
-    except is_boto3_error_code("ResourceNotFoundException") as e:
-        if missing_ok:
-            return None
-
-        module.fail_json_aws(e, changed=changed, msg=msg)
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, changed=changed, msg=msg)
-
-    pool["OriginationIdentities"] = response.get("OriginationIdentities", [])
-    return pool
+    return dict(pool, OriginationIdentities=response.get("OriginationIdentities", []))
 
 
 def pool_with_tags(client, module, pool, changed=False, missing_ok=False):
@@ -373,33 +359,11 @@ def pool_with_tags(client, module, pool, changed=False, missing_ok=False):
 
     With missing_ok, a pool deleted since it was described returns None instead of failing.
     """
-    pool = dict(pool)
-    arn = pool.get("PoolArn")
-    tags = {}
-
-    if arn:
-        tag_list = list_tags(client, module, arn, "pool", changed=changed, missing_ok=missing_ok)
-        if tag_list is None:
-            return None
-
-        tags = boto3_tag_list_to_ansible_dict(tag_list)
-
-    pool["Tags"] = ansible_dict_to_boto3_tag_list(tags)
-    return pool
-
-
-def select_pool_by_id(module, pools, pool_id, changed=False):
-    if not pools:
+    tags = list_tags(client, module, pool["PoolArn"], "pool", changed=changed, missing_ok=missing_ok)
+    if tags is None:
         return None
 
-    expected_pool_id = pool_id.rsplit("/", 1)[-1]
-    if pools[0]["PoolId"] != expected_pool_id:
-        module.fail_json(
-            changed=changed,
-            msg=f"AWS returned the wrong Pinpoint SMS Voice V2 pool while describing {pool_id}",
-        )
-
-    return pools[0]
+    return dict(pool, Tags=tags)
 
 
 def pool_with_details(client, module, pool, changed=False):
@@ -409,8 +373,7 @@ def pool_with_details(client, module, pool, changed=False):
 
 
 def get_pool_by_id(client, module, pool_id, changed=False):
-    pools = describe_pools(client, module, changed=changed, PoolIds=[pool_id])
-    pool = select_pool_by_id(module, pools, pool_id, changed=changed)
+    pool = describe_pool(client, module, pool_id, changed=changed)
     # A pool being deleted cannot be managed, so it is treated as missing like in the origination identity search.
     if pool is None or pool.get("Status") == "DELETING":
         return None
@@ -425,8 +388,7 @@ def wait_for_pool_active(client, module, pool_id, changed=False):
     seen = False
 
     while time.monotonic() < deadline:
-        pools = describe_pools(client, module, changed=changed, PoolIds=[pool_id])
-        pool = select_pool_by_id(module, pools, pool_id, changed=changed)
+        pool = describe_pool(client, module, pool_id, changed=changed)
         if pool is None and module.params.get("state") == "absent":
             return {}
 
@@ -474,7 +436,7 @@ def single_named_pool(module, pools):
         module.fail_json(
             msg=(
                 f"Multiple Pinpoint SMS Voice V2 pools matched name "
-                f"{module.params['name']}: " + ", ".join(sorted(pool.get("PoolId", "") for pool in pools))
+                f"{module.params['name']}: " + ", ".join(sorted(pool["PoolId"] for pool in pools))
             )
         )
 
@@ -614,7 +576,7 @@ def require_no_notify_configurations(client, module, pool):
 def ensure_absent(client, module):
     pool_id = module.params["pool_id"]
     if pool_id is not None:
-        current = select_pool_by_id(module, describe_pools(client, module, PoolIds=[pool_id]), pool_id)
+        current = describe_pool(client, module, pool_id)
     else:
         current = find_pool_by_name(client, module)
         if current is not None:
@@ -717,7 +679,8 @@ def pool_reference(module, pool):
     return module.params.get("pool_id") or pool["PoolId"]
 
 
-def ensure_present(client, module):
+def ensure_present(client, module, tags):
+    """Converge the pool; tags are the validated tags with the Name tag from name."""
     deletion_protection_enabled = module.params["deletion_protection_enabled"]
     message_type = module.params["message_type"]
     wait = module.params["wait"]
@@ -725,19 +688,6 @@ def ensure_present(client, module):
     current = find_pool(client, module, listed_pool_ids)
     if current is None and module.params.get("pool_id") is not None:
         module.fail_json(msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist")
-
-    # AWS rejects creating a pool from a phone number without its country, which check mode would otherwise predict.
-    if (
-        current is None
-        and module.params["iso_country_code"] is None
-        and is_phone_number_reference(module.params["origination_identity"])
-    ):
-        module.fail_json(
-            msg=(
-                "iso_country_code is required to create a Pinpoint SMS Voice V2 pool from phone number "
-                f"{module.params['origination_identity']}"
-            )
-        )
 
     # botocore before 1.42.80 requires IsoCountryCode for CreatePool and refuses the request without it.
     if current is None and module.params["iso_country_code"] is None:
@@ -755,8 +705,6 @@ def ensure_present(client, module):
             client, module, wait_for_pool_active(client, module, pool_reference(module, current))
         )
 
-    tags = dict(module.params["tags"] or {})
-    tags["Name"] = module.params["name"]
     update_request, tags_to_set, tag_keys_to_unset = pool_changes(module, current, tags)
 
     changed = current is None or bool(update_request or tags_to_set or tag_keys_to_unset)
@@ -797,9 +745,7 @@ def ensure_present(client, module):
 
             pool_id = current["PoolId"]
             if module.params["client_token"] is not None and is_replayed_deleted_resource(
-                lambda: select_pool_by_id(
-                    module, describe_pools(client, module, changed=True, PoolIds=[pool_id]), pool_id, changed=True
-                ),
+                lambda: describe_pool(client, module, pool_id, changed=True),
                 "DELETING",
             ):
                 # Live: a token reused after a delete returns the deleted pool, which DescribePools no longer has.
@@ -941,16 +887,13 @@ def main():
     state = module.params["state"]
 
     if state == "present":
-        require_valid_tags(module, module.params["tags"], 200)
-        tags = dict(module.params["tags"] or {})
-        tags["Name"] = module.params["name"]
-        # Check characters only on the tags sent to AWS, after name replaces any Name entry in tags.
-        require_valid_tags(module, tags, 200, restricted_characters=True)
+        # name replaces any Name entry in tags, so only the tags sent to AWS are checked.
+        tags = dict(module.params["tags"] or {}, Name=module.params["name"])
+        require_valid_tags(module, tags, restricted_characters=True)
 
-        # AWS rejects an empty origination identity, which check mode would otherwise predict as a new pool.
-        # required_if accepts an explicit null, so a null identity is rejected the same way.
-        if module.params["pool_id"] is None:
-            require_non_blank(module, module.params["origination_identity"] or "", "origination_identity")
+        # required_if counts only supplied keys, so an explicit null passes it.
+        if module.params["pool_id"] is None and module.params["origination_identity"] is None:
+            module.fail_json(msg="state is present but any of the following are missing: origination_identity, pool_id")
 
     require_positive_wait_bounds(module, always=True)
 
@@ -999,7 +942,7 @@ def main():
     require_client_methods(module, client, "Pinpoint SMS Voice V2", methods)
 
     if state == "present":
-        ensure_present(client, module)
+        ensure_present(client, module, tags)
 
     if state == "absent":
         ensure_absent(client, module)

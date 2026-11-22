@@ -395,31 +395,24 @@ def test_association_name_requires_sdk_support_on_create():
         {"targets": [{"key": f"tag:Role{index}", "values": ["web"]} for index in range(6)]},
         {"targets": [{"key": " ", "values": ["web"]}]},
         {"targets": [{"key": "tag:Role", "values": []}]},
+        {"targets": []},
     ],
-    ids=["association-name", "name", "schedule", "long-schedule", "target-count", "target-key", "target-values"],
+    ids=[
+        "association-name",
+        "name",
+        "schedule",
+        "long-schedule",
+        "target-count",
+        "target-key",
+        "target-values",
+        "empty-targets",
+    ],
 )
 def test_values_aws_validates_reach_the_association_lookup(overrides):
     # AWS rejects these on the create or update, the run's first write, so the module does not validate them.
     result, _require_client_methods = run_main(FakeModule(params(**overrides), client=Mock(), check_mode=True), [])
 
     assert isinstance(result, ModuleExit)
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-def test_empty_targets_are_rejected_before_aws(check_mode):
-    module = FakeModule(params(targets=[]), check_mode=check_mode)
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values == {
-        "changed": False,
-        "msg": "targets must contain at least one entry; omit targets to keep the current targets",
-    }
-    module.client.assert_not_called()
 
 
 def test_longest_schedule_and_target_key_are_accepted():
@@ -444,18 +437,17 @@ def test_absent_with_a_blank_name_still_looks_up_associations():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_more_than_50_tags_are_rejected_before_aws(check_mode):
+def test_more_than_50_tags_are_rejected_before_the_create(check_mode):
     # AWS rejects a 51st association tag with InvalidTag on create and TooManyTagsError when tagging.
     module = FakeModule(params(tags={f"key{index}": "" for index in range(51)}), check_mode=check_mode)
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
+    client = Mock()
+    with pytest.raises(ModuleFail) as raised:
+        plugin.ensure_present(client, module, None)
 
-    assert raised.value.values == {"msg": "tags must contain at most 50 entries"}
-    module.client.assert_not_called()
+    assert raised.value.values["msg"] == (
+        "The resulting AWS Systems Manager association tags must contain at most 50 entries"
+    )
+    client.create_association.assert_not_called()
 
 
 def test_50_tags_and_aws_reserved_tags_are_accepted():

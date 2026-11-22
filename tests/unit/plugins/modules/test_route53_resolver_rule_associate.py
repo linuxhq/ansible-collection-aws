@@ -62,7 +62,6 @@ def test_module_contract():
 def test_complete_waiter_stops_on_deleting_and_returns_failed_for_inspection():
     assert acceptors("resolver_rule_association_complete") == {
         "COMPLETE": "success",
-        "CREATING": "retry",
         "DELETING": "failure",
         "FAILED": "success",
         "OVERRIDDEN": "success",
@@ -71,7 +70,6 @@ def test_complete_waiter_stops_on_deleting_and_returns_failed_for_inspection():
 
 def test_deleted_waiter_stops_on_failed():
     assert acceptors("resolver_rule_association_deleted") == {
-        "DELETING": "retry",
         "FAILED": "failure",
         "ResourceNotFoundException": "success",
     }
@@ -465,3 +463,19 @@ def test_check_mode_create_or_replacement_predicts_the_status_a_real_run_returns
 
     expected = "COMPLETE" if wait else "CREATING"
     assert results[True]["status"] == results[False]["status"] == expected
+
+
+@pytest.mark.parametrize(
+    "name, valid",
+    [
+        ("main", True),
+        ("it's a-name_1", True),
+        ("a" * 64, True),
+        ("a" * 65, False),
+        ("12345", False),
+        ("bad.name", False),
+        ("", False),
+    ],
+)
+def test_valid_resolver_name(name, valid):
+    assert plugin.valid_resolver_name(name) is valid

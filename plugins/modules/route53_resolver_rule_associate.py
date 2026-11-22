@@ -140,6 +140,8 @@ state:
   type: str
 """
 
+import re
+
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -155,7 +157,6 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_to_ansible_dict,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import valid_resolver_name
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -187,12 +188,6 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
             },
             {
                 "argument": "ResolverRuleAssociation.Status",
-                "expected": "CREATING",
-                "matcher": "path",
-                "state": "retry",
-            },
-            {
-                "argument": "ResolverRuleAssociation.Status",
                 "expected": "DELETING",
                 "matcher": "path",
                 "state": "failure",
@@ -214,12 +209,6 @@ ROUTE53_RESOLVER_RULE_ASSOCIATION_WAITER_MODEL_DATA = {
                 "expected": "ResourceNotFoundException",
                 "matcher": "error",
                 "state": "success",
-            },
-            {
-                "argument": "ResolverRuleAssociation.Status",
-                "expected": "DELETING",
-                "matcher": "path",
-                "state": "retry",
             },
             {
                 "argument": "ResolverRuleAssociation.Status",
@@ -553,6 +542,10 @@ def validate_resolver_rule_association(
             )
 
     return association
+
+
+def valid_resolver_name(name):
+    return len(name) <= 64 and not name.isdigit() and re.fullmatch(r"[a-zA-Z0-9\-_ ']+", name) is not None
 
 
 def main():

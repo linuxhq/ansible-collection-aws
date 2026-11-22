@@ -36,7 +36,6 @@ options:
       - AWS-managed prefix lists are not versioned, so their current entries are
         returned regardless of this option.
       - Customer-managed prefix lists without this version are omitted from the results.
-      - This must be 1 or greater.
     type: int
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -195,9 +194,6 @@ def main():
     filters = dict(module.params["filters"] or {})
     prefix_list_ids = list(dict.fromkeys(module.params["prefix_list_ids"] or []))
     target_version = module.params["target_version"]
-    if target_version is not None and target_version < 1:
-        module.fail_json(msg="target_version must be 1 or greater")
-
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
 
     # PrefixListIds fails for a prefix list that does not exist, so IDs are sent

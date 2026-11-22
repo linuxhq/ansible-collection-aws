@@ -2,6 +2,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import pinpoint_sms_voice
 from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_pool_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -35,7 +36,7 @@ def test_ids_do_not_send_the_implicit_owner():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"Pools": []}) as query,
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={"Pools": []}) as query,
         patch.object(plugin, "query_list") as query_list,
         pytest.raises(ModuleExit),
     ):
@@ -63,7 +64,7 @@ def test_ids_and_arns_of_one_resource_are_described_once(ids, expected):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"Pools": []}) as query,
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={"Pools": []}) as query,
         pytest.raises(ModuleExit),
     ):
         plugin.main()
@@ -74,7 +75,7 @@ def test_ids_and_arns_of_one_resource_are_described_once(ids, expected):
 
 
 def test_missing_ids_are_omitted_from_results():
-    missing = plugin.ClientError(
+    missing = pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
         "DescribePools",
     )
@@ -93,7 +94,7 @@ def test_missing_ids_are_omitted_from_results():
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             side_effect=[
                 missing,
@@ -111,7 +112,7 @@ def test_missing_ids_are_omitted_from_results():
 
 
 def test_only_missing_ids_return_empty_results():
-    missing = plugin.ClientError(
+    missing = pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
         "DescribePools",
     )
@@ -119,7 +120,7 @@ def test_only_missing_ids_return_empty_results():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=missing),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=missing),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
@@ -153,7 +154,7 @@ def test_more_than_five_ids_are_described_one_at_a_time():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=responses) as query,
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=responses) as query,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
@@ -183,7 +184,7 @@ def test_pools_are_enriched_with_identities_and_tags():
             return_value=[{"PoolArn": "arn:pool", "PoolId": "pool-1"}],
         ),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             return_value={"OriginationIdentities": [{"OriginationIdentity": "phone-1"}]},
         ),
@@ -222,7 +223,7 @@ def test_origination_identities_use_the_pool_arn():
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "query_list", return_value=[{"PoolArn": POOL_ARN, "PoolId": "pool-1"}]),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             return_value={"OriginationIdentities": [{"OriginationIdentity": "phone-1"}]},
         ) as paginate,
@@ -242,7 +243,7 @@ def test_pools_always_return_origination_identities_and_tags():
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "query_list", return_value=[{"PoolArn": POOL_ARN, "PoolId": "pool-1"}]),
-        patch.object(plugin, "paginated_query_with_retries", return_value={}),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={}),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()

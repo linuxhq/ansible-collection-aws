@@ -74,23 +74,6 @@ def test_sdk_validation_checks_nested_vpc_parameters():
     )
 
 
-def test_tag_limits_are_rejected_before_client_creation():
-    module = FakeModule(
-        {
-            "encryption_config": None,
-            "state": "present",
-            "tags": {str(index): "" for index in range(51)},
-        }
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "tags must contain at most 50 entries"
-
-
 def test_absent_does_not_validate_unused_create_options():
     params = dict.fromkeys(plugin.CREATE_FIELDS)
     params.update(
@@ -203,6 +186,7 @@ def test_absent_retries_delete_while_an_unlisted_update_is_in_progress():
         patch.object(plugin, "describe_cluster", return_value=cluster),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "wait_for_cluster_updates", return_value=True),
+        patch.object(plugin, "list_cluster_compute", return_value=([], [])) as list_compute,
         patch.object(plugin.time, "sleep"),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -210,6 +194,104 @@ def test_absent_retries_delete_while_an_unlisted_update_is_in_progress():
 
     assert raised.value.values["changed"] is True
     assert client.delete_cluster.call_count == 21
+    # Each rejection is checked for attached compute, which EKS does not report as transient.
+    assert list_compute.call_count == 20
+
+
+@pytest.mark.parametrize(
+    "nodegroups, fargate_profiles",
+    [(["ng-1"], []), ([], ["fp-1"]), (["ng-1"], ["fp-1"])],
+    ids=["nodegroup", "fargate-profile", "both"],
+)
+def test_absent_fails_at_once_when_attached_compute_blocks_the_delete(nodegroups, fargate_profiles):
+    # DeleteCluster returns ResourceInUseException while managed node groups or Fargate profiles exist; retrying for
+    # the whole wait_timeout never succeeds.
+    in_use = plugin.ClientError(
+        {"Error": {"Code": "ResourceInUseException", "Message": "Cluster has nodegroups attached"}},
+        "DeleteCluster",
+    )
+    client = Mock()
+    client.delete_cluster.side_effect = [in_use, {}]
+    module = FakeModule({"name": "example", "wait": False})
+    cluster = {"arn": "arn:example", "name": "example", "status": "ACTIVE"}
+    with (
+        patch.object(plugin, "describe_cluster", return_value=cluster),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "wait_for_cluster_updates", return_value=True),
+        patch.object(plugin, "list_cluster_compute", return_value=(nodegroups, fargate_profiles)),
+        patch.object(plugin.time, "sleep") as sleep,
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values["msg"] == (
+        f"Unable to delete EKS cluster example while it has managed node groups {nodegroups} and Fargate profiles "
+        f"{fargate_profiles}; delete them first"
+    )
+    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
+    sleep.assert_not_called()
+
+
+def test_list_cluster_compute_pages_node_groups_and_fargate_profiles():
+    module = FakeModule({"name": "example"})
+    results = {
+        "list_nodegroups": {"nodegroups": ["ng-1", "ng-2"]},
+        "list_fargate_profiles": {"fargateProfileNames": ["fp-1"]},
+    }
+    client = Mock()
+    client.describe_nodegroup.return_value = {"nodegroup": {"status": "ACTIVE"}}
+    client.describe_fargate_profile.return_value = {"fargateProfile": {"status": "ACTIVE"}}
+    with patch.object(
+        plugin, "paginated_query_with_retries", side_effect=lambda client, method, **kwargs: results[method]
+    ) as query:
+        assert plugin.list_cluster_compute(client, module) == (["ng-1", "ng-2"], ["fp-1"])
+
+    assert query.call_args_list == [
+        call(client, "list_nodegroups", clusterName="example"),
+        call(client, "list_fargate_profiles", clusterName="example"),
+    ]
+    client.describe_nodegroup.assert_any_call(clusterName="example", nodegroupName="ng-2", aws_retry=True)
+    client.describe_fargate_profile.assert_called_once_with(
+        clusterName="example", fargateProfileName="fp-1", aws_retry=True
+    )
+
+
+def test_list_cluster_compute_omits_compute_that_is_being_deleted_or_gone():
+    # DeleteCluster stays rejected only until compute that is being deleted is gone, so the delete keeps retrying.
+    module = FakeModule({"name": "example"})
+    results = {
+        "list_nodegroups": {"nodegroups": ["deleting", "gone", "active"]},
+        "list_fargate_profiles": {"fargateProfileNames": ["deleting"]},
+    }
+    missing = plugin.ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}}, "Describe")
+    client = Mock()
+    client.describe_nodegroup.side_effect = [
+        {"nodegroup": {"status": "DELETING"}},
+        missing,
+        {"nodegroup": {"status": "DEGRADED"}},
+    ]
+    client.describe_fargate_profile.return_value = {"fargateProfile": {"status": "DELETING"}}
+    with patch.object(
+        plugin, "paginated_query_with_retries", side_effect=lambda client, method, **kwargs: results[method]
+    ):
+        assert plugin.list_cluster_compute(client, module) == (["active"], [])
+
+
+def test_list_cluster_compute_treats_a_deleted_cluster_as_without_compute():
+    missing = plugin.ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}}, "ListNodegroups")
+    with patch.object(plugin, "paginated_query_with_retries", side_effect=missing):
+        assert plugin.list_cluster_compute("client", FakeModule({"name": "example"})) == ([], [])
+
+
+def test_list_cluster_compute_reports_other_errors():
+    denied = plugin.ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "ListNodegroups")
+    with (
+        patch.object(plugin, "paginated_query_with_retries", side_effect=denied),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.list_cluster_compute("client", FakeModule({"name": "example"}))
+
+    assert raised.value.values["msg"] == "Unable to list node groups and Fargate profiles of EKS cluster example"
 
 
 def test_absent_tolerates_cluster_disappearing_during_delete():
@@ -232,7 +314,18 @@ def test_absent_tolerates_cluster_disappearing_during_delete():
         plugin.ensure_absent(client, module)
 
     wait_for_updates.assert_called_once_with(client, module, deadline=ANY)
-    require.assert_called_once_with(module, client, "EKS", {"delete_cluster": ("name",)})
+    require.assert_called_once_with(
+        module,
+        client,
+        "EKS",
+        {
+            "delete_cluster": ("name",),
+            "describe_fargate_profile": ("clusterName", "fargateProfileName"),
+            "describe_nodegroup": ("clusterName", "nodegroupName"),
+            "list_fargate_profiles": ("clusterName", "maxResults", "nextToken"),
+            "list_nodegroups": ("clusterName", "maxResults", "nextToken"),
+        },
+    )
     assert raised.value.values["changed"] is False
     assert raised.value.values["cluster"] == {}
 
@@ -347,7 +440,7 @@ def test_update_in_progress_rejection_is_raised_once_the_wait_budget_ends():
     with patch.object(plugin.time, "sleep") as sleep, pytest.raises(plugin.ClientError):
         plugin.retry_while_in_use(FakeModule({}), operation, plugin.time.monotonic() - 1, name="example")
 
-    operation.assert_called_once_with(name="example")
+    operation.assert_called_once_with(name="example", aws_retry=True)
     sleep.assert_not_called()
 
 
@@ -359,7 +452,7 @@ def test_update_does_not_retry_other_errors():
     with patch.object(plugin.time, "sleep") as sleep, pytest.raises(plugin.ClientError):
         plugin.retry_while_in_use(FakeModule({}), operation, plugin.time.monotonic() + 1200, name="example")
 
-    operation.assert_called_once_with(name="example")
+    operation.assert_called_once_with(name="example", aws_retry=True)
     sleep.assert_not_called()
 
 
@@ -431,10 +524,12 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
         {
             "name": "example",
             "resourcesVpcConfig": {"endpointPublicAccess": False},
+            "aws_retry": True,
         },
         {
             "name": "example",
             "resourcesVpcConfig": {"subnetIds": ["subnet-new-a", "subnet-new-b"]},
+            "aws_retry": True,
         },
     ]
     assert require.call_args_list == [
@@ -810,6 +905,7 @@ def test_eks_auto_mode_settings_use_one_request(enabled):
         computeConfig={"enabled": enabled},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": enabled}},
         storageConfig={"blockStorage": {"enabled": enabled}},
+        aws_retry=True,
     )
 
 
@@ -1041,9 +1137,9 @@ def test_unwaited_change_overlays_only_the_settings_it_sends():
     check_client, check = run_present(FakeModule(params, check_mode=True), [current])
 
     assert real_client.update_cluster_config.call_args_list == [
-        call(name="example", resourcesVpcConfig={"endpointPublicAccess": False})
+        call(name="example", resourcesVpcConfig={"endpointPublicAccess": False}, aws_retry=True)
     ]
-    real_client.update_cluster_version.assert_called_once_with(name="example", version="1.35")
+    real_client.update_cluster_version.assert_called_once_with(name="example", version="1.35", aws_retry=True)
     assert check_client.mock_calls == []
     assert check == real
     assert check["cluster"]["version"] == "1.35"
@@ -1115,7 +1211,7 @@ def test_partial_update_result_preserves_unmanaged_configuration(check_mode):
         client.update_cluster_config.assert_not_called()
     else:
         client.update_cluster_config.assert_called_once_with(
-            name="example", resourcesVpcConfig={"endpointPublicAccess": False}
+            name="example", resourcesVpcConfig={"endpointPublicAccess": False}, aws_retry=True
         )
 
 
@@ -1218,7 +1314,7 @@ def test_deletion_protection_and_remote_networks_use_their_own_update(overrides,
         plugin.ensure_present(client, FakeModule(eks_params(**overrides)))
 
     assert result.value.values["changed"] is True
-    client.update_cluster_config.assert_called_once_with(name="example", **expected)
+    client.update_cluster_config.assert_called_once_with(name="example", **expected, aws_retry=True)
     assert require_methods.call_args.args[3] == {"update_cluster_config": tuple(expected) + ("name",)}
 
 
@@ -1451,7 +1547,7 @@ def test_encryption_is_associated_with_an_unencrypted_cluster(wait):
     )
 
     client.associate_encryption_config.assert_called_once_with(
-        clusterName="example", encryptionConfig=STORED_ENCRYPTION
+        clusterName="example", encryptionConfig=STORED_ENCRYPTION, aws_retry=True
     )
     client.update_cluster_config.assert_not_called()
     assert real["changed"] is True
@@ -1478,7 +1574,7 @@ def test_encryption_association_is_waited_on_before_the_next_update(wait):
 
     calls = [entry[0] for entry in client.mock_calls]
     assert calls[:3] == ["associate_encryption_config", "events.wait", "update_cluster_config"]
-    client.update_cluster_config.assert_called_once_with(name="example", deletionProtection=True)
+    client.update_cluster_config.assert_called_once_with(name="example", deletionProtection=True, aws_retry=True)
     assert result["changed"] is True
 
 
@@ -1635,6 +1731,7 @@ def test_auto_mode_node_role_is_allowed_when_unchanged_or_compute_is_toggled(
             computeConfig=expected,
             kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": enabled}},
             storageConfig={"blockStorage": {"enabled": enabled}},
+            aws_retry=True,
         )
 
 
@@ -1650,12 +1747,13 @@ def test_auto_mode_empty_node_pools_omit_the_cluster_node_role(check_mode):
         assert client.mock_calls == []
     else:
         assert client.update_cluster_config.call_args_list == [
-            call(name="example", deletionProtection=True),
+            call(name="example", deletionProtection=True, aws_retry=True),
             call(
                 name="example",
                 computeConfig={"enabled": True, "nodePools": []},
                 kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
                 storageConfig={"blockStorage": {"enabled": True}},
+                aws_retry=True,
             ),
         ]
 
@@ -1737,31 +1835,6 @@ def test_auto_mode_node_pools_without_a_node_role_fail_before_any_update(current
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_create_with_auto_mode_node_pools_without_a_node_role_fails_before_any_aws_call(check_mode):
-    params = eks_params(
-        compute_config={"enabled": True, "node_pools": ["general-purpose"]},
-        kubernetes_network_config={"elastic_load_balancing": {"enabled": True}},
-        resources_vpc_config={"subnet_ids": ["subnet-a", "subnet-b"]},
-        role_arn="arn:role",
-        storage_config={"block_storage": {"enabled": True}},
-    )
-    client = Mock()
-    with (
-        patch.object(plugin, "describe_cluster", return_value=None),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
-
-    assert raised.value.values == {
-        "msg": (
-            "compute_config.node_pools requires a node role while EKS Auto Mode compute is enabled for new EKS "
-            "cluster example; set compute_config.node_role_arn"
-        )
-    }
-    assert client.mock_calls == []
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
 def test_auto_mode_node_role_is_allowed_with_node_pools_when_the_cluster_has_no_node_role(check_mode):
     # Live probe: EKS accepts a node role with node pools on an enabled cluster that has no node pools or node role.
     params = eks_params(
@@ -1779,12 +1852,13 @@ def test_auto_mode_node_role_is_allowed_with_node_pools_when_the_cluster_has_no_
         assert client.mock_calls == []
     else:
         assert client.update_cluster_config.call_args_list == [
-            call(name="example", deletionProtection=True),
+            call(name="example", deletionProtection=True, aws_retry=True),
             call(
                 name="example",
                 computeConfig={"enabled": True, "nodePools": ["general-purpose"], "nodeRoleArn": "arn:b"},
                 kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
                 storageConfig={"blockStorage": {"enabled": True}},
+                aws_retry=True,
             ),
         ]
 
@@ -1826,6 +1900,7 @@ def test_auto_mode_load_balancing_updates_with_matching_create_only_network_sett
         computeConfig={"enabled": True, "nodePools": ["general-purpose", "system"], "nodeRoleArn": "arn:node"},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
         storageConfig={"blockStorage": {"enabled": True}},
+        aws_retry=True,
     )
 
 
@@ -1861,6 +1936,7 @@ def test_auto_mode_node_pool_change_sends_every_capability_together():
         computeConfig={"enabled": True, "nodePools": ["general-purpose", "system"], "nodeRoleArn": "arn:node"},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
         storageConfig={"blockStorage": {"enabled": True}},
+        aws_retry=True,
     )
 
 
@@ -1940,7 +2016,7 @@ def test_absent_deletes_a_cluster_that_fails_while_waiting(status):
         plugin.ensure_absent(client, module)
 
     stubber.assert_no_pending_responses()
-    client.delete_cluster.assert_called_once_with(name="example")
+    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
     assert raised.value.values["changed"] is True
     assert raised.value.values["cluster"]["status"] == "DELETING"
 
@@ -2306,7 +2382,7 @@ def test_absent_with_wait_returns_an_empty_cluster_after_deletion():
         {"wait": True}, [{"name": "example", "status": "ACTIVE"}]
     )
 
-    client.delete_cluster.assert_called_once_with(name="example")
+    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
     wait_for_cluster.assert_called_once_with(client, module, "cluster_deleted", changed=True, deadline=ANY)
     assert result["changed"] is True
     assert result["cluster"] == {}
@@ -2324,7 +2400,7 @@ def test_absent_without_wait_returns_the_cluster_as_it_is_being_deleted(reread, 
         {"wait": False}, [{"name": "example", "status": "ACTIVE"}, reread]
     )
 
-    client.delete_cluster.assert_called_once_with(name="example")
+    client.delete_cluster.assert_called_once_with(name="example", aws_retry=True)
     wait_for_cluster.assert_not_called()
     assert describe.call_args_list[1].kwargs == {"changed": True}
     assert result["changed"] is True
@@ -2474,6 +2550,7 @@ def test_enabling_auto_mode_on_a_standard_cluster_sends_every_capability():
         computeConfig={"enabled": True},
         kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
         storageConfig={"blockStorage": {"enabled": True}},
+        aws_retry=True,
     )
 
 
@@ -2572,6 +2649,7 @@ def test_auto_mode_change_with_omitted_enablement_uses_the_clusters_matching_val
             computeConfig={"enabled": True, "nodePools": ["system"], "nodeRoleArn": "arn:node"},
             kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
             storageConfig={"blockStorage": {"enabled": True}},
+            aws_retry=True,
         )
 
 
@@ -2612,7 +2690,9 @@ def test_enabling_zonal_shift_on_a_cluster_that_never_set_it_sends_an_update(che
         client.update_cluster_config.assert_not_called()
         assert raised.value.values["cluster"]["zonal_shift_config"] == {"enabled": True}
     else:
-        client.update_cluster_config.assert_called_once_with(name="example", zonalShiftConfig={"enabled": True})
+        client.update_cluster_config.assert_called_once_with(
+            name="example", zonalShiftConfig={"enabled": True}, aws_retry=True
+        )
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -2725,42 +2805,39 @@ def test_rerun_after_disabling_auto_mode_with_matching_node_settings_is_unchange
     assert client.mock_calls == []
 
 
-@pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
-    "compute_config",
+    "compute_config, expected",
     [
-        {"enabled": False, "node_pools": ["general-purpose"]},
-        {"enabled": False, "node_role_arn": "arn:node"},
-        {"node_pools": ["general-purpose"], "node_role_arn": "arn:node"},
-    ],
-    ids=["disabled-node-pools", "disabled-node-role", "omitted"],
-)
-def test_node_settings_without_enabled_compute_fail_before_create(check_mode, compute_config):
-    client = Mock()
-    module = FakeModule(
-        eks_params(
-            compute_config=compute_config,
-            resources_vpc_config={"subnet_ids": ["subnet-a", "subnet-b"]},
-            role_arn="arn:role",
+        (
+            {"enabled": True, "node_pools": ["general-purpose"]},
+            {"enabled": True, "nodePools": ["general-purpose"]},
         ),
-        check_mode=check_mode,
+        (
+            {"enabled": False, "node_pools": ["general-purpose"]},
+            {"enabled": False, "nodePools": ["general-purpose"]},
+        ),
+        ({"enabled": False, "node_role_arn": "arn:node"}, {"enabled": False, "nodeRoleArn": "arn:node"}),
+        (
+            {"node_pools": ["general-purpose"], "node_role_arn": "arn:node"},
+            {"nodePools": ["general-purpose"], "nodeRoleArn": "arn:node"},
+        ),
+    ],
+    ids=["node-pools-without-node-role", "disabled-node-pools", "disabled-node-role", "omitted"],
+)
+def test_create_leaves_node_settings_eks_rejects_to_create_cluster(compute_config, expected):
+    # CreateCluster rejects these with nothing created, so check mode predicts the create.
+    params = eks_params(
+        compute_config=compute_config,
+        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
+        role_arn="arn:role",
     )
-    with (
-        patch.object(plugin, "describe_cluster", return_value=None),
-        patch.object(plugin, "require_client_methods") as require_client_methods,
-        patch.object(plugin, "require_nested_request_parameters"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
+    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
+    client = run_present(FakeModule(params), [None, DESCRIBED_CLUSTER], client)[0]
+    check_client, check = run_present(FakeModule(params, check_mode=True), [None])
 
-    assert raised.value.values == {
-        "msg": (
-            "compute_config.node_pools and compute_config.node_role_arn require EKS Auto Mode compute to be enabled "
-            "for new EKS cluster example"
-        )
-    }
-    assert client.mock_calls == []
-    require_client_methods.assert_not_called()
+    assert client.create_cluster.call_args.kwargs["computeConfig"] == expected
+    assert check_client.mock_calls == []
+    assert check["changed"] is True
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -2798,6 +2875,7 @@ def test_compute_config_node_pools_on_a_standard_cluster_send_an_update(check_mo
             computeConfig={"enabled": True, "nodePools": ["general-purpose"], "nodeRoleArn": "arn:node"},
             kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
             storageConfig={"blockStorage": {"enabled": True}},
+            aws_retry=True,
         )
 
 
@@ -2848,6 +2926,7 @@ def test_remote_node_networks_on_a_cluster_without_remote_networks_send_the_whol
         client.update_cluster_config.assert_called_once_with(
             name="example",
             remoteNetworkConfig={"remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}], "remotePodNetworks": []},
+            aws_retry=True,
         )
 
 
@@ -2942,6 +3021,7 @@ def test_empty_remote_network_lists_still_remove_the_remote_networks_of_an_exist
     client.update_cluster_config.assert_called_once_with(
         name="example",
         remoteNetworkConfig={"remoteNodeNetworks": [], "remotePodNetworks": []},
+        aws_retry=True,
     )
 
 
@@ -3085,9 +3165,9 @@ def test_remote_networks_follow_an_access_change_away_from_config_map(check_mode
         assert client.mock_calls == []
     else:
         assert client.update_cluster_config.call_args_list == [
-            call(name="example", accessConfig={"authenticationMode": "API_AND_CONFIG_MAP"}),
-            call(name="example", deletionProtection=True),
-            call(name="example", remoteNetworkConfig={"remoteNodeNetworks": NODE_NETWORKS}),
+            call(name="example", accessConfig={"authenticationMode": "API_AND_CONFIG_MAP"}, aws_retry=True),
+            call(name="example", deletionProtection=True, aws_retry=True),
+            call(name="example", remoteNetworkConfig={"remoteNodeNetworks": NODE_NETWORKS}, aws_retry=True),
         ]
 
 
@@ -3134,7 +3214,9 @@ def test_empty_remote_networks_on_an_ipv6_cluster_are_unchanged(check_mode):
     if check_mode:
         assert client.mock_calls == []
     else:
-        assert client.update_cluster_config.call_args_list == [call(name="example", deletionProtection=True)]
+        assert client.update_cluster_config.call_args_list == [
+            call(name="example", deletionProtection=True, aws_retry=True)
+        ]
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -3152,8 +3234,8 @@ def test_remote_networks_on_an_ipv4_cluster_reach_aws(check_mode):
         assert client.mock_calls == []
     else:
         assert client.update_cluster_config.call_args_list == [
-            call(name="example", deletionProtection=True),
-            call(name="example", remoteNetworkConfig={"remoteNodeNetworks": NODE_NETWORKS}),
+            call(name="example", deletionProtection=True, aws_retry=True),
+            call(name="example", remoteNetworkConfig={"remoteNodeNetworks": NODE_NETWORKS}, aws_retry=True),
         ]
 
 
@@ -3250,8 +3332,8 @@ def test_ipv6_public_access_cidrs_reach_aws_for_an_ipv6_cluster_without_an_old_e
         assert client.mock_calls == []
     else:
         assert client.update_cluster_config.call_args_list == [
-            call(name="example", deletionProtection=True),
-            call(name="example", resourcesVpcConfig={"publicAccessCidrs": cidrs}),
+            call(name="example", deletionProtection=True, aws_retry=True),
+            call(name="example", resourcesVpcConfig={"publicAccessCidrs": cidrs}, aws_retry=True),
         ]
 
 
@@ -3267,8 +3349,8 @@ def test_ipv6_public_access_cidrs_reach_aws_for_an_ipv6_cluster():
 
     assert result["changed"] is True
     assert client.update_cluster_config.call_args_list == [
-        call(name="example", deletionProtection=True),
-        call(name="example", resourcesVpcConfig={"publicAccessCidrs": cidrs}),
+        call(name="example", deletionProtection=True, aws_retry=True),
+        call(name="example", resourcesVpcConfig={"publicAccessCidrs": cidrs}, aws_retry=True),
     ]
 
 
@@ -3387,8 +3469,8 @@ def test_repeated_public_access_cidr_blocks_are_sent_once(current, check_mode):
         assert client.create_cluster.call_args.kwargs["resourcesVpcConfig"]["publicAccessCidrs"] == public_cidrs(40)
     else:
         assert client.update_cluster_config.call_args_list == [
-            call(name="example", deletionProtection=True),
-            call(name="example", resourcesVpcConfig={"publicAccessCidrs": public_cidrs(40)}),
+            call(name="example", deletionProtection=True, aws_retry=True),
+            call(name="example", resourcesVpcConfig={"publicAccessCidrs": public_cidrs(40)}, aws_retry=True),
         ]
 
 
@@ -3447,7 +3529,9 @@ def test_disabling_one_api_server_endpoint_while_enabling_the_other_reaches_aws(
 
     assert result["changed"] is True
     client.update_cluster_config.assert_called_once_with(
-        name="example", resourcesVpcConfig={"endpointPrivateAccess": True, "endpointPublicAccess": False}
+        name="example",
+        resourcesVpcConfig={"endpointPrivateAccess": True, "endpointPublicAccess": False},
+        aws_retry=True,
     )
 
 
@@ -3660,7 +3744,9 @@ def test_repeated_remote_network_cidr_is_sent_once(network, key, check_mode):
             {"cidrs": ["10.83.0.0/16", "10.82.0.0/16"]}
         ]
     else:
-        client.update_cluster_config.assert_called_once_with(name="example", remoteNetworkConfig=expected)
+        client.update_cluster_config.assert_called_once_with(
+            name="example", remoteNetworkConfig=expected, aws_retry=True
+        )
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -3762,30 +3848,47 @@ RANGE_MESSAGE = "must contain CIDR blocks within 10.0.0.0/8, 172.16.0.0/12, 192.
         "service-cidr",
     ],
 )
-def test_remote_network_cidrs_eks_rejects_fail_before_any_aws_call(
+def test_remote_network_cidrs_eks_rejects_fail_before_any_update(
     node_cidrs, pod_cidrs, service_cidr, message, check_mode
 ):
     # UpdateClusterConfig rejects these after other updates were applied (live), and check mode predicted success.
+    current = dict(STANDARD_CLUSTER, accessConfig={"authenticationMode": "API"})
+    if service_cidr:
+        current["kubernetesNetworkConfig"] = dict(current["kubernetesNetworkConfig"], serviceIpv4Cidr=service_cidr)
+
     config = {
         "remote_node_networks": [{"cidrs": node_cidrs}],
         "remote_pod_networks": [{"cidrs": pod_cidrs}] if pod_cidrs else None,
     }
-    params = eks_params(
-        deletion_protection=True,
-        kubernetes_network_config={"service_ipv4_cidr": service_cidr} if service_cidr else None,
-        remote_network_config=config,
-        state="present",
-    )
-    module = FakeModule(params, check_mode=check_mode)
-    module.client = Mock()
+    params = eks_params(deletion_protection=True, remote_network_config=config)
+    client = Mock()
     with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "describe_cluster", return_value=current),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.main()
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
 
     assert raised.value.values == {"msg": f"remote_network_config.{message}"}
-    module.client.assert_not_called()
+    assert client.mock_calls == []
+
+
+def test_remote_network_cidrs_eks_rejects_are_left_to_create_cluster():
+    # CreateCluster rejects these with nothing created, so check mode predicts the create.
+    config = {"remote_node_networks": [{"cidrs": ["8.8.8.0/24"]}], "remote_pod_networks": None}
+    params = eks_params(
+        remote_network_config=config,
+        resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
+        role_arn="arn:role",
+    )
+    client = Mock(create_cluster=Mock(return_value={"cluster": CREATED_CLUSTER}))
+    client = run_present(FakeModule(params), [None, DESCRIBED_CLUSTER], client)[0]
+    check_client, check = run_present(FakeModule(params, check_mode=True), [None])
+
+    assert client.create_cluster.call_args.kwargs["remoteNetworkConfig"] == {
+        "remoteNodeNetworks": [{"cidrs": ["8.8.8.0/24"]}]
+    }
+    assert check_client.mock_calls == []
+    assert check["changed"] is True
 
 
 def test_cgnat_remote_network_cidr_is_accepted():
@@ -4210,7 +4313,7 @@ def test_version_gap_is_checked_against_the_version_after_an_ongoing_update(wait
     client = run_present(FakeModule(params), described)[0]
     check_client, check = run_present(FakeModule(params, check_mode=True), [updating])
 
-    client.update_cluster_version.assert_called_once_with(name="example", version="1.32")
+    client.update_cluster_version.assert_called_once_with(name="example", version="1.32", aws_retry=True)
     assert check_client.mock_calls == []
     assert check["changed"] is True
     assert check["cluster"]["version"] == "1.32"
@@ -4223,8 +4326,8 @@ def test_next_minor_downgrade_and_unparsed_versions_reach_the_version_update(ver
 
     client = run_present(FakeModule(params), [current])[0]
 
-    client.update_cluster_config.assert_called_once_with(name="example", deletionProtection=True)
-    client.update_cluster_version.assert_called_once_with(name="example", version=version)
+    client.update_cluster_config.assert_called_once_with(name="example", deletionProtection=True, aws_retry=True)
+    client.update_cluster_version.assert_called_once_with(name="example", version=version, aws_retry=True)
 
 
 @pytest.mark.parametrize("wait", [True, False])
@@ -4259,11 +4362,14 @@ def test_upgrade_policy_is_sent_after_the_version_update_completes(wait):
     # wait_for_update(client, module, update_id, ...) is recorded with the update ID it waits for.
     calls = [(name, args[2] if name == "wait_for_update" else kwargs) for name, args, kwargs in client.mock_calls]
     expected = [
-        ("update_cluster_config", {"name": "example", "deletionProtection": True}),
+        ("update_cluster_config", {"name": "example", "deletionProtection": True, "aws_retry": True}),
         ("wait_for_update", "update-1"),
-        ("update_cluster_version", {"name": "example", "version": "1.31"}),
+        ("update_cluster_version", {"name": "example", "version": "1.31", "aws_retry": True}),
         ("wait_for_update", "update-2"),
-        ("update_cluster_config", {"name": "example", "upgradePolicy": {"supportType": "STANDARD"}}),
+        (
+            "update_cluster_config",
+            {"name": "example", "upgradePolicy": {"supportType": "STANDARD"}, "aws_retry": True},
+        ),
     ]
     if wait:
         expected.append(("wait_for_update", "update-3"))
@@ -4283,8 +4389,8 @@ def test_upgrade_policy_without_a_version_change_is_sent_first():
 
     # EKS rejects the support type change for a cluster in extended support, so it goes before any other update.
     assert client.update_cluster_config.call_args_list == [
-        call(name="example", upgradePolicy={"supportType": "STANDARD"}),
-        call(name="example", deletionProtection=True),
+        call(name="example", upgradePolicy={"supportType": "STANDARD"}, aws_retry=True),
+        call(name="example", deletionProtection=True, aws_retry=True),
     ]
 
 
@@ -4307,7 +4413,7 @@ def test_rejected_upgrade_policy_without_a_version_change_fails_before_any_other
 
     assert raised.value.values["changed"] is False
     assert client.update_cluster_config.call_args_list == [
-        call(name="example", upgradePolicy={"supportType": "STANDARD"}),
+        call(name="example", upgradePolicy={"supportType": "STANDARD"}, aws_retry=True),
     ]
 
 
@@ -4465,7 +4571,7 @@ def test_authentication_mode_changes_eks_accepts_are_sent(current_mode, requeste
 
     assert result["changed"] is True
     client.update_cluster_config.assert_called_once_with(
-        name="example", accessConfig={"authenticationMode": requested_mode}
+        name="example", accessConfig={"authenticationMode": requested_mode}, aws_retry=True
     )
 
 
@@ -4510,13 +4616,14 @@ def test_auto_mode_follows_an_access_change_away_from_config_map(check_mode):
         assert client.mock_calls == []
     else:
         assert client.update_cluster_config.call_args_list == [
-            call(name="example", accessConfig={"authenticationMode": "API"}),
-            call(name="example", deletionProtection=True),
+            call(name="example", accessConfig={"authenticationMode": "API"}, aws_retry=True),
+            call(name="example", deletionProtection=True, aws_retry=True),
             call(
                 name="example",
                 computeConfig={"enabled": True},
                 kubernetesNetworkConfig={"elasticLoadBalancing": {"enabled": True}},
                 storageConfig={"blockStorage": {"enabled": True}},
+                aws_retry=True,
             ),
         ]
 

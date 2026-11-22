@@ -135,14 +135,15 @@ def test_result_is_read_again_after_setting_the_attribute():
         get_topic_attributes=Mock(
             side_effect=[
                 {"Attributes": {"TopicArn": "arn:topic"}},
-                {"Attributes": {"KmsMasterKeyId": "arn:aws:kms:us-east-1:123456789012:alias/aws/sns"}},
+                # Live: SNS returns the key alias as it was set.
+                {"Attributes": {"KmsMasterKeyId": "alias/aws/sns", "TopicArn": "arn:topic"}},
             ]
         )
     )
     result, _require = run(FakeModule({"kms_master_key_id": "alias/aws/sns", "topic_arn": "arn:topic"}, client=client))
 
     assert result.values == {
-        "attributes": {"kms_master_key_id": "arn:aws:kms:us-east-1:123456789012:alias/aws/sns"},
+        "attributes": {"kms_master_key_id": "alias/aws/sns", "topic_arn": "arn:topic"},
         "changed": True,
         "topic_arn": "arn:topic",
     }

@@ -514,7 +514,7 @@ def main():
     )
     tags = module.params["tags"]
 
-    require_valid_tags(module, tags, 50, restricted_characters=True)
+    require_valid_tags(module, tags, restricted_characters=True)
 
     client = module.client("acm", retry_decorator=AWSRetry.jittered_backoff())
 

@@ -1,0 +1,13 @@
+---
+minor_changes:
+  - service_quota - an increase of a quota that is not adjustable is now rejected by Service Quotas instead of by the
+    module, so check mode reports it as a change.
+  - service_quota - an infinite O(value) is now rejected by Service Quotas instead of by the module.
+bugfixes:
+  - service_quota_info - fail with C(context_id must not be empty) for an empty O(context_id), like service_quota,
+    instead of returning the account-level quota.
+trivial:
+  - service_quota and service_quota_info - rely on the Service Quotas response shape instead of checking the service
+    code, quota code, value type, and request fields that it echoes, and share the quota identifier and request
+    parameter builders.
+  - ses_credential - drop the separate empty O(region) check; the region name format check already rejects it.

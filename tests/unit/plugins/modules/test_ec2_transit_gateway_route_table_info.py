@@ -326,3 +326,29 @@ def test_route_table_ids_fail_when_filters_leave_no_room():
         "when transit_gateway_route_table_ids is set"
     )
     query.assert_not_called()
+
+
+def test_route_table_matched_by_several_batches_is_returned_once():
+    # A wildcard ID in the first batch also matches the route table named by its ID in the second batch.
+    route_table_ids = ["tgw-rtb-*"] + [f"tgw-rtb-{index}" for index in range(100)]
+    module = FakeModule({"filters": None, "transit_gateway_route_table_ids": route_table_ids}, client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            plugin,
+            "query_list",
+            side_effect=[
+                [{"State": "deleting", "TransitGatewayRouteTableId": "tgw-rtb-99"}],
+                [{"State": "deleting", "TransitGatewayRouteTableId": "tgw-rtb-99"}],
+            ],
+        ) as query,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert query.call_count == 2
+    assert [
+        route_table["transit_gateway_route_table_id"]
+        for route_table in raised.value.values["transit_gateway_route_tables"]
+    ] == ["tgw-rtb-99"]

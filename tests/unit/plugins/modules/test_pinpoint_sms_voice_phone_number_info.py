@@ -2,6 +2,7 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import pinpoint_sms_voice
 from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_phone_number_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -38,7 +39,7 @@ def test_ids_do_not_send_the_implicit_owner():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"PhoneNumbers": []}) as query,
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={"PhoneNumbers": []}) as query,
         patch.object(plugin, "query_list") as query_list,
         pytest.raises(ModuleExit),
     ):
@@ -66,7 +67,7 @@ def test_ids_and_arns_of_one_resource_are_described_once(ids, expected):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"PhoneNumbers": []}) as query,
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={"PhoneNumbers": []}) as query,
         pytest.raises(ModuleExit),
     ):
         plugin.main()
@@ -77,7 +78,7 @@ def test_ids_and_arns_of_one_resource_are_described_once(ids, expected):
 
 
 def test_missing_ids_are_omitted_from_results():
-    missing = plugin.ClientError(
+    missing = pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
         "DescribePhoneNumbers",
     )
@@ -96,7 +97,7 @@ def test_missing_ids_are_omitted_from_results():
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             side_effect=[missing, {"PhoneNumbers": [{"PhoneNumberArn": "arn:phone", "PhoneNumberId": "phone-1"}]}],
         ) as query,
@@ -112,7 +113,7 @@ def test_missing_ids_are_omitted_from_results():
 
 
 def test_only_missing_ids_return_empty_results():
-    missing = plugin.ClientError(
+    missing = pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
         "DescribePhoneNumbers",
     )
@@ -127,7 +128,7 @@ def test_only_missing_ids_return_empty_results():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=missing),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=missing),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
@@ -137,7 +138,7 @@ def test_only_missing_ids_return_empty_results():
 
 
 def test_id_lookup_fails_on_other_errors():
-    denied = plugin.ClientError(
+    denied = pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
         "DescribePhoneNumbers",
     )
@@ -152,7 +153,7 @@ def test_id_lookup_fails_on_other_errors():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=denied),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=denied),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
@@ -193,7 +194,7 @@ def test_more_than_five_ids_are_described_one_at_a_time():
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             side_effect=[
                 {"PhoneNumbers": [{"PhoneNumberArn": f"arn:phone/{phone_number_id}", "PhoneNumberId": phone_number_id}]}

@@ -8,7 +8,9 @@ from botocore.exceptions import ClientError
 from ansible_collections.linuxhq.aws.plugins.module_utils.service_quotas import (
     get_quota,
     quota_from_response,
+    quota_identifier,
     quota_methods,
+    quota_parameters,
     quota_to_ansible_dict,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule, ModuleFail
@@ -21,14 +23,13 @@ def error(code, operation):
 @pytest.mark.parametrize(
     ("response", "context_id", "message"),
     [
-        ({"Quota": {"ServiceCode": "iam", "QuotaCode": "L-1"}}, None, "mismatched quota for ec2/L-1"),
         ({"Quota": {"Value": 5.0, "QuotaContext": {"ContextId": "wrong"}}}, "expected", "mismatched quota context"),
         ({"Quota": {"Value": 5.0}}, "expected", "mismatched quota context"),
     ],
 )
 def test_quota_from_response_rejects_invalid_response(response, context_id, message):
     with pytest.raises(ModuleFail) as raised:
-        quota_from_response(FakeModule({}), response, "service quota", "ec2", "L-1", context_id)
+        quota_from_response(FakeModule({}), response, "ec2", "L-1", context_id)
 
     assert message in raised.value.values["msg"]
 
@@ -37,7 +38,7 @@ def test_quota_from_response_rejects_invalid_response(response, context_id, mess
 def test_quota_from_response_rejects_a_non_resource_scope(scope):
     response = {"Quota": {"Value": 5.0, "QuotaContext": {"ContextScope": scope}}}
     with pytest.raises(ModuleFail) as raised:
-        quota_from_response(FakeModule({}), response, "service quota", "ec2", "L-1", resource_scope=True)
+        quota_from_response(FakeModule({}), response, "ec2", "L-1", resource_scope=True)
 
     assert "mismatched quota context" in raised.value.values["msg"]
 
@@ -46,13 +47,13 @@ def test_quota_from_response_rejects_a_non_resource_scope(scope):
 def test_quota_from_response_accepts_a_resource_scope(quota):
     response = {"Quota": quota}
 
-    assert quota_from_response(FakeModule({}), response, "service quota", "ec2", "L-1", resource_scope=True) == quota
+    assert quota_from_response(FakeModule({}), response, "ec2", "L-1", resource_scope=True) == quota
 
 
 def test_quota_from_response_accepts_matching_context():
     quota = {"Value": 5.0, "QuotaContext": {"ContextId": "arn:context"}}
 
-    assert quota_from_response(FakeModule({}), {"Quota": quota}, "service quota", "ec2", "L-1", "arn:context") == quota
+    assert quota_from_response(FakeModule({}), {"Quota": quota}, "ec2", "L-1", "arn:context") == quota
 
 
 def test_get_quota_returns_the_applied_quota():
@@ -126,7 +127,6 @@ def test_get_quota_returns_none_when_a_context_quota_is_missing():
     ("fallback", "message"),
     [
         ({"Value": 5.0, "QuotaContext": {"ContextScope": "ACCOUNT"}}, "mismatched quota context"),
-        ({"Value": 5.0, "QuotaCode": "L-2"}, "mismatched quota"),
     ],
 )
 def test_get_quota_rejects_an_invalid_context_fallback(fallback, message):
@@ -196,3 +196,19 @@ def test_quota_methods_match_get_quota_calls(context_id, get_parameters):
         "get_aws_default_service_quota": ("QuotaCode", "ServiceCode"),
         "get_service_quota": get_parameters,
     }
+
+
+@pytest.mark.parametrize(
+    ("context_id", "identifier", "parameters"),
+    [
+        (None, "ec2/L-1", {"QuotaCode": "L-1", "ServiceCode": "ec2"}),
+        (
+            "arn:context",
+            "ec2/L-1 for arn:context",
+            {"QuotaCode": "L-1", "ServiceCode": "ec2", "ContextId": "arn:context"},
+        ),
+    ],
+)
+def test_quota_identifier_and_parameters_name_the_context(context_id, identifier, parameters):
+    assert quota_identifier("ec2", "L-1", context_id) == identifier
+    assert quota_parameters("ec2", "L-1", context_id) == parameters

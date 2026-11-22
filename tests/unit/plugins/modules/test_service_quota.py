@@ -57,15 +57,32 @@ def test_module_contract():
     assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-@pytest.mark.parametrize("value", [float("inf"), float("nan")])
-def test_rejects_non_finite_quota_value(value):
+def test_rejects_a_nan_quota_value():
     with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(value=value))),
+        patch.object(plugin, "AnsibleAWSModule", return_value=FakeModule(params(value=float("nan")))),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["msg"] == "value must be a finite number"
+    assert raised.value.values["msg"] == "value must be a number"
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_infinite_value_reaches_aws(check_mode):
+    # Service Quotas rejects a value above its maximum before requesting anything.
+    client = Mock()
+    client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
+    client.request_service_quota_increase.side_effect = ClientError(
+        {"Error": {"Code": "ValidationException", "Message": "invalid"}}, "RequestServiceQuotaIncrease"
+    )
+    result = run(FakeModule(params(value=float("inf")), check_mode=check_mode, client=client))[0]
+
+    if check_mode:
+        assert isinstance(result, ModuleExit)
+        assert result.values["changed"]
+    else:
+        assert isinstance(result, ModuleFail)
+        assert result.values["msg"] == "Unable to request AWS service quota increase for ec2/L-1"
 
 
 def test_value_above_the_api_maximum_reaches_aws():
@@ -97,10 +114,9 @@ def test_empty_context_id_fails_before_any_aws_call(check_mode):
     require_client_methods.assert_not_called()
 
 
-@pytest.mark.parametrize("quota", [{"Value": "5"}, {"Value": True}, {"Value": float("nan")}, {"Adjustable": True}])
-def test_validate_current_quota_rejects_invalid_value(quota):
+def test_validate_current_quota_rejects_a_missing_value():
     with pytest.raises(ModuleFail) as raised:
-        plugin.validate_current_quota(FakeModule({}), quota, "ec2", "L-1")
+        plugin.validate_current_quota(FakeModule({}), {"Adjustable": True}, "ec2", "L-1")
 
     assert raised.value.values["msg"] == "AWS service quota ec2/L-1 did not return a valid value"
 
@@ -126,17 +142,6 @@ def test_validate_current_quota_names_the_error_reason(error_reason, suffix):
 
 def test_validate_current_quota_accepts_large_integer_without_crashing():
     plugin.validate_current_quota(FakeModule({}), {"Value": 10**400}, "ec2", "L-1")
-
-
-@pytest.mark.parametrize(
-    ("request_", "status", "message"),
-    [({"Status": "PENDING"}, "CASE_OPENED", "mismatched request"), ({"QuotaCode": "L-2"}, None, "mismatched request")],
-)
-def test_validate_quota_request_rejects_invalid_request(request_, status, message):
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_quota_request(FakeModule({}), request_, "ec2", "L-1", status=status)
-
-    assert message in raised.value.values["msg"]
 
 
 def test_check_mode_reports_the_quota_request():
@@ -180,14 +185,22 @@ def test_smaller_pending_request_is_reported():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_non_adjustable_quota_fails_before_requesting(check_mode):
+def test_non_adjustable_quota_increase_reaches_aws(check_mode):
+    # Service Quotas rejects an increase of a non-adjustable quota before requesting anything.
     client = Mock()
     client.get_service_quota.return_value = {"Quota": {"Value": 5.0, "Adjustable": False}}
+    client.request_service_quota_increase.side_effect = ClientError(
+        {"Error": {"Code": "QuotaExceededException", "Message": "not adjustable"}}, "RequestServiceQuotaIncrease"
+    )
     result = run(FakeModule(params(), check_mode=check_mode, client=client))[0]
 
-    assert isinstance(result, ModuleFail)
-    assert result.values["msg"] == "AWS service quota ec2/L-1 is not adjustable, so it cannot be increased to 10.0"
-    client.request_service_quota_increase.assert_not_called()
+    if check_mode:
+        assert isinstance(result, ModuleExit)
+        assert result.values["changed"]
+        client.request_service_quota_increase.assert_not_called()
+    else:
+        assert isinstance(result, ModuleFail)
+        assert result.values["msg"] == "Unable to request AWS service quota increase for ec2/L-1"
 
 
 def test_non_adjustable_quota_at_the_desired_value_is_unchanged():
@@ -341,20 +354,3 @@ def test_metric_dimension_identifiers_are_preserved():
 
     metric = result.values["current_quota"]["usage_metric"]
     assert metric == {"metric_namespace": "AWS/Usage", "metric_name": "ResourceCount", "metric_dimensions": dimensions}
-
-
-def test_invalid_request_response_reports_changed():
-    client = Mock()
-    client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
-    client.request_service_quota_increase.return_value = {"RequestedQuota": {"DesiredValue": 20.0}}
-    result, _query, _require = run(FakeModule(params(), client=client))
-
-    assert isinstance(result, ModuleFail)
-    assert result.values["changed"] is True
-
-
-def test_invalid_listed_request_reports_unchanged():
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_quota_request(FakeModule({}), {"Status": "CASE_OPENED"}, "ec2", "L-1", status="PENDING")
-
-    assert raised.value.values["changed"] is False

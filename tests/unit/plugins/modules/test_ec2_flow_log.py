@@ -10,6 +10,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    ModuleInitialized,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -206,26 +207,58 @@ def test_invalid_resource_and_destination_combinations_are_rejected():
             dict(base, resource_ids=[]),
             "resource_ids must contain at least one item",
         ),
-        (
-            dict(base, traffic_type="ALL"),
-            "traffic_type is not supported when resource_type is TransitGateway or TransitGatewayAttachment",
-        ),
-        (
-            dict(base, max_aggregation_interval=600),
-            "max_aggregation_interval must be 60 when resource_type is TransitGateway or TransitGatewayAttachment",
-        ),
-        (
-            dict(
-                base,
-                destination_options={"file_format": "parquet"},
-                log_destination_type="cloud-watch-logs",
-                resource_type="VPC",
-            ),
-            "destination_options requires log_destination_type to be s3 when state is present",
-        ),
     ]
     for params, message in cases:
         assert_module_rejects(plugin, params, message)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"resource_type": "TransitGateway", "traffic_type": "ALL"},
+        {"resource_type": "TransitGatewayAttachment", "max_aggregation_interval": 600},
+        {"destination_options": {"file_format": "parquet"}, "log_destination_type": "cloud-watch-logs"},
+    ],
+)
+def test_combinations_ec2_rejects_on_create_reach_ec2(overrides):
+    # Live: CreateFlowLogs rejects each of these with InvalidParameter, before creating anything.
+    module = FakeModule(present_params(**overrides), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once_with(module.client(), module)
+
+
+def test_absent_checks_the_delete_operation_before_deleting():
+    client = Mock()
+    params = dict(dict.fromkeys(plugin.ABSENT_MATCH_FIELDS), name="main")
+    params.update({"destination_options": None, "resource_ids": ["vpc-1"]})
+    with (
+        patch.object(
+            plugin,
+            "get_flow_logs",
+            return_value=[{"FlowLogId": "fl-1", "ResourceId": "vpc-1", "Tags": [{"Key": "Name", "Value": "main"}]}],
+        ),
+        patch.object(plugin, "require_client_methods", side_effect=ModuleFail({"msg": "old botocore"})) as require,
+        pytest.raises(ModuleFail),
+    ):
+        plugin.ensure_absent(client, FakeModule(params))
+
+    assert require.call_args.args[3] == {"delete_flow_logs": ("FlowLogIds",)}
+    client.delete_flow_logs.assert_not_called()
+
+
+def test_delete_does_not_check_the_delete_operation_again():
+    client = Mock()
+    client.delete_flow_logs.return_value = {}
+    with patch.object(plugin, "require_client_methods") as require:
+        assert plugin.delete_flow_logs(client, FakeModule({}), ["fl-1"]) == ["fl-1"]
+
+    require.assert_not_called()
 
 
 def test_tag_keys_may_contain_128_characters_but_not_129():
@@ -1501,18 +1534,16 @@ def test_blank_name_fails_before_aws(name, state):
     get_flow_logs.assert_not_called()
 
 
-def test_name_tag_counts_toward_the_tag_limit():
+def test_tag_count_is_not_checked_before_the_client_is_created():
     tags = {f"key{index}": "" for index in range(50)}
-    module = FakeModule(present_params(name="main", tags=tags), client=Mock())
+    module = FakeModule(present_params(name="main", tags=tags))
+    # The tag count is checked against the tags a write would leave, or left to AWS on a create that sends the tags.
+    module.client = Mock(side_effect=ModuleInitialized)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "get_flow_logs") as get_flow_logs,
-        pytest.raises(ModuleFail) as raised,
+        pytest.raises(ModuleInitialized),
     ):
         plugin.main()
-
-    assert raised.value.values == {"msg": "tags must contain at most 50 entries"}
-    get_flow_logs.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -2146,3 +2177,30 @@ def test_reserved_tag_keys_fail_before_creating_or_tagging_flow_logs(key, check_
     client.create_flow_logs.assert_not_called()
     client.create_tags.assert_not_called()
     client.delete_tags.assert_not_called()
+
+
+def test_tags_are_validated_once_with_name_replacing_their_name_key():
+    # name replaces the Name value of tags, so only the merged tags are validated.
+    module = FakeModule(present_params(name="main", tags={"Name": "v" * 257}), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_valid_tags", wraps=plugin.require_valid_tags) as require_valid_tags,
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    require_valid_tags.assert_called_once_with(module, {"Name": "main"}, ec2=True)
+    ensure_present.assert_called_once_with(module.client(), module)
+
+
+def test_tags_are_normalized_for_the_rest_of_the_run():
+    module = FakeModule(present_params(tags={1: 2}), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present"),
+    ):
+        plugin.main()
+
+    assert plugin.desired_tags(module) == {"1": "2", "Name": "main"}

@@ -106,11 +106,6 @@ def test_documented_returns_cover_the_sdk_shape(shape_name):
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
-        ({"sender_id": None}, "sender_id must contain 1 to 11 letters, numbers, hyphens, or underscores"),
-        ({"sender_id": "TWELVECHARSX"}, "sender_id must contain 1 to 11 letters, numbers, hyphens, or underscores"),
-        ({"sender_id": "BAD ID"}, "sender_id must contain 1 to 11 letters, numbers, hyphens, or underscores"),
-        ({"iso_country_code": None}, "iso_country_code must be exactly two uppercase letters"),
-        ({"iso_country_code": "de"}, "iso_country_code must be exactly two uppercase letters"),
         ({"message_types": []}, "message_types must not be empty"),
         (
             {"tags": {"Team": "R&D"}},
@@ -132,15 +127,44 @@ def test_invalid_input_fails_before_any_aws_call(overrides, message, check_mode)
     connect.assert_not_called()
 
 
-@pytest.mark.parametrize("check_mode", [False, True])
-def test_create_with_a_reserved_tag_key_fails_before_any_write(check_mode):
+@pytest.mark.parametrize("state", ["absent", "present"])
+@pytest.mark.parametrize(
+    "overrides",
+    [{"sender_id": ""}, {"sender_id": "TWELVECHARSX"}, {"sender_id": "BAD ID"}, {"iso_country_code": "de"}],
+    ids=["empty-sender-id", "long-sender-id", "space-sender-id", "lowercase-country"],
+)
+def test_sender_id_and_country_are_validated_by_aws(overrides, state):
+    # ansible-core turns an explicit null into "". DescribeSenderIds, the first call, rejects these.
     client = model_client()
+    module = FakeModule(params(state=state, **overrides), client=client)
+    result, _require, paginate = run(module, describe=client_error("ValidationException", "DescribeSenderIds"))
+
+    assert isinstance(result, ModuleFail)
+    assert result.values["msg"].startswith("Unable to describe Pinpoint SMS Voice V2 sender ID ")
+    paginate.assert_called_once()
+    client.request_sender_id.assert_not_called()
+    client.release_sender_id.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_create_with_a_reserved_tag_key_is_left_to_aws(check_mode):
+    # RequestSenderId is the run's only write, so AWS rejects the reserved key with nothing changed.
+    client = model_client()
+    client.request_sender_id.side_effect = client_error("ValidationException", "RequestSenderId")
     module = FakeModule(params(tags={"aws:team": "x", "Team": "Ops"}), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=None)
 
-    assert isinstance(result, ModuleFail)
-    assert result.values == {"msg": "tag keys beginning with aws: are reserved and cannot be set"}
-    client.request_sender_id.assert_not_called()
+    if check_mode:
+        assert isinstance(result, ModuleExit)
+        assert result.values["changed"] is True
+        client.request_sender_id.assert_not_called()
+    else:
+        assert isinstance(result, ModuleFail)
+        assert result.values == {"msg": "Unable to request Pinpoint SMS Voice V2 sender ID EXAMPLE in DE"}
+        assert client.request_sender_id.call_args.kwargs["Tags"] == [
+            {"Key": "aws:team", "Value": "x"},
+            {"Key": "Team", "Value": "Ops"},
+        ]
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -559,20 +583,25 @@ def test_release_of_sender_id_released_elsewhere_is_no_change():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_release_of_deletion_protected_sender_id_fails(check_mode):
+def test_release_of_deletion_protected_sender_id_is_left_to_aws(check_mode):
+    # ReleaseSenderId answers ConflictException for a protected sender ID; the module does not disable protection.
     client = model_client()
+    client.release_sender_id.side_effect = client_error(
+        "ConflictException", "ReleaseSenderId", reason="DELETION_PROTECTION_ENABLED"
+    )
     module = FakeModule(params(state="absent"), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=described(DeletionProtectionEnabled=True))
 
-    assert isinstance(result, ModuleFail)
-    assert result.values == {
-        "msg": (
-            "Unable to release Pinpoint SMS Voice V2 sender ID EXAMPLE in DE because deletion protection is "
-            "enabled; set deletion_protection_enabled to false with state=present first"
-        )
-    }
+    if check_mode:
+        assert isinstance(result, ModuleExit)
+        assert result.values["changed"] is True
+        client.release_sender_id.assert_not_called()
+    else:
+        assert isinstance(result, ModuleFail)
+        assert result.values == {"msg": "Unable to release Pinpoint SMS Voice V2 sender ID EXAMPLE in DE"}
+        client.release_sender_id.assert_called_once_with(SenderId="EXAMPLE", IsoCountryCode="DE", aws_retry=True)
+
     client.update_sender_id.assert_not_called()
-    client.release_sender_id.assert_not_called()
 
 
 def test_release_error_is_reported():
@@ -596,15 +625,11 @@ def test_describe_error_is_reported(state):
     assert result.values == {"msg": "Unable to describe Pinpoint SMS Voice V2 sender ID EXAMPLE in DE"}
 
 
-def test_describe_rejects_another_sender_id():
+def test_describe_returns_the_described_sender_id_without_comparing_it():
     module = FakeModule(params(), client=model_client())
-    with (
-        patch.object(plugin, "paginated_query_with_retries", return_value={"SenderIds": [described(SenderId="OTHER")]}),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_sender_id(module._client, module)
-
-    assert raised.value.values["msg"] == "AWS returned the wrong Pinpoint SMS Voice V2 sender ID while describing it"
+    other = described(SenderId="OTHER")
+    with patch.object(plugin, "paginated_query_with_retries", return_value={"SenderIds": [other]}):
+        assert plugin.get_sender_id(module._client, module) == other
 
 
 def test_describe_matches_without_letter_case():

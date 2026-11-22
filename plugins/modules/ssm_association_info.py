@@ -17,8 +17,10 @@ options:
       - A dict of filters to apply when listing Systems Manager associations.
       - Filter keys and values are passed to the Systems Manager
         C(ListAssociations) API as C(AssociationFilterList).
-      - Each filter key requires exactly one non-null value, given as a scalar
-        or a list of one item, and associations must match every filter.
+      - Each filter key takes a non-null value, given as a scalar or a
+        non-empty list, and associations must match every filter.
+      - A list value sends one filter entry per item; Systems Manager rejects
+        a filter key that is repeated.
     type: dict
 extends_documentation_fragment:
   - amazon.aws.common.modules
@@ -153,6 +155,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     SSM_ASSOCIATION_RESOURCE_TYPE,
     association_overview,
     list_ssm_tags,
+    require_non_null_ssm_filter_values,
     ssm_filter_list,
 )
 
@@ -163,15 +166,12 @@ def main():
         supports_check_mode=True,
     )
     filters = module.params["filters"]
-    for key, value in (filters or {}).items():
-        values = value if isinstance(value, list) else [value]
-        if len(values) != 1 or values[0] is None:
-            module.fail_json(
-                msg=(
-                    f"filters.{key} requires exactly one value; "
-                    "ListAssociations does not allow an empty or repeated filter key"
-                )
-            )
+    if filters:
+        require_non_null_ssm_filter_values(module, filters)
+        for key, value in filters.items():
+            # An empty list would drop the filter and broaden the results, so it is rejected.
+            if value == []:
+                module.fail_json(msg=f"filters.{key} must not be empty")
 
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())
 

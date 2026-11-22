@@ -1,0 +1,22 @@
+---
+minor_changes:
+  - ssm_association - an empty O(targets) list is now rejected by Systems Manager instead of by the module, so check
+    mode no longer reports it as an error.
+  - ssm_association_info - a O(filters) key with more than one value now sends one filter entry per value, and Systems
+    Manager rejects the repeated key instead of the module; empty and null values are still rejected by the module.
+  - ssm_document - an explicit null O(content) is now rejected by Systems Manager instead of by the module; an explicit
+    null O(document_type) is still rejected by the module.
+  - ssm_send_command - empty O(instance_ids) and O(targets) lists are now rejected by Systems Manager instead of by the
+    module, so check mode no longer reports them as an error.
+  - wafv2_web_acl_logging - a missing web ACL and a web ACL ARN from another region are now rejected by AWS WAFv2 instead
+    of by the module, which no longer calls C(GetWebACL); an ARN that is not a WAFv2 web ACL is still rejected by the
+    module.
+trivial:
+  - ssm_association and ssm_document - reuse the tag changes calculated before the write instead of calculating them
+    again, and skip them after a create, which sends its tags.
+  - ssm_document - read the default version from the C(DescribeDocument) response instead of calling C(GetDocument)
+    for it, and always convert the returned document.
+  - ssm_document_info - clarify the RV(document) return description.
+  - wafv2_web_acl_logging - compare only the logging destinations, which AWS always returns.
+  - Custom waiters - drop explicit retry acceptors for statuses, which botocore already keeps polling, and fold the
+    single-use waiter factory helper into custom_waiter.

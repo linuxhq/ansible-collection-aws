@@ -56,7 +56,6 @@ options:
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
-      - This must be exactly two uppercase letters.
       - This is required when O(state=present).
     type: str
   message_type:
@@ -75,7 +74,6 @@ options:
       - VOICE
     description:
       - The capabilities requested for the phone number.
-      - This must contain 1 to 4 capabilities.
       - This is required when O(state=present).
     elements: str
     type: list
@@ -97,7 +95,6 @@ options:
       - TOLL_FREE
     description:
       - The type of phone number to request.
-      - When set to C(SIMULATOR), O(message_type) must be C(TRANSACTIONAL).
       - This is required when O(state=present).
     type: str
   opt_out_list_name:
@@ -105,7 +102,6 @@ options:
       - The OptOutList name or ARN to associate with the phone number.
       - When omitted for an existing number, the current OptOutList is left unchanged.
       - This cannot be changed on an existing number that is associated with a pool.
-      - This must not be empty when provided with O(state=present).
     type: str
   phone_number_id:
     description:
@@ -131,7 +127,6 @@ options:
   registration_id:
     description:
       - The registration ID or ARN to attach to the phone number request.
-      - This must not be empty when provided with O(state=present).
     type: str
   state:
     description:
@@ -345,7 +340,6 @@ state:
   type: str
 """
 
-import re
 import time
 
 try:
@@ -377,6 +371,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     is_last_phone_number_conflict,
     is_replayed_deleted_resource,
     last_phone_number_message,
+    list_pool_origination_identities,
     list_tags,
     pool_is_deleting,
 )
@@ -415,11 +410,6 @@ def phone_number_tags(client, module, phone_number, changed=False, missing_ok=Fa
 
     With missing_ok, a phone number released since it was described returns None instead of failing.
     """
-    arn = phone_number.get("PhoneNumberArn")
-
-    if not arn:
-        return {}
-
     require_client_methods(
         module,
         client,
@@ -427,7 +417,9 @@ def phone_number_tags(client, module, phone_number, changed=False, missing_ok=Fa
         {"list_tags_for_resource": ("ResourceArn",)},
         changed=changed,
     )
-    tags = list_tags(client, module, arn, "phone number", changed=changed, missing_ok=missing_ok)
+    tags = list_tags(
+        client, module, phone_number["PhoneNumberArn"], "phone number", changed=changed, missing_ok=missing_ok
+    )
     if tags is None:
         return None
 
@@ -493,18 +485,7 @@ def get_phone_number(client, module, phone_number_id, changed=False):
         )
 
     phone_numbers = response.get("PhoneNumbers", [])
-    if not phone_numbers:
-        return None
-
-    phone_number = phone_numbers[0]
-    # DescribePhoneNumbers accepts an ID or an ARN but always returns the ID.
-    if phone_number["PhoneNumberId"] != phone_number_id.rsplit("/", 1)[-1]:
-        module.fail_json(
-            changed=changed,
-            msg=f"AWS returned the wrong Pinpoint SMS Voice V2 phone number while describing {phone_number_id}",
-        )
-
-    return phone_number
+    return phone_numbers[0] if phone_numbers else None
 
 
 def wait_for_phone_number_active(client, module, phone_number_id, tags=None, changed=False):
@@ -534,7 +515,7 @@ def wait_for_phone_number_active(client, module, phone_number_id, tags=None, cha
         status = phone_number.get("Status")
 
         if status == "ACTIVE":
-            if module.params.get("state") == "present" and phone_number.get("PhoneNumberArn"):
+            if module.params.get("state") == "present":
                 phone_number = dict(phone_number)
                 if tags is None:
                     tags = ansible_dict_to_boto3_tag_list(
@@ -639,12 +620,9 @@ def require_not_last_pool_phone_number(client, module, current):
             "list_pool_origination_identities": ("PoolId",),
         },
     )
-    try:
-        response = paginated_query_with_retries(client, "list_pool_origination_identities", PoolId=pool_id)
-    except is_boto3_error_code("ResourceNotFoundException"):
+    response = list_pool_origination_identities(client, module, pool_id, missing_ok=True)
+    if response is None:
         return
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {pool_id}")
 
     originations = response.get("OriginationIdentities", [])
 
@@ -784,7 +762,8 @@ def ensure_absent(client, module):
     exit_result(module, changed, response)
 
 
-def ensure_present(client, module):
+def ensure_present(client, module, tags):
+    """Converge the phone number; tags are the validated tags with the Name tag from name."""
     deletion_protection_enabled = module.params["deletion_protection_enabled"]
     iso_country_code = module.params["iso_country_code"]
     message_type = module.params["message_type"]
@@ -819,7 +798,7 @@ def ensure_present(client, module):
     desired = {
         "IsoCountryCode": iso_country_code,
         "MessageType": message_type,
-        "NumberCapabilities": sorted(set(number_capabilities or [])),
+        "NumberCapabilities": sorted(set(number_capabilities)),
         "NumberType": number_type,
     }
     if pool_id is not None:
@@ -845,8 +824,6 @@ def ensure_present(client, module):
         # Without phone_number_id, the Name tag identifies the number; other tags converge below.
         current = find_phone_number_by_name(client, module, matches)
 
-    tags = dict(module.params["tags"] or {})
-    tags["Name"] = module.params["name"]
     if current is not None:
         current, updates, tags_to_set, tag_keys_to_unset = phone_number_changes(client, module, current, tags)
         if (
@@ -1060,28 +1037,17 @@ def main():
     state = module.params["state"]
 
     if state == "present":
-        # required_if counts only supplied keys, so an explicit null passes it.
+        # required_if counts only supplied keys, so an explicit null passes it. A null for an option with choices,
+        # such as number_capabilities, already fails the choices check.
         if module.params["iso_country_code"] is None:
             module.fail_json(msg="state is present but all of the following are missing: iso_country_code")
 
-        if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"]):
-            module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
+        # No number is in a pool with an empty ID, so a request with an empty pool_id could never converge.
+        require_non_blank(module, module.params["pool_id"], "pool_id")
 
-        if not 1 <= len(set(module.params["number_capabilities"])) <= 4:
-            module.fail_json(msg="number_capabilities must contain 1 to 4 capabilities")
-
-        if module.params["number_type"] == "SIMULATOR" and module.params["message_type"] != "TRANSACTIONAL":
-            module.fail_json(msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR")
-
-        # AWS rejects empty identifiers, which check mode would otherwise predict as a new request or an update.
-        for option in ("opt_out_list_name", "pool_id", "registration_id"):
-            require_non_blank(module, module.params[option], option)
-
-        require_valid_tags(module, module.params["tags"], 200)
-        tags = dict(module.params["tags"] or {})
-        tags["Name"] = module.params["name"]
-        # Check characters only on the tags sent to AWS, after name replaces any Name entry in tags.
-        require_valid_tags(module, tags, 200, restricted_characters=True)
+        # name replaces any Name entry in tags, so only the tags sent to AWS are checked.
+        tags = dict(module.params["tags"] or {}, Name=module.params["name"])
+        require_valid_tags(module, tags, restricted_characters=True)
 
     require_positive_wait_bounds(module, always=True)
 
@@ -1099,7 +1065,7 @@ def main():
     )
 
     if state == "present":
-        ensure_present(client, module)
+        ensure_present(client, module, tags)
 
     if state == "absent":
         ensure_absent(client, module)

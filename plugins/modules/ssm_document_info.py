@@ -96,7 +96,8 @@ EXAMPLES = r"""
 RETURN = r"""
 document:
   description:
-    - The first AWS Systems Manager document, when one document is returned.
+    - The AWS Systems Manager document when exactly one document is returned.
+    - An empty dictionary when no document or more than one document is returned.
   returned: always
   type: dict
   contains:

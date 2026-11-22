@@ -31,16 +31,12 @@ options:
   iso_country_code:
     description:
       - The two-character ISO 3166-1 alpha-2 country or region code.
-      - When provided, this must be exactly two uppercase letters.
       - This is optional for origination identities that are not
         country-specific.
       - Without this, associating an origination identity, or disassociating
         one that is not a phone number, requires botocore 1.42.80 or later;
         the module checks this before any change, including in check mode.
-      - AWS requires this to associate a phone number, so with
-        O(state=present) the module fails without changes, including in check
-        mode, when this is omitted and O(origination_identity) is a phone
-        number ID or ARN that is not yet associated with the pool.
+      - AWS requires this to associate a phone number.
       - With O(state=absent), when this is omitted for a phone number, the
         country AWS lists for it in the pool is used.
     type: str
@@ -52,7 +48,6 @@ options:
       - AWS treats sender IDs without letter case, so a sender ID or sender ID
         ARN matches an association in any letter case. Phone number IDs and
         ARNs match exactly.
-      - This must not be empty when O(state=present).
     required: true
     type: str
   pool_id:
@@ -160,8 +155,6 @@ state:
   type: str
 """
 
-import re
-
 try:
     from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:
@@ -169,10 +162,7 @@ except ImportError:
 
 from ansible.module_utils.common.dict_transformations import snake_dict_to_camel_dict
 
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-    paginated_query_with_retries,
-)
+from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -187,13 +177,13 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice imp
     is_phone_number_identity,
     is_phone_number_reference,
     last_phone_number_message,
+    list_pool_origination_identities,
     pool_is_deleting,
     predicted_origination_identity,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 
 # Listed association fields that the DisassociateOriginationIdentity response does not model.
 DISASSOCIATE_OMITTED_FIELDS = ("NumberCapabilities", "PhoneNumber")
@@ -204,25 +194,16 @@ def current_associations(client, module, changed=False):
 
     changed reports whether the pool was already modified, for failure results.
     """
-    try:
-        response = paginated_query_with_retries(
-            client,
-            "list_pool_origination_identities",
-            PoolId=module.params["pool_id"],
-        )
-    except is_boto3_error_code("ResourceNotFoundException"):
+    response = list_pool_origination_identities(
+        client, module, module.params["pool_id"], changed=changed, missing_ok=True
+    )
+    if response is None:
         if module.params["state"] == "present":
             module.fail_json(
                 changed=changed, msg=f"Pinpoint SMS Voice V2 pool {module.params['pool_id']} does not exist"
             )
 
         return {}, []
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(
-            e,
-            changed=changed,
-            msg=f"Unable to list origination identities for Pinpoint SMS Voice V2 pool {module.params['pool_id']}",
-        )
 
     associations = response.get("OriginationIdentities", [])
 
@@ -235,19 +216,6 @@ def current_associations(client, module, changed=False):
     )
 
     return pool, [dict(association, **pool) for association in associations]
-
-
-def validate_association(module, association, changed=False):
-    expected_pool_id = module.params["pool_id"].rsplit("/", 1)[-1]
-    if association["PoolId"] != expected_pool_id or not identity_matches(
-        association, (module.params["origination_identity"],)
-    ):
-        module.fail_json(
-            changed=changed,
-            msg="AWS returned the wrong Pinpoint SMS Voice V2 origination identity association",
-        )
-
-    return association
 
 
 def current_association(module, associations):
@@ -293,15 +261,6 @@ def ensure_present(client, module):
     association = current_association(module, current)
     changed = association is None
 
-    # AWS rejects associating a phone number without its country, which check mode would otherwise predict.
-    if changed and module.params["iso_country_code"] is None and is_phone_number_reference(origination_identity):
-        module.fail_json(
-            msg=(
-                f"iso_country_code is required to associate phone number {origination_identity} "
-                f"with Pinpoint SMS Voice V2 pool {module.params['pool_id']}"
-            )
-        )
-
     # botocore before 1.42.80 requires IsoCountryCode for AssociateOriginationIdentity and refuses the request without it.
     if changed and module.params["iso_country_code"] is None:
         module.require_botocore_at_least(
@@ -325,7 +284,6 @@ def ensure_present(client, module):
                 ),
             )
 
-        validate_association(module, association, changed=True)
         association.pop("ResponseMetadata", None)
         if module.params["client_token"] is not None and (
             current_association(module, current_associations(client, module, changed=True)[1]) is None
@@ -419,7 +377,6 @@ def ensure_absent(client, module):
             module.fail_json_aws(e, msg=disassociate_failure_message(module))
 
         if response is not None:
-            validate_association(module, response, changed=True)
             response.pop("ResponseMetadata", None)
             association = response
 
@@ -444,15 +401,6 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-
-    if module.params["iso_country_code"] is not None and not re.fullmatch(
-        r"[A-Z]{2}", module.params["iso_country_code"]
-    ):
-        module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
-
-    # AWS rejects an empty origination identity, which check mode would otherwise predict as a new association.
-    if state == "present":
-        require_non_blank(module, module.params["origination_identity"], "origination_identity")
 
     client = module.client(
         "pinpoint-sms-voice-v2",

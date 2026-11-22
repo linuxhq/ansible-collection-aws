@@ -16,12 +16,22 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 )
 
 
-def quota_from_response(module, response, description, service_code, quota_code, context_id=None, resource_scope=False):
-    quota = response["Quota"]
-    for key, expected in (("ServiceCode", service_code), ("QuotaCode", quota_code)):
-        if key in quota and quota[key] != expected:
-            module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota for {service_code}/{quota_code}")
+def quota_identifier(service_code, quota_code, context_id=None):
+    """Return the quota identifier that failure messages name."""
+    return f"{service_code}/{quota_code}" + (f" for {context_id}" if context_id else "")
 
+
+def quota_parameters(service_code, quota_code, context_id=None):
+    """Return the request parameters that identify a quota."""
+    parameters = {"QuotaCode": quota_code, "ServiceCode": service_code}
+    if context_id:
+        parameters["ContextId"] = context_id
+
+    return parameters
+
+
+def quota_from_response(module, response, service_code, quota_code, context_id=None, resource_scope=False):
+    quota = response["Quota"]
     quota_context = quota.get("QuotaContext")
     if context_id and (quota_context is None or quota_context.get("ContextId") != context_id):
         module.fail_json(msg=f"AWS Service Quotas returned a mismatched quota context for {service_code}/{quota_code}")
@@ -49,14 +59,22 @@ def get_quota(client, module, service_code, quota_code, context_id=None):
 
     A context without its own applied value uses the quota that applies to every resource in the scope.
     """
-    identifier = f"{service_code}/{quota_code}" + (f" for {context_id}" if context_id else "")
-    request = {"QuotaCode": quota_code, "ServiceCode": service_code}
+    identifier = quota_identifier(service_code, quota_code, context_id)
+    request = quota_parameters(service_code, quota_code)
     lookups = [
         (client.get_service_quota, "service quota", request, None),
         (client.get_aws_default_service_quota, "default service quota", request, None),
     ]
     if context_id:
-        lookups.insert(0, (client.get_service_quota, "service quota", dict(request, ContextId=context_id), context_id))
+        lookups.insert(
+            0,
+            (
+                client.get_service_quota,
+                "service quota",
+                quota_parameters(service_code, quota_code, context_id),
+                context_id,
+            ),
+        )
 
     for method, description, lookup_request, lookup_context_id in lookups:
         try:
@@ -69,7 +87,6 @@ def get_quota(client, module, service_code, quota_code, context_id=None):
         return quota_from_response(
             module,
             response,
-            description,
             service_code,
             quota_code,
             lookup_context_id,

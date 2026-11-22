@@ -155,15 +155,6 @@ sender_ids:
       type: dict
 """
 
-try:
-    from botocore.exceptions import BotoCoreError, ClientError
-except ImportError:
-    pass
-
-from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
-    is_boto3_error_code,
-    paginated_query_with_retries,
-)
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
 from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
@@ -173,7 +164,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.filters import (
     ansible_dict_to_string_filter_list,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import list_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.pinpoint_sms_voice import (
+    describe_each,
+    list_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -197,30 +191,18 @@ def unique_sender_ids(sender_ids):
 
 
 def describe_sender_ids_by_id(module, client, request):
-    sender_ids = []
-    for sender_id in request["SenderIds"]:
-        try:
-            response = paginated_query_with_retries(
-                client,
-                "describe_sender_ids",
-                **dict(request, SenderIds=[sender_id]),
-            )
-        except is_boto3_error_code("ResourceNotFoundException"):
-            continue
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=(
-                    f"Unable to describe Pinpoint SMS Voice V2 sender ID {sender_id['SenderId']} "
-                    f"in {sender_id['IsoCountryCode']}"
-                ),
-            )
-
-        sender_ids.extend(response.get("SenderIds", []))
-
+    found = describe_each(
+        client,
+        module,
+        "describe_sender_ids",
+        "SenderIds",
+        request,
+        "SenderIds",
+        lambda sender_id: f"sender ID {sender_id['SenderId']} in {sender_id['IsoCountryCode']}",
+    )
     # A sender ID requested both by its ID and by its ARN is returned once, keyed by the ARN AWS reports.
     unique = {}
-    for sender_id in sender_ids:
+    for sender_id in found:
         unique.setdefault(sender_id["SenderIdArn"], sender_id)
 
     return list(unique.values())

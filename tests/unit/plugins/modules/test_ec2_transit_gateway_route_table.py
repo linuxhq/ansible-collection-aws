@@ -12,6 +12,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules import utils
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleExit,
     ModuleFail,
+    ModuleInitialized,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -92,7 +93,7 @@ def test_name_is_merged_into_desired_tags():
     assert plugin.desired_tags(module) == {"Env": "prod", "Name": "main"}
 
 
-def test_name_tag_counts_toward_provider_limit():
+def test_tag_count_is_not_checked_before_the_client_is_created():
     module = FakeModule(
         {
             "name": "main",
@@ -104,14 +105,14 @@ def test_name_tag_counts_toward_provider_limit():
             "transit_gateway_route_table_id": None,
         }
     )
+    # The tag count is checked against the tags a write would leave, or left to AWS on a create that sends the tags.
+    module.client = Mock(side_effect=ModuleInitialized)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_positive_wait_bounds"),
-        pytest.raises(ModuleFail) as raised,
+        pytest.raises(ModuleInitialized),
     ):
         plugin.main()
-
-    assert raised.value.values["msg"] == "tags must contain at most 50 entries"
 
 
 @pytest.mark.parametrize("name", [None, "main"])

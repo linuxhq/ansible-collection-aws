@@ -6,17 +6,11 @@ import pytest
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import route53_resolver as route53_resolver_utils
 from ansible_collections.linuxhq.aws.plugins.module_utils.route53_resolver import (
-    AWS_OWNED_RULE_OWNER,
     comparable_ip_entry_matches,
     comparable_ip_fields,
     comparable_ips_match,
     comparable_ips_matches,
-    reconcile_resolver_arn_tags,
-    require_ip_versions,
     resolver_resource_with_tags,
-    valid_resolver_name,
-    validate_resolver_endpoint,
-    validate_resolver_rule,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -46,50 +40,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 def test_comparable_ip_fields_normalizes_addresses_and_drops_unset_fields(item, fields, expected):
     assert comparable_ip_fields(item, fields) == expected
-
-
-@pytest.mark.parametrize(
-    "entry",
-    [
-        {"ip": "192.0.2.1"},
-        {"ipv6": "2001:db8::1"},
-        {"ip": "192.0.2.1", "ipv6": "2001:db8::1"},
-        {"ip": None, "ipv6": None},
-    ],
-)
-def test_require_ip_versions_accepts_matching_versions(entry):
-    require_ip_versions(FakeModule({}), entry, "target_ips")
-
-
-@pytest.mark.parametrize(
-    "entry, message",
-    [
-        ({"ip": "2001:db8::1"}, "target_ips[].ip must be a valid IPv4 address"),
-        ({"ipv6": "192.0.2.1"}, "target_ips[].ipv6 must be a valid IPv6 address"),
-        ({"ip": "not-an-ip"}, "target_ips[].ip must be a valid IPv4 address"),
-    ],
-)
-def test_require_ip_versions_rejects_wrong_versions(entry, message):
-    with pytest.raises(ModuleFail) as raised:
-        require_ip_versions(FakeModule({}), entry, "target_ips")
-
-    assert raised.value.values["msg"] == message
-
-
-@pytest.mark.parametrize(
-    "name, valid",
-    [
-        ("main", True),
-        ("it's a-name_1", True),
-        ("a" * 64, True),
-        ("a" * 65, False),
-        ("12345", False),
-        ("bad.name", False),
-        ("", False),
-    ],
-)
-def test_valid_resolver_name(name, valid):
-    assert valid_resolver_name(name) is valid
 
 
 @pytest.mark.parametrize(
@@ -175,20 +125,6 @@ def test_resolver_resource_with_tags_lists_tags_by_arn():
     assert query.call_args.kwargs["ResourceArn"] == "arn:rule"
 
 
-def test_validate_resolver_rule_accepts_the_aws_owned_rule():
-    rule = {
-        "Arn": "arn:aws:route53resolver:us-east-1::autodefined-rule/rslvr-autodefined-rr-internet-resolver",
-        "DomainName": ".",
-        "Id": "rslvr-autodefined-rr-internet-resolver",
-        "Name": "Internet Resolver",
-        "OwnerId": AWS_OWNED_RULE_OWNER,
-        "RuleType": "RECURSIVE",
-        "Status": "COMPLETE",
-    }
-
-    assert validate_resolver_rule(FakeModule({}), rule, "list_resolver_rules") is rule
-
-
 def test_comparable_ips_matches_reports_each_desired_entry_match():
     current = [{"ip": "192.0.2.1", "port": 53}, {"ip": "192.0.2.2", "port": 53}]
     desired = [{"ip": "192.0.2.2"}, {"ip": "192.0.2.9"}, {"ip": "192.0.2.1", "port": 53}]
@@ -210,60 +146,3 @@ def test_comparable_ip_entry_matches_treats_an_empty_desired_value_as_absent():
     assert not comparable_ip_entry_matches(
         dict(current, server_name_indication="dns.example.com"), {"server_name_indication": ""}
     )
-
-
-def test_reconcile_resolver_arn_tags_skips_empty_deltas():
-    with patch.object(route53_resolver_utils, "reconcile_arn_tags") as reconcile:
-        reconcile_resolver_arn_tags(FakeModule({}), Mock(), {}, "rule", {}, [])
-
-    reconcile.assert_not_called()
-
-
-def test_reconcile_resolver_arn_tags_reconciles_by_arn():
-    module = FakeModule({})
-    client = Mock()
-    with patch.object(route53_resolver_utils, "reconcile_arn_tags") as reconcile:
-        reconcile_resolver_arn_tags(
-            module, client, {"Arn": "arn:rule"}, "rule", {"new": "value"}, ["old"], changed=True
-        )
-
-    reconcile.assert_called_once_with(
-        module, client, "arn:rule", {"new": "value"}, ["old"], "AWS Route53 Resolver rule", changed=True
-    )
-
-
-@pytest.mark.parametrize(
-    "kwargs, message",
-    [
-        (
-            {"expected_id": "rslvr-in-2"},
-            "get_resolver_endpoint: AWS returned an unexpected resolver endpoint ID rslvr-in-1",
-        ),
-        ({"expected_name": "other"}, "get_resolver_endpoint: AWS returned an unexpected resolver endpoint name"),
-    ],
-)
-def test_validate_resolver_endpoint_rejects_another_endpoint(kwargs, message):
-    endpoint = {"Id": "rslvr-in-1", "Name": "main"}
-    assert (
-        validate_resolver_endpoint(FakeModule({}), endpoint, "get_resolver_endpoint", expected_id="rslvr-in-1")
-        is endpoint
-    )
-
-    with pytest.raises(ModuleFail) as raised:
-        validate_resolver_endpoint(FakeModule({}), endpoint, "get_resolver_endpoint", changed=True, **kwargs)
-
-    assert raised.value.values == {"changed": True, "msg": message}
-
-
-@pytest.mark.parametrize(
-    "kwargs, message",
-    [
-        ({"expected_id": "rslvr-rr-2"}, "get_resolver_rule: AWS returned an unexpected resolver rule ID rslvr-rr-1"),
-        ({"expected_name": "other"}, "get_resolver_rule: AWS returned an unexpected resolver rule name"),
-    ],
-)
-def test_validate_resolver_rule_rejects_another_rule(kwargs, message):
-    with pytest.raises(ModuleFail) as raised:
-        validate_resolver_rule(FakeModule({}), {"Id": "rslvr-rr-1", "Name": "main"}, "get_resolver_rule", **kwargs)
-
-    assert raised.value.values == {"changed": False, "msg": message}

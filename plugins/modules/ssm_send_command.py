@@ -562,9 +562,6 @@ def main():
             (target["key"], tuple(dict.fromkeys(target["values"]))) for target in module.params["targets"] or []
         )
     ]
-    if not instance_ids and not targets:
-        module.fail_json(msg="instance_ids or targets must contain at least one entry")
-
     require_positive_wait_bounds(module)
 
     client = module.client("ssm", retry_decorator=AWSRetry.jittered_backoff())

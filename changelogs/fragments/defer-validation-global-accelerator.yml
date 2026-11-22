@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - global_accelerator - check mode now fails, as a real run does, when the installed botocore lacks a Global
+    Accelerator operation or parameter the run needs, instead of predicting a change the real run cannot make.
+trivial:
+  - global_accelerator - create the endpoint groups of a new listener without listing them first, and share the
+    endpoint group result conversion, PortOverrides request, port range, and EC2 endpoint checks.
+  - global_accelerator_info - check the listener and endpoint group listing operations once instead of for every
+    accelerator and listener.
+...

@@ -43,7 +43,7 @@ def document(content, **overrides):
 
 
 def described(document_format="JSON", **overrides):
-    values = {"DocumentFormat": document_format, "Name": "example", "Status": "Active"}
+    values = {"DefaultVersion": "1", "DocumentFormat": document_format, "Name": "example", "Status": "Active"}
     values.update(overrides)
     return values
 
@@ -52,7 +52,7 @@ def run_present(client, module, documents, description=None):
     """Run ensure_present with get_document returning each document in turn and waits patched out."""
     reads = documents if callable(documents) else Mock(side_effect=list(documents))
     with (
-        patch.object(plugin, "describe_ssm_document", return_value=description),
+        patch.object(plugin, "describe_ssm_document", return_value=description or described()),
         patch.object(plugin, "get_document", side_effect=reads) as get_document,
         patch.object(plugin, "wait_for_document") as wait_for_document,
         pytest.raises((ModuleExit, ModuleFail)) as raised,
@@ -490,14 +490,9 @@ def test_waiters_stop_on_terminal_states():
         for acceptor in plugin.SSM_DOCUMENT_WAITER_MODEL_DATA["document_deleted"]["acceptors"]
     }
 
-    assert active == {
-        "Active": "success",
-        "Failed": "success",
-        "Creating": "retry",
-        "Updating": "retry",
-        "Deleting": "failure",
-    }
-    assert deleted == {"InvalidDocument": "success", "Deleting": "retry"}
+    # Botocore keeps polling a response no acceptor matches, so transitional statuses need no acceptor.
+    assert active == {"Active": "success", "Failed": "success", "Deleting": "failure"}
+    assert deleted == {"InvalidDocument": "success"}
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -524,7 +519,9 @@ def test_retry_recovers_failed_default_promotion(check_mode):
     assert client.update_document_default_version.call_count == (1 if check_mode else 2)
     assert result.values["changed"] is True
     if not check_mode:
-        result, _wait, _get = run_present(client, module, lambda *args, **kwargs: latest)
+        result, _wait, _get = run_present(
+            client, module, lambda *args, **kwargs: latest, description=described(DefaultVersion="2")
+        )
 
         assert result.values["changed"] is False
         assert client.update_document_default_version.call_count == 2
@@ -1049,35 +1046,34 @@ def test_resulting_50_tags_update_the_document():
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_more_than_50_tags_are_rejected_before_aws(check_mode):
+def test_more_than_50_tags_are_rejected_before_the_create(check_mode):
     # AWS rejects a 51st document tag with ValidationException on create and TooManyTagsError when tagging.
-    module = FakeModule(params(tags={f"key{index}": "" for index in range(51)}), check_mode=check_mode)
-    module.client = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
+    client = Mock()
+    result, _wait, _get = run_present(
+        client,
+        FakeModule(params(tags={f"key{index}": "" for index in range(51)}), check_mode=check_mode),
+        [None],
+        description=None,
+    )
 
-    assert raised.value.values == {"msg": "tags must contain at most 50 entries"}
-    module.client.assert_not_called()
+    assert result.values["msg"] == "The resulting AWS Systems Manager document tags must contain at most 50 entries"
+    client.create_document.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
-        ({"content": None}, "state is present but all of the following are missing: content"),
         ({"document_type": None}, "state is present but all of the following are missing: document_type"),
         (
             {"content": None, "document_type": None},
-            "state is present but all of the following are missing: content, document_type",
+            "state is present but all of the following are missing: document_type",
         ),
     ],
-    ids=["null-content", "null-type", "null-both"],
+    ids=["null-type", "null-both"],
 )
-def test_null_present_inputs_are_rejected_before_aws(overrides, message, check_mode):
-    # required_if passes an explicit null, which CreateDocument would receive as Content "null" or no DocumentType.
+def test_null_document_type_is_rejected_before_aws(overrides, message, check_mode):
+    # required_if passes an explicit null, which an existing document would report as an immutable type change.
     module = FakeModule(params(**overrides), check_mode=check_mode)
     module.client = Mock()
     with (
@@ -1094,6 +1090,20 @@ def test_null_present_inputs_are_rejected_before_aws(overrides, message, check_m
 def test_blank_document_type_reaches_aws(document_type):
     # CreateDocument, the run's first write, rejects a blank DocumentType, so the module does not validate it.
     module = FakeModule(params(document_type=document_type), check_mode=True)
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
+
+    module.client.assert_called_once()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_null_content_reaches_aws(check_mode):
+    # CreateDocument and UpdateDocument, the run's first write, reject the "null" content, so the module does not.
+    module = FakeModule(params(content=None), check_mode=check_mode)
     module.client = Mock(side_effect=ModuleInitialized)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -1275,3 +1285,25 @@ def test_reserved_tag_key_fails_before_updating_the_document(key, check_mode):
     client.update_document.assert_not_called()
     client.add_tags_to_resource.assert_not_called()
     client.remove_tags_from_resource.assert_not_called()
+
+
+@pytest.mark.parametrize(("default_version", "promoted"), [("1", True), ("2", False)])
+def test_latest_promotion_uses_the_described_default_version(default_version, promoted):
+    content = {"schemaVersion": "2.2"}
+    current = document(content, DocumentVersion="2")
+    client = Mock()
+    result, _wait, get_document = run_present(
+        client,
+        FakeModule(params(content=content)),
+        [current, current],
+        description=described(DefaultVersion=default_version),
+    )
+
+    assert result.values["changed"] is promoted
+    assert all(read.kwargs.get("document_version") != "$DEFAULT" for read in get_document.call_args_list)
+    if promoted:
+        client.update_document_default_version.assert_called_once_with(
+            DocumentVersion="2", Name="example", aws_retry=True
+        )
+    else:
+        client.update_document_default_version.assert_not_called()

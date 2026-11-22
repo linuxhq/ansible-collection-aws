@@ -230,21 +230,26 @@ def main():
     )
 
     route_tables = []
+    seen_route_table_ids = set()
     for batch_filters in filter_batches:
         request = {}
         if batch_filters:
             request["Filters"] = ansible_dict_to_string_filter_list(batch_filters)
 
-        route_tables.extend(
-            query_list(
-                module,
-                client,
-                "describe_transit_gateway_route_tables",
-                "TransitGatewayRouteTables",
-                "Unable to describe EC2 transit gateway route tables",
-                **request,
-            )
-        )
+        for route_table in query_list(
+            module,
+            client,
+            "describe_transit_gateway_route_tables",
+            "TransitGatewayRouteTables",
+            "Unable to describe EC2 transit gateway route tables",
+            **request,
+        ):
+            # A transit-gateway-route-table-id wildcard can match the same route table in more than one batch.
+            if route_table["TransitGatewayRouteTableId"] in seen_route_table_ids:
+                continue
+
+            seen_route_table_ids.add(route_table["TransitGatewayRouteTableId"])
+            route_tables.append(route_table)
 
     if any(route_table.get("State") == "available" for route_table in route_tables):
         require_client_methods(

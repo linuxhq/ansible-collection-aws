@@ -67,12 +67,12 @@ options:
           - When omitted while EKS Auto Mode compute is enabled, the existing node pools are kept.
           - An empty list while EKS Auto Mode compute is enabled disables the built-in node pools, and EKS then
             removes the cluster's node role.
-          - EKS rejects node pools on a cluster without EKS Auto Mode compute; the module fails before any change if
-            this is not empty and differs from the cluster's node pools while EKS Auto Mode compute is neither
-            enabled on the cluster nor enabled by O(compute_config.enabled).
-          - EKS rejects node pools without a node role; the module fails before any change if EKS Auto Mode compute
-            would be enabled with node pools while neither O(compute_config.node_role_arn) nor the cluster's node
-            role is set.
+          - EKS rejects node pools on a cluster without EKS Auto Mode compute; for an existing cluster, the module
+            fails before any change if this is not empty and differs from the cluster's node pools while EKS Auto
+            Mode compute is neither enabled on the cluster nor enabled by O(compute_config.enabled).
+          - EKS rejects node pools without a node role; for an existing cluster, the module fails before any change
+            if EKS Auto Mode compute would be enabled with node pools while neither O(compute_config.node_role_arn)
+            nor the cluster's node role is set.
         elements: str
         type: list
       node_role_arn:
@@ -84,9 +84,9 @@ options:
           - This cannot be changed while EKS Auto Mode compute stays enabled and the cluster has a node role; the module
             fails before any change if it differs from the cluster's node role.
           - A cluster with EKS Auto Mode compute enabled and no node role accepts a node role together with node pools.
-          - EKS rejects a node role on a cluster without EKS Auto Mode compute; the module fails before any change if
-            this is set and differs from the cluster's node role while EKS Auto Mode compute is neither enabled on
-            the cluster nor enabled by O(compute_config.enabled).
+          - EKS rejects a node role on a cluster without EKS Auto Mode compute; for an existing cluster, the module
+            fails before any change if this is set and differs from the cluster's node role while EKS Auto Mode
+            compute is neither enabled on the cluster nor enabled by O(compute_config.enabled).
         type: str
     type: dict
   deletion_protection:
@@ -229,10 +229,10 @@ options:
                 A repeated CIDR block is sent once.
               - Each CIDR block must be an IPv4 block within V(10.0.0.0/8), V(172.16.0.0/12), V(192.168.0.0/16), or
                 V(100.64.0.0/10), and must not overlap another remote node or pod network block or the cluster's
-                service CIDR block. The module fails before any change otherwise.
-              - When updating the remote networks of an existing cluster, each CIDR block must not overlap an
+                service CIDR block. When creating a cluster, EKS rejects a CIDR block that does not.
+              - When updating the remote networks of an existing cluster, each CIDR block must also not overlap an
                 associated IPv4 CIDR block of the cluster's VPC. The module reads the VPC with C(ec2:DescribeVpcs) and
-                fails before any change otherwise.
+                fails before any change if a CIDR block breaks these rules.
               - This must contain at most 15 distinct CIDR blocks.
             elements: str
             required: true
@@ -252,10 +252,10 @@ options:
                 A repeated CIDR block is sent once.
               - Each CIDR block must be an IPv4 block within V(10.0.0.0/8), V(172.16.0.0/12), V(192.168.0.0/16), or
                 V(100.64.0.0/10), and must not overlap another remote node or pod network block or the cluster's
-                service CIDR block. The module fails before any change otherwise.
-              - When updating the remote networks of an existing cluster, each CIDR block must not overlap an
+                service CIDR block. When creating a cluster, EKS rejects a CIDR block that does not.
+              - When updating the remote networks of an existing cluster, each CIDR block must also not overlap an
                 associated IPv4 CIDR block of the cluster's VPC. The module reads the VPC with C(ec2:DescribeVpcs) and
-                fails before any change otherwise.
+                fails before any change if a CIDR block breaks these rules.
               - This must contain at most 15 distinct CIDR blocks.
             elements: str
             required: true
@@ -384,6 +384,10 @@ options:
         O(wait_delay) and are bounded by O(wait_timeout).
       - The module retries a cluster update or deletion that EKS rejects because an update is in progress,
         every O(wait_delay) seconds within O(wait_timeout), even when O(wait=false).
+      - When EKS rejects a deletion because the cluster has managed node groups or Fargate profiles that are not being
+        deleted, the module fails at once and names them; it keeps retrying while they are being deleted. It reads
+        them with C(eks:ListNodegroups), C(eks:ListFargateProfiles), C(eks:DescribeNodegroup), and
+        C(eks:DescribeFargateProfile).
     type: bool
   wait_delay:
     default: 15
@@ -1127,8 +1131,7 @@ def canonicalize_public_access_cidrs(module):
 
 def require_valid_remote_networks(module, remote_networks, service_cidr=None, vpc_cidrs=()):
     """Fail on remote node or pod CIDR blocks that EKS rejects; remote_networks maps each option to its blocks."""
-    # Live: EKS rejects these, but check mode would predict success, and on an update they reach EKS after other
-    # updates.
+    # Live: EKS rejects these, but on an update they reach EKS after other updates.
     checked = []
     for network, blocks in remote_networks.items():
         for block in blocks:
@@ -1371,20 +1374,79 @@ def describe_update(client, module, update_id, changed=False):
     return response["update"]
 
 
-def retry_while_in_use(module, operation, deadline, **request):
+def retry_while_in_use(module, operation, deadline, on_in_use=None, **request):
     """Call a cluster update or delete operation, retrying while EKS reports an update in progress.
 
     EKS can run internal updates, which ListUpdates does not return, for several minutes after a cluster becomes
     active, and rejects new updates and deletion until they finish. The retries share the run's wait_timeout budget.
+    on_in_use, when set, is called with each rejection before retrying and fails the run when it is not transient.
     """
     while True:
         try:
-            return AWSRetry.jittered_backoff()(operation)(**request)
-        except is_boto3_error_code("ResourceInUseException"):
+            return operation(**request, aws_retry=True)
+        except is_boto3_error_code("ResourceInUseException") as e:
+            if on_in_use is not None:
+                on_in_use(e)
+
             if time.monotonic() >= deadline:
                 raise
 
             sleep_until_next_poll(module, deadline)
+
+
+def list_cluster_compute(client, module):
+    """Return the names of the cluster's managed node groups and Fargate profiles that are not being deleted.
+
+    Compute that is being deleted blocks DeleteCluster only until it is gone, so the delete keeps retrying for it.
+    """
+    name = module.params["name"]
+    try:
+        nodegroups = paginated_query_with_retries(client, "list_nodegroups", clusterName=name)["nodegroups"]
+        fargate_profiles = paginated_query_with_retries(client, "list_fargate_profiles", clusterName=name)[
+            "fargateProfileNames"
+        ]
+        nodegroups = [
+            nodegroup
+            for nodegroup in nodegroups
+            if compute_status(client.describe_nodegroup, "nodegroup", clusterName=name, nodegroupName=nodegroup)
+            not in (None, "DELETING")
+        ]
+        fargate_profiles = [
+            profile
+            for profile in fargate_profiles
+            if compute_status(
+                client.describe_fargate_profile, "fargateProfile", clusterName=name, fargateProfileName=profile
+            )
+            not in (None, "DELETING")
+        ]
+    except is_boto3_error_code("ResourceNotFoundException"):
+        # The cluster was deleted after the rejection; the next DeleteCluster call reports it.
+        return [], []
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, msg=f"Unable to list node groups and Fargate profiles of EKS cluster {name}")
+
+    return nodegroups, fargate_profiles
+
+
+def compute_status(operation, result_key, **request):
+    """Return a node group's or Fargate profile's status, or None once it is gone."""
+    try:
+        return operation(**request, aws_retry=True)[result_key]["status"]
+    except is_boto3_error_code("ResourceNotFoundException"):
+        return None
+
+
+def require_no_cluster_compute(client, module, error):
+    """Fail on a DeleteCluster rejection caused by managed node groups or Fargate profiles, which is not transient."""
+    nodegroups, fargate_profiles = list_cluster_compute(client, module)
+    if nodegroups or fargate_profiles:
+        module.fail_json_aws(
+            error,
+            msg=(
+                f"Unable to delete EKS cluster {module.params['name']} while it has managed node groups "
+                f"{nodegroups} and Fargate profiles {fargate_profiles}; delete them first"
+            ),
+        )
 
 
 def wait_for_update(client, module, update_id, changed=False, deadline=None):
@@ -1556,9 +1618,9 @@ def parse_version(version):
 
 def require_node_settings_with_compute(module, compute_enabled, description, current_compute_config=None):
     """Fail when node pools or a node role are requested for a cluster that has and gets no EKS Auto Mode compute."""
-    # EKS rejects them, but check mode would predict success, and on an update the Auto Mode request is sent after
-    # every other update. EKS accepts them together with disabling Auto Mode compute, and values that match the
-    # cluster's are not sent, so a rerun of that task stays a no-op.
+    # EKS rejects them, but on an update the Auto Mode request is sent after every other update. EKS accepts them
+    # together with disabling Auto Mode compute, and values that match the cluster's are not sent, so a rerun of that
+    # task stays a no-op.
     compute_config = module.params["compute_config"] or {}
     current_compute_config = current_compute_config or {}
     requested = {"node_pools": ("nodePools", []), "node_role_arn": ("nodeRoleArn", None)}
@@ -1577,7 +1639,7 @@ def require_node_settings_with_compute(module, compute_enabled, description, cur
 def require_node_role_with_node_pools(module, compute_config, description):
     """Fail when an Auto Mode compute request carries node pools without a node role."""
     # Live: EKS rejects it ("When Compute Config nodeRoleArn is null or empty, nodePool list cannot be populated."),
-    # but check mode would predict success, and on an update the Auto Mode request is sent after every other update.
+    # but on an update the Auto Mode request is sent after every other update.
     compute_config = compute_config or {}
     if (
         compute_config.get("enabled") is True
@@ -1632,11 +1694,6 @@ def ensure_present(client, module, deadline=None):
         create_request = snake_dict_to_camel_dict(create_request, capitalize_first=False)
         if tags:
             create_request["tags"] = tags
-
-        require_node_settings_with_compute(
-            module, (module.params["compute_config"] or {}).get("enabled") is True, f"new EKS cluster {name}"
-        )
-        require_node_role_with_node_pools(module, create_request.get("computeConfig"), f"new EKS cluster {name}")
 
         # Check mode fails where the real run would, before the create.
         require_client_methods(
@@ -1828,8 +1885,7 @@ def ensure_present(client, module, deadline=None):
                 msg="resources_vpc_config.public_access_cidrs must not contain IPv6 CIDR blocks for an IPv4 cluster"
             )
 
-        endpoint = current.get("endpoint")
-        host = (urlparse(endpoint).hostname or "") if isinstance(endpoint, str) else ""
+        host = urlparse(current.get("endpoint") or "").hostname or ""
         if ip_family == "ipv6" and host.endswith((".eks.amazonaws.com", ".eks.amazonaws.com.cn")):
             module.fail_json(
                 msg=(
@@ -2171,10 +2227,22 @@ def ensure_absent(client, module):
         module,
         client,
         "EKS",
-        {"delete_cluster": ("name",)},
+        {
+            "delete_cluster": ("name",),
+            "describe_fargate_profile": ("clusterName", "fargateProfileName"),
+            "describe_nodegroup": ("clusterName", "nodegroupName"),
+            "list_fargate_profiles": ("clusterName", "maxResults", "nextToken"),
+            "list_nodegroups": ("clusterName", "maxResults", "nextToken"),
+        },
     )
     try:
-        retry_while_in_use(module, client.delete_cluster, deadline, name=name)
+        retry_while_in_use(
+            module,
+            client.delete_cluster,
+            deadline,
+            on_in_use=lambda error: require_no_cluster_compute(client, module, error),
+            name=name,
+        )
     except is_boto3_error_code("ResourceNotFoundException"):
         exit_result(module, False, {}, "absent")
     except (BotoCoreError, ClientError) as e:
@@ -2330,11 +2398,10 @@ def main():
 
     state = module.params["state"]
     if state == "present":
-        require_valid_tags(module, module.params.get("tags"), 50, restricted_characters=True)
+        require_valid_tags(module, module.params.get("tags"), restricted_characters=True)
         if len(module.params["encryption_config"] or []) > 1:
             module.fail_json(msg="encryption_config must contain at most one entry")
 
-        remote_networks = {}
         for network in ("remote_node_networks", "remote_pod_networks"):
             entries = (module.params["remote_network_config"] or {}).get(network) or []
             if len(entries) > 1:
@@ -2373,15 +2440,6 @@ def main():
             # EKS rejects a repeated CIDR block, which the cluster comparison ignores, so a repeat is sent once.
             for entry in entries:
                 entry["cidrs"] = list(dict.fromkeys(entry["cidrs"]))
-
-            remote_networks[network] = [ipaddress.ip_network(cidr) for entry in entries for cidr in entry["cidrs"]]
-
-        # An existing cluster's service CIDR block, and the networks of an omitted list, are checked before updating.
-        require_valid_remote_networks(
-            module,
-            remote_networks,
-            ip_network_or_none((module.params["kubernetes_network_config"] or {}).get("service_ipv4_cidr")),
-        )
 
         # A blank network entry or version reaches EKS after other updates.
         if module.params["version"] == "":

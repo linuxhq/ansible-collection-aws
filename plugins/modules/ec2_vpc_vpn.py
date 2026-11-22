@@ -129,7 +129,7 @@ options:
     type: bool
   transit_gateway_id:
     description:
-      - The transit gateway ID. Required for creation unless O(vpn_gateway_id) or O(vpn_concentrator_id) is supplied.
+      - The transit gateway ID.
       - Mutually exclusive with O(vpn_gateway_id).
     type: str
   transport_transit_gateway_attachment_id:
@@ -155,7 +155,7 @@ options:
   tunnel_inside_ip_version:
     description:
       - The tunnel address family. AWS defaults to IPv4 on creation.
-      - IPv6 requires O(transit_gateway_id) or O(vpn_concentrator_id) when creating a connection.
+      - EC2 also creates an IPv6 connection attached to no gateway, which Cloud WAN can attach later.
       - IPv6 together with O(vpn_concentrator_id) has not been tested.
     type: str
     choices: [ipv4, ipv6]
@@ -360,9 +360,8 @@ options:
         type: str
   vpn_concentrator_id:
     description:
-      - The ID of the VPN concentrator that attaches the connection to its transit gateway. Required for creation
-        unless O(vpn_gateway_id) or O(transit_gateway_id) is supplied. EC2 rejects it together with
-        O(transit_gateway_id) or O(vpn_gateway_id).
+      - The ID of the VPN concentrator that attaches the connection to its transit gateway. EC2 rejects it together
+        with O(transit_gateway_id) or O(vpn_gateway_id).
       - Cannot be changed on an existing connection.
       - Requires botocore 1.40.76 or later.
     type: str
@@ -375,8 +374,9 @@ options:
     type: str
   vpn_gateway_id:
     description:
-      - The virtual private gateway ID. Required for creation unless O(transit_gateway_id) or O(vpn_concentrator_id)
-        is supplied.
+      - The virtual private gateway ID.
+      - When O(vpn_gateway_id), O(transit_gateway_id), and O(vpn_concentrator_id) are all omitted, EC2 creates a
+        connection attached to no gateway.
       - Mutually exclusive with O(transit_gateway_id).
     type: str
   wait_delay:
@@ -1126,7 +1126,7 @@ def tunnel_request(options):
 
 
 def valid_pre_shared_key(value):
-    return isinstance(value, str) and bool(re.fullmatch(r"[A-Za-z0-9._]{8,64}", value)) and not value.startswith("0")
+    return bool(re.fullmatch(r"[A-Za-z0-9._]{8,64}", value)) and not value.startswith("0")
 
 
 def endpoints_unassigned(connection):
@@ -1151,7 +1151,7 @@ def storage_targets(module, connection):
     for tunnel in current:
         # Live: EC2 returns a tunnel's key only while the VPN service stores it, never from Secrets Manager.
         key = tunnel.get("PreSharedKey")
-        if ("Standard" if isinstance(key, str) and key else "SecretsManager") == storage:
+        if ("Standard" if key else "SecretsManager") == storage:
             continue
 
         if not tunnel.get("OutsideIpAddress"):
@@ -1222,7 +1222,7 @@ def tunnel_deltas(module, connection):
         for field, value in tunnel_request(desired).items():
             actual = tunnel.get(TUNNEL_RESPONSE_FIELDS.get(field, field))
             if field == "PreSharedKey":
-                usable = isinstance(actual, str) and bool(actual)
+                usable = bool(actual)
                 if not usable and module.params["pre_shared_key_storage"] != "Standard":
                     module.fail_json(
                         msg=f"Cannot compare pre_shared_key for VPN connection {connection['VpnConnectionId']} "
@@ -1475,7 +1475,7 @@ def desired_tags(module, current):
     if tags is None:
         return {}, []
 
-    require_valid_tags(module, tags, 50, ec2=True)
+    require_valid_tags(module, tags, ec2=True)
     current_tags = boto3_tag_list_to_ansible_dict(current.get("Tags") or [])
     tags_to_set, tag_keys_to_unset = compare_aws_tags(current_tags, tags, purge)
     require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 50, "VPN connection")
@@ -1521,10 +1521,6 @@ def validate_configuration(module, connection=None, changed=False):
                 f"connection allows at most {MAX_STATIC_ROUTES}",
             )
 
-    # Live, EC2 also accepts an IPv6 connection attached to no gateway, which Cloud WAN can attach later.
-    if connection is None and family == "ipv6" and not transit_gateway:
-        module.fail_json(changed=changed, msg="IPv6 VPN connections require a transit gateway")
-
     for tunnel in module.params["tunnel_options"] or []:
         if tunnel.get("tunnel_inside_ipv6_cidr") is not None and family != "ipv6":
             module.fail_json(changed=changed, msg="tunnel_inside_ipv6_cidr requires tunnel_inside_ip_version=ipv6")
@@ -1558,15 +1554,11 @@ def create_connection(client, module):
             "use name instead of the selector to create a VPN connection."
         )
 
-    # EC2 treats a whitespace-only gateway ID as omitted, so it counts as missing here too.
-    gateways = ("vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id")
-    if not module.params["name"] or not any((module.params[name] or "").strip() for name in gateways):
-        module.fail_json(
-            msg="Creation requires name and one of vpn_gateway_id, transit_gateway_id, or vpn_concentrator_id"
-        )
+    if not module.params["name"]:
+        module.fail_json(msg="Creation requires name")
 
-    # Live: next to a concentrator, EC2 ignores a whitespace-only gateway ID, so no later run could match it.
-    for name in gateways:
+    # Live: EC2 ignores a whitespace-only gateway ID, so no later run could match it.
+    for name in ("vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id"):
         require_non_blank(module, module.params[name], name)
 
     if any(tunnel.get("outside_ip_address") for tunnel in module.params["tunnel_options"] or []):

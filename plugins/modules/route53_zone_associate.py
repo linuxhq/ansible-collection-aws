@@ -35,7 +35,6 @@ options:
   vpc_id:
     description:
       - The VPC ID to associate with the hosted zone.
-      - This must not be empty.
     required: true
     type: str
   vpc_region:
@@ -162,7 +161,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     run_waiter,
@@ -358,12 +356,10 @@ def main():
     state = module.params["state"]
 
     # ansible-core turns an explicit null for a required string into "", and like a whitespace-only value it
-    # identifies no zone or VPC.
+    # identifies no zone.
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
     if not hosted_zone_id.strip():
         module.fail_json(msg="hosted_zone_id must identify a hosted zone")
-
-    require_non_blank(module, module.params["vpc_id"], "vpc_id")
 
     require_positive_wait_bounds(module)
 

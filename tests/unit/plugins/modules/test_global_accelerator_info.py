@@ -154,6 +154,34 @@ def test_endpoint_groups_are_nested_under_their_listener():
     assert "list_endpoint_groups" in required_methods
 
 
+def test_listing_methods_are_checked_once_for_every_accelerator_and_listener():
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": []}
+    module = FakeModule({"arn": None, "include_endpoint_groups": True, "include_listeners": False}, client=client)
+    require = Mock()
+    accelerators = [{"AcceleratorArn": "arn:a", "Name": "a"}, {"AcceleratorArn": "arn:b", "Name": "b"}]
+    listeners = {"Listeners": [{"ListenerArn": "arn:l1"}, {"ListenerArn": "arn:l2"}]}
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods", require),
+        patch.object(plugin, "query_list", return_value=accelerators),
+        patch.object(
+            plugin,
+            "paginated_query_with_retries",
+            side_effect=lambda client, method, **kwargs: (
+                listeners if method == "list_listeners" else {"EndpointGroups": []}
+            ),
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert len(raised.value.values["accelerators"]) == 2
+    checked = [method for call in require.call_args_list for method in call.args[3]]
+    assert checked.count("list_listeners") == 1
+    assert checked.count("list_endpoint_groups") == 1
+
+
 def test_missing_accelerator_arn_returns_an_empty_list():
     client = Mock()
     client.describe_accelerator.side_effect = plugin.ClientError(

@@ -313,8 +313,6 @@ SSM_DOCUMENT_WAITER_MODEL_DATA = {
             {"argument": "Document.Status", "expected": "Active", "matcher": "path", "state": "success"},
             # A failed document is inspected after the wait so its status information can be reported.
             {"argument": "Document.Status", "expected": "Failed", "matcher": "path", "state": "success"},
-            {"argument": "Document.Status", "expected": "Creating", "matcher": "path", "state": "retry"},
-            {"argument": "Document.Status", "expected": "Updating", "matcher": "path", "state": "retry"},
             {"argument": "Document.Status", "expected": "Deleting", "matcher": "path", "state": "failure"},
         ],
     },
@@ -324,7 +322,6 @@ SSM_DOCUMENT_WAITER_MODEL_DATA = {
         "operation": "DescribeDocument",
         "acceptors": [
             {"expected": "InvalidDocument", "matcher": "error", "state": "success"},
-            {"argument": "Document.Status", "expected": "Deleting", "matcher": "path", "state": "retry"},
         ],
     },
 }
@@ -465,7 +462,8 @@ def current_document(client, module, include_tags, document_version=None, deadli
 def require_json_readable(client, module, deadline=None):
     """Fail before any change when the document is stored as TEXT, which GetDocument cannot serve as JSON.
 
-    Returns False when a TEXT document that is being deleted will be gone, so it must not be read as JSON.
+    Returns whether the document can be read as JSON, False when a TEXT document that is being deleted will be gone,
+    and its DescribeDocument description, None when there is no document.
     """
     name = module.params["name"]
     existing = describe_ssm_document(module, client, name, DocumentVersion=module.params["document_version"])
@@ -474,7 +472,7 @@ def require_json_readable(client, module, deadline=None):
             if not module.check_mode:
                 wait_for_document(client, module, "deleted", deadline=deadline)
 
-            return False
+            return False, None
 
         module.fail_json(
             changed=False,
@@ -484,7 +482,7 @@ def require_json_readable(client, module, deadline=None):
             ),
         )
 
-    return True
+    return True, existing
 
 
 def ensure_present(client, module):
@@ -493,7 +491,7 @@ def ensure_present(client, module):
     name = module.params["name"]
     tags = module.params["tags"]
     purge_tags = module.params["purge_tags"]
-    readable = require_json_readable(client, module, deadline=deadline)
+    readable, description = require_json_readable(client, module, deadline=deadline)
     current = current_document(client, module, include_tags=tags is not None, deadline=deadline) if readable else None
     desired_comparable = {
         "content": module.params["content"],
@@ -548,13 +546,17 @@ def ensure_present(client, module):
 
             resource_changed = False
 
-    if current is not None and not resource_changed and document_version == "$LATEST":
-        default = get_document(client, module, document_version="$DEFAULT")
-        if (default or {}).get("DocumentVersion") != current.get("DocumentVersion"):
-            default_version_to_promote = current["DocumentVersion"]
+    # DescribeDocument reports the default version, so the default version itself need not be read.
+    if (
+        current is not None
+        and not resource_changed
+        and document_version == "$LATEST"
+        and (description or {}).get("DefaultVersion") != current.get("DocumentVersion")
+    ):
+        default_version_to_promote = current["DocumentVersion"]
 
-            latest = current
-            changed = True
+        latest = current
+        changed = True
 
     tags_to_set, tag_keys_to_unset = ({}, [])
     if tags is not None:
@@ -572,6 +574,7 @@ def ensure_present(client, module):
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
+        created = current is None
         if resource_changed:
             desired_content = json.dumps(desired_comparable["content"], separators=(",", ":"), sort_keys=True)
 
@@ -652,13 +655,8 @@ def ensure_present(client, module):
 
                 current = refreshed
 
-        if tags is not None:
-            tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict(current.get("Tags", [])),
-                tags,
-                purge_tags=purge_tags,
-            )
-
+        # A create sends its tags in its only write, so only an existing document needs the tag deltas.
+        if tags is not None and not created:
             reconcile_ssm_tags(
                 module,
                 client,
@@ -704,14 +702,12 @@ def ensure_present(client, module):
         if tags is not None:
             current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
-    document = current
-    if current.get("Name") is not None:
-        document = boto3_resource_to_ansible_dict(
-            dict(current, Content=document_content(current)),
-            ignore_list=["Content"],
-            transform_tags=True,
-            force_tags=False,
-        )
+    document = boto3_resource_to_ansible_dict(
+        dict(current, Content=document_content(current)),
+        ignore_list=["Content"],
+        transform_tags=True,
+        force_tags=False,
+    )
 
     module.exit_json(
         changed=changed,
@@ -790,13 +786,12 @@ def main():
     state = module.params["state"]
     tags = module.params["tags"]
 
-    if state == "present":
-        # required_if counts only supplied keys, so an explicit null passes it.
-        missing = [option for option in ("content", "document_type") if module.params[option] is None]
-        if missing:
-            module.fail_json(msg=f"state is present but all of the following are missing: {', '.join(missing)}")
+    # required_if counts only supplied keys, so an explicit null passes it, and the immutable-field check would then
+    # report a type change.
+    if state == "present" and module.params["document_type"] is None:
+        module.fail_json(msg="state is present but all of the following are missing: document_type")
 
-    require_valid_tags(module, tags if state == "present" else None, 50, restricted_characters=True)
+    require_valid_tags(module, tags if state == "present" else None, restricted_characters=True)
     # Updated versions are always waited on before they are promoted.
     require_positive_wait_bounds(module, always=state == "present")
     client = module.client(

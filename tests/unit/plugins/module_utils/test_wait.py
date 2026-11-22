@@ -3,7 +3,9 @@
 from unittest.mock import Mock, patch
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, WaiterError
+from botocore.session import get_session
+from botocore.stub import Stubber
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import wait
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -34,14 +36,49 @@ def test_sleep_until_next_poll_never_sleeps_past_the_deadline(now, expected):
     sleep.assert_called_once_with(expected)
 
 
-def test_custom_waiter_builds_the_named_waiter_from_the_model():
-    factory = Mock()
-    with patch.object(wait, "build_waiter_factory", return_value=factory) as build:
-        waiter = wait.custom_waiter("client", {"model": True}, "ready")
+WAITER_MODEL = {
+    "ready": {
+        "delay": 1,
+        "maxAttempts": 5,
+        "operation": "DescribeDocument",
+        "acceptors": [
+            {"argument": "Document.Status", "expected": "Active", "matcher": "path", "state": "success"},
+            {"argument": "Document.Status", "expected": "Failed", "matcher": "path", "state": "failure"},
+        ],
+    },
+}
 
-    build.assert_called_once_with({"model": True})
-    factory.get_waiter.assert_called_once_with("client", "ready")
-    assert waiter is factory.get_waiter.return_value
+
+def stubbed_client(*responses):
+    client = get_session().create_client(
+        "ssm", region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
+    )
+    stubber = Stubber(client)
+    for response in responses:
+        if isinstance(response, str):
+            stubber.add_client_error("describe_document", service_error_code=response)
+        else:
+            stubber.add_response("describe_document", {"Document": response}, {"Name": "example"})
+
+    stubber.activate()
+    return client, stubber
+
+
+def test_custom_waiter_polls_unmatched_statuses_until_an_acceptor_matches():
+    # Botocore keeps polling a response no acceptor matches, so transitional statuses need no retry acceptor.
+    client, stubber = stubbed_client({"Status": "Creating"}, {"Status": "Updating"}, {"Status": "Active"})
+    with patch("botocore.waiter.time.sleep"):
+        wait.custom_waiter(client, WAITER_MODEL, "ready").wait(Name="example")
+
+    stubber.assert_no_pending_responses()
+
+
+def test_custom_waiter_retries_rate_limit_errors_and_stops_on_failure():
+    client, stubber = stubbed_client("Throttling", {"Status": "Failed"})
+    with patch("botocore.waiter.time.sleep"), pytest.raises(WaiterError):
+        wait.custom_waiter(client, WAITER_MODEL, "ready").wait(Name="example")
+
+    stubber.assert_no_pending_responses()
 
 
 def test_remaining_wait_timeout_without_a_deadline_is_the_full_budget():

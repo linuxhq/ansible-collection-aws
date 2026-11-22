@@ -26,9 +26,7 @@ options:
     description:
       - The ARN of the WAFv2 web ACL to manage logging for.
       - A regional web ACL must be in the module's region, and a CloudFront
-        (C(global)) web ACL requires the C(us-east-1) region; any other region
-        fails before AWS is called.
-      - When O(state=present), the web ACL must exist.
+        (C(global)) web ACL requires the C(us-east-1) region.
     required: true
     type: str
   state:
@@ -224,14 +222,10 @@ def ensure_absent(client, module):
     )
 
 
-def ensure_present(client, module, web_acl):
+def ensure_present(client, module):
     log_destination_configs = module.params["log_destination_configs"]
     resource_arn = module.params["resource_arn"]
     current = get_logging_configuration(client, module)
-    if current is None:
-        # A missing web ACL also returns WAFNonexistentItemException for its logging configuration.
-        require_web_acl(client, module, web_acl)
-
     desired = {
         key: current[key]
         for key in ("LoggingFilter", "LogScope", "LogType", "RedactedFields")
@@ -243,11 +237,7 @@ def ensure_present(client, module, web_acl):
             "ResourceArn": resource_arn,
         }
     )
-    changed = (
-        not current
-        or (current.get("LogDestinationConfigs") or []) != log_destination_configs
-        or current.get("ResourceArn") != resource_arn
-    )
+    changed = current is None or current["LogDestinationConfigs"] != log_destination_configs
 
     if changed and not module.check_mode:
         try:
@@ -278,19 +268,8 @@ def ensure_present(client, module, web_acl):
     )
 
 
-def require_web_acl(client, module, web_acl):
-    resource_arn = module.params["resource_arn"]
-
-    try:
-        client.get_web_acl(**web_acl, aws_retry=True)
-    except is_boto3_error_code("WAFNonexistentItemException"):
-        module.fail_json(msg=f"AWS WAFv2 web ACL {resource_arn} does not exist")
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg=f"Unable to get AWS WAFv2 web ACL {resource_arn}")
-
-
-def web_acl_identity(module):
-    """Return the web ACL's GetWebACL parameters, failing when its ARN cannot be used from this region."""
+def require_web_acl_arn(module):
+    """Fail on an ARN that is not a WAFv2 web ACL, which AWS reports only as a retryable internal failure."""
     resource_arn = module.params["resource_arn"]
     arn = parse_aws_arn(resource_arn) or {}
     parts = (arn.get("resource") or "").split("/")
@@ -301,14 +280,6 @@ def web_acl_identity(module):
         or parts[1] != "webacl"
     ):
         module.fail_json(msg=f"resource_arn must be an AWS WAFv2 web ACL ARN, not {resource_arn}")
-
-    required_region = "us-east-1" if parts[0] == "global" else arn.get("region")
-    if module.region != required_region:
-        module.fail_json(
-            msg=f"AWS WAFv2 web ACL {resource_arn} requires the {required_region} region, not {module.region}"
-        )
-
-    return {"Id": parts[3], "Name": parts[2], "Scope": "CLOUDFRONT" if parts[0] == "global" else "REGIONAL"}
 
 
 def get_logging_configuration(client, module):
@@ -347,7 +318,7 @@ def main():
         supports_check_mode=True,
     )
     state = module.params["state"]
-    web_acl = web_acl_identity(module)
+    require_web_acl_arn(module)
     client = module.client(
         "wafv2",
         retry_decorator=AWSRetry.jittered_backoff(
@@ -356,7 +327,6 @@ def main():
     )
     methods = {"get_logging_configuration": ("ResourceArn",)}
     if state == "present":
-        methods["get_web_acl"] = ("Id", "Name", "Scope")
         methods["put_logging_configuration"] = ("LoggingConfiguration",)
 
     if state == "absent":
@@ -365,7 +335,7 @@ def main():
     require_client_methods(module, client, "WAFv2", methods)
 
     if state == "present":
-        ensure_present(client, module, web_acl)
+        ensure_present(client, module)
 
     if state == "absent":
         ensure_absent(client, module)

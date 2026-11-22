@@ -9,6 +9,7 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
     ModuleFail,
+    ModuleInitialized,
     assert_module_contract,
     assert_module_rejects,
 )
@@ -83,16 +84,8 @@ def test_module_contract():
     assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
 
 
-def test_tag_deltas_remove_and_replace_tags():
-    contact = {"arn": "arn:contact", "tags": {"keep": "old", "remove": "yes"}}
-    assert plugin.apply_tag_deltas(contact, {"keep": "new"}, ["remove"]) == {
-        "arn": "arn:contact",
-        "tags": {"keep": "new"},
-    }
-    assert contact["tags"]["keep"] == "old"
-
-
-def test_tag_only_update_does_not_recreate_the_contact():
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_tag_only_update_does_not_recreate_the_contact(check_mode):
     client = Mock()
     client.list_tags_for_resource.return_value = {"tags": {"keep": "old", "remove": "yes"}}
     module = FakeModule(
@@ -101,7 +94,8 @@ def test_tag_only_update_does_not_recreate_the_contact():
             "name": "Operations",
             "purge_tags": True,
             "tags": {"keep": "new"},
-        }
+        },
+        check_mode=check_mode,
     )
     contact = {
         "address": "ops@example.com",
@@ -116,8 +110,14 @@ def test_tag_only_update_does_not_recreate_the_contact():
         plugin.ensure_present(client, module)
 
     assert raised.value.values["changed"]
-    client.untag_resource.assert_called_once_with(arn="arn:contact", tagKeys=["remove"], aws_retry=True)
-    client.tag_resource.assert_called_once_with(arn="arn:contact", tags={"keep": "new"}, aws_retry=True)
+    assert raised.value.values["email_contact"]["tags"] == {"keep": "new"}
+    if check_mode:
+        client.untag_resource.assert_not_called()
+        client.tag_resource.assert_not_called()
+    else:
+        client.untag_resource.assert_called_once_with(arn="arn:contact", tagKeys=["remove"], aws_retry=True)
+        client.tag_resource.assert_called_once_with(arn="arn:contact", tags={"keep": "new"}, aws_retry=True)
+
     client.create_email_contact.assert_not_called()
 
 
@@ -406,7 +406,7 @@ def test_tags_with_characters_aws_accepts_reach_aws():
     assert module.params["tags"] == tags
 
 
-def test_tags_are_limited_to_the_50_a_contact_can_hold():
+def test_tag_count_is_not_checked_before_the_client_is_created():
     # Live: TagResource rejects a 51st user tag ("The resultant tag set must not have more than 50 user tags").
     tags = {f"key{index}": "" for index in range(51)}
     params = {
@@ -416,7 +416,14 @@ def test_tags_are_limited_to_the_50_a_contact_can_hold():
         "state": "present",
         "tags": tags,
     }
-    assert_module_rejects(plugin, params, "tags must contain at most 50 entries")
+    module = FakeModule(params)
+    # The tag count is checked against the tags a write would leave, or left to AWS on a create that sends the tags.
+    module.client = Mock(side_effect=ModuleInitialized)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleInitialized),
+    ):
+        plugin.main()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

@@ -2,6 +2,7 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import pinpoint_sms_voice
 from ansible_collections.linuxhq.aws.plugins.modules import pinpoint_sms_voice_sender_id_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -22,7 +23,7 @@ def params(**overrides):
 
 
 def not_found():
-    return plugin.ClientError(
+    return pinpoint_sms_voice.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
         "DescribeSenderIds",
     )
@@ -105,7 +106,7 @@ def test_sender_ids_are_described_one_at_a_time_and_missing_ones_omitted():
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods") as require,
         patch.object(
-            plugin, "paginated_query_with_retries", side_effect=[not_found(), {"SenderIds": [found]}]
+            pinpoint_sms_voice, "paginated_query_with_retries", side_effect=[not_found(), {"SenderIds": [found]}]
         ) as query,
         patch.object(plugin, "query_list") as query_list,
         pytest.raises(ModuleExit) as raised,
@@ -142,7 +143,7 @@ def test_only_missing_sender_ids_return_empty_results():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=not_found()),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=not_found()),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
@@ -190,7 +191,7 @@ def test_same_named_sender_ids_of_different_accounts_are_all_returned():
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             side_effect=[{"SenderIds": [own]}, {"SenderIds": [own]}, {"SenderIds": [shared]}],
         ) as query,
@@ -204,12 +205,14 @@ def test_same_named_sender_ids_of_different_accounts_are_all_returned():
 
 
 def test_id_lookup_fails_on_other_errors():
-    denied = plugin.ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "DescribeSenderIds")
+    denied = pinpoint_sms_voice.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "DescribeSenderIds"
+    )
     module = FakeModule(params(sender_ids=[{"sender_id": "EXAMPLE", "iso_country_code": "DE"}]))
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", side_effect=denied),
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", side_effect=denied),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.main()
@@ -230,7 +233,7 @@ def test_more_than_five_sender_ids_are_described_one_at_a_time():
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(
-            plugin,
+            pinpoint_sms_voice,
             "paginated_query_with_retries",
             side_effect=[
                 {
@@ -260,7 +263,7 @@ def test_repeated_sender_ids_are_described_once():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "paginated_query_with_retries", return_value={"SenderIds": []}) as query,
+        patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value={"SenderIds": []}) as query,
         pytest.raises(ModuleExit),
     ):
         plugin.main()
@@ -272,7 +275,9 @@ def test_listing_error_is_reported():
     client = Mock()
     client.can_paginate.return_value = True
     module = FakeModule(params(), client=client)
-    denied = plugin.ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "DescribeSenderIds")
+    denied = pinpoint_sms_voice.ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "DescribeSenderIds"
+    )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),

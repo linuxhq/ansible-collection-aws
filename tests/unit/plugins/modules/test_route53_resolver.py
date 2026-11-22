@@ -103,7 +103,10 @@ def test_explicit_address_pair_uses_real_argument_validation(endpoint_type):
             for entry in arguments["ip_addresses"]
         ]
     else:
-        assert "require resolver_endpoint_type=DUALSTACK" in raised.value.values["msg"]
+        refused_field = "ipv6" if endpoint_type == "IPV4" else "ip"
+        assert raised.value.values["msg"] == (
+            f"ip_addresses[].{refused_field} cannot be used with resolver_endpoint_type {endpoint_type}"
+        )
         client.create_resolver_endpoint.assert_not_called()
 
 
@@ -355,10 +358,6 @@ def test_endpoint_list_limits_are_rejected():
             "ip_addresses entries must be unique",
         ),
         (
-            dict(base, security_group_ids=[]),
-            "security_group_ids must contain at least one entry",
-        ),
-        (
             dict(
                 base,
                 ip_addresses=[
@@ -387,10 +386,6 @@ def test_endpoint_list_limits_are_rejected():
                 ],
             ),
             "ip_addresses[].ipv6 must be a valid IPv6 address",
-        ),
-        (
-            dict(base, tags={str(index): "" for index in range(201)}),
-            "tags must contain at most 200 entries",
         ),
     ]
     for params, message in cases:
@@ -1259,23 +1254,16 @@ def test_waiting_for_a_usable_endpoint_stops_when_it_is_deleting():
         # The waited write then fails with the endpoint's StatusMessage.
         "ACTION_NEEDED": "success",
         "DELETING": "failure",
-        "CREATING": "retry",
-        "UPDATING": "retry",
-        "AUTO_RECOVERING": "retry",
     }
     assert acceptor_states("resolver_endpoint_settled") == {
         "OPERATIONAL": "success",
         "ACTION_NEEDED": "success",
         "DELETING": "failure",
-        "CREATING": "retry",
-        "UPDATING": "retry",
-        "AUTO_RECOVERING": "retry",
     }
     # Waiting for deletion still waits through DELETING until the endpoint is gone; a failed delete stops the wait,
     # which then reports the endpoint's status message.
     assert acceptor_states("resolver_endpoint_deleted") == {
         "ResourceNotFoundException": "success",
-        "DELETING": "retry",
         "OPERATIONAL": "success",
         "ACTION_NEEDED": "success",
     }
@@ -2849,6 +2837,16 @@ def test_address_that_reuses_an_address_to_remove_is_added_after_that_removal(re
     ]
 
 
+def test_ip_address_changes_pair_entries_with_the_shared_matching():
+    # A greedy pairing gave the subnet-only entry the only address the IPv4 entry matches, so it replaced that address.
+    listed = [
+        {"Ip": "10.0.0.10", "IpId": "rni-a", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+        {"Ip": "10.0.0.20", "IpId": "rni-b", "SubnetId": "subnet-1", "Status": "ATTACHED"},
+    ]
+
+    assert plugin.ip_address_changes(listed, [{"subnet_id": "subnet-1"}, {"ip": "10.0.0.10"}]) == []
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_reused_address_on_an_endpoint_with_two_addresses_fails_before_any_write(check_mode):
     # Live: DisassociateResolverEndpointIpAddress refuses to leave fewer than 2 addresses with
@@ -2882,3 +2880,54 @@ def test_reused_address_on_an_endpoint_with_two_addresses_fails_before_any_write
     assert client.associate_resolver_endpoint_ip_address.call_count == 0
     assert client.disassociate_resolver_endpoint_ip_address.call_count == 0
     assert client.tag_resource.call_count == 0
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"ip": "192.0.2.1"},
+        {"ipv6": "2001:db8::1"},
+        {"ip": "192.0.2.1", "ipv6": "2001:db8::1"},
+        {"ip": None, "ipv6": None},
+    ],
+)
+def test_require_ip_versions_accepts_matching_versions(entry):
+    plugin.require_ip_versions(FakeModule({}), entry, "target_ips")
+
+
+@pytest.mark.parametrize(
+    "entry, message",
+    [
+        ({"ip": "2001:db8::1"}, "target_ips[].ip must be a valid IPv4 address"),
+        ({"ipv6": "192.0.2.1"}, "target_ips[].ipv6 must be a valid IPv6 address"),
+        ({"ip": "not-an-ip"}, "target_ips[].ip must be a valid IPv4 address"),
+    ],
+)
+def test_require_ip_versions_rejects_wrong_versions(entry, message):
+    with pytest.raises(ModuleFail) as raised:
+        plugin.require_ip_versions(FakeModule({}), entry, "target_ips")
+
+    assert raised.value.values["msg"] == message
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        (
+            {"expected_id": "rslvr-in-2"},
+            "get_resolver_endpoint: AWS returned an unexpected resolver endpoint ID rslvr-in-1",
+        ),
+        ({"expected_name": "other"}, "get_resolver_endpoint: AWS returned an unexpected resolver endpoint name"),
+    ],
+)
+def test_validate_resolver_endpoint_rejects_another_endpoint(kwargs, message):
+    endpoint = {"Id": "rslvr-in-1", "Name": "main"}
+    assert (
+        plugin.validate_resolver_endpoint(FakeModule({}), endpoint, "get_resolver_endpoint", expected_id="rslvr-in-1")
+        is endpoint
+    )
+
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_resolver_endpoint(FakeModule({}), endpoint, "get_resolver_endpoint", changed=True, **kwargs)
+
+    assert raised.value.values == {"changed": True, "msg": message}

@@ -47,7 +47,7 @@ options:
     description:
       - Destination options for flow logs delivered to Amazon S3.
       - Requires O(log_destination_type).
-      - O(log_destination_type) must be C(s3) when O(state=present).
+      - EC2 rejects them when O(log_destination_type) is not C(s3).
       - Requires botocore 1.21.61 or later.
     suboptions:
       file_format:
@@ -101,7 +101,7 @@ options:
   max_aggregation_interval:
     description:
       - The maximum interval, in seconds, during which packets are captured and aggregated.
-      - This must be C(60) when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
+      - EC2 accepts only C(60) when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
     choices:
       - 60
       - 600
@@ -180,7 +180,7 @@ options:
   traffic_type:
     description:
       - The type of traffic to log.
-      - This is not supported when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
+      - EC2 rejects it when O(resource_type) is C(TransitGateway) or C(TransitGatewayAttachment).
       - When omitted, a flow log with any traffic type matches, and a replacement keeps the traffic type of the
         flow log it replaces. A new flow log on a C(VPC), C(Subnet), C(NetworkInterface), or C(RegionalNatGateway)
         resource logs C(ALL) traffic.
@@ -596,26 +596,30 @@ def get_flow_logs(client, module):
     return flow_logs
 
 
+def delete_flow_log_batch(client, module, batch, changed, missing_ok=False):
+    """Delete one batch of flow logs and return the response.
+
+    With missing_ok, return None instead when EC2 rejects the batch because a flow log in it is already gone.
+    """
+    try:
+        return client.delete_flow_logs(FlowLogIds=batch, aws_retry=True)
+    except (BotoCoreError, ClientError) as e:
+        if missing_ok and isinstance(e, is_boto3_error_code("InvalidFlowLogId.NotFound", e)):
+            return None
+
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to delete EC2 flow logs {', '.join(batch)}")
+
+
 def delete_flow_logs(client, module, flow_log_ids, changed=False):
     """Delete flow logs and return the IDs that were removed.
 
     changed reports whether resources were already modified, for failure results.
     """
-    require_client_methods(
-        module,
-        client,
-        "EC2",
-        {"delete_flow_logs": ("FlowLogIds",)},
-    )
     removed = []
     unsuccessful = []
     for batch in chunks(flow_log_ids, MAX_FLOW_LOG_IDS_PER_REQUEST):
-        try:
-            response = client.delete_flow_logs(
-                FlowLogIds=batch,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("InvalidFlowLogId.NotFound"):
+        response = delete_flow_log_batch(client, module, batch, changed or bool(removed), missing_ok=True)
+        if response is None:
             # EC2 rejects the whole request when any flow log is already gone, so delete only those that remain.
             require_client_methods(
                 module,
@@ -638,19 +642,7 @@ def delete_flow_logs(client, module, flow_log_ids, changed=False):
             if not batch:
                 continue
 
-            try:
-                response = client.delete_flow_logs(
-                    FlowLogIds=batch,
-                    aws_retry=True,
-                )
-            except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(
-                    e, changed=changed or bool(removed), msg=f"Unable to delete EC2 flow logs {', '.join(batch)}"
-                )
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e, changed=changed or bool(removed), msg=f"Unable to delete EC2 flow logs {', '.join(batch)}"
-            )
+            response = delete_flow_log_batch(client, module, batch, changed or bool(removed))
 
         failures = response.get("Unsuccessful", [])
         failed_flow_log_ids = {failure.get("ResourceId") for failure in failures}
@@ -746,6 +738,7 @@ def ensure_absent(client, module):
     changed = bool(flow_log_ids)
 
     if changed and not module.check_mode:
+        require_client_methods(module, client, "EC2", {"delete_flow_logs": ("FlowLogIds",)})
         changed = bool(delete_flow_logs(client, module, flow_log_ids))
 
     module.exit_json(
@@ -1106,8 +1099,6 @@ def main():
     )
     state = module.params["state"]
     resource_ids = normalized_resource_ids(module)
-    resource_type = module.params["resource_type"]
-    destination_options = comparable_destination_options(module)
 
     if not resource_ids:
         module.fail_json(msg="resource_ids must contain at least one item")
@@ -1128,19 +1119,6 @@ def main():
 
             require_non_blank(module, module.params[option], option)
 
-        if module.params["traffic_type"] is not None and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
-            module.fail_json(
-                msg="traffic_type is not supported when resource_type is TransitGateway or TransitGatewayAttachment"
-            )
-
-        if module.params["max_aggregation_interval"] == 600 and resource_type in TRANSIT_GATEWAY_RESOURCE_TYPES:
-            module.fail_json(
-                msg="max_aggregation_interval must be 60 when resource_type is TransitGateway or TransitGatewayAttachment"
-            )
-
-        if destination_options and module.params["log_destination_type"] != "s3":
-            module.fail_json(msg="destination_options requires log_destination_type to be s3 when state is present")
-
     name = module.params["name"]
     tags = module.params["tags"]
     # EC2 would store the Name tag as "", so the flow log could never be found by this name again.
@@ -1148,9 +1126,12 @@ def main():
         module.fail_json(msg="name must not be empty")
 
     if state == "present":
-        require_valid_tags(module, tags, 50, ec2=True)
         # name replaces any Name key in tags, and the Name tag counts toward the EC2 tag limit.
-        require_valid_tags(module, dict(tags or {}, Name=name), 50, ec2=True)
+        named_tags = dict(tags or {}, Name=name)
+        require_valid_tags(module, named_tags, ec2=True)
+        if tags is not None:
+            # Matching, requests, and check-mode results use the tags as normalized.
+            module.params["tags"] = named_tags
 
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff())
     describe_parameters = ["Filter", "MaxResults", "NextToken"]

@@ -1,0 +1,16 @@
+---
+bugfixes:
+  - eks_cluster - O(state=absent) now fails at once, naming them, when EKS rejects the deletion because the cluster has
+    managed node groups or Fargate profiles that are not being deleted, instead of retrying until O(wait_timeout) runs
+    out; a deletion rejected while an update is in progress or while that compute is being deleted is still retried.
+minor_changes:
+  - eks_cluster - O(compute_config.node_pools) or O(compute_config.node_role_arn) without EKS Auto Mode compute, and
+    node pools without a node role, are now rejected by EKS when creating a cluster instead of by the module, so check
+    mode no longer reports them as errors.
+  - eks_cluster - O(remote_network_config) CIDR blocks that are not IPv4, are outside the private and CGNAT ranges, or
+    overlap each other or the service CIDR block are now rejected by EKS when creating a cluster instead of by the
+    module, so check mode no longer reports them as errors; they still fail before any change when updating a cluster.
+trivial:
+  - eks_cluster - send cluster updates and deletions through the client retry decorator instead of wrapping each call,
+    and read the endpoint host without checking its type.
+...

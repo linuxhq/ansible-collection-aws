@@ -47,7 +47,6 @@ options:
   targets:
     description:
       - The targets for the association.
-      - This must contain at least one target when specified.
       - When omitted, an existing association keeps its current targets, and a
         new association is created without targets.
     elements: dict
@@ -730,16 +729,10 @@ def ensure_present(client, module, current):
     if changed and not module.check_mode:
         association_id = association.get("AssociationId")
 
-        if association_id and tags is not None:
-            if resource_changed and current is not None:
-                # UpdateAssociation cannot change tags, so the tags read before the update still apply.
-                association = dict(association, Tags=current.get("Tags", []))
-
-            tags_to_set, tag_keys_to_unset = compare_aws_tags(
-                boto3_tag_list_to_ansible_dict(association.get("Tags", [])),
-                tags,
-                purge_tags=purge_tags,
-            )
+        # A create sends its tags in its only write, so only an existing association needs the tag deltas.
+        if association_id and tags is not None and current is not None:
+            # UpdateAssociation cannot change tags, so the tags read before the update still apply.
+            association = dict(association, Tags=current.get("Tags", []))
             reconcile_ssm_tags(
                 module,
                 client,
@@ -819,18 +812,10 @@ def main():
     state = module.params["state"]
     association_name = module.params["association_name"]
     name = module.params["name"]
-    targets = module.params["targets"]
     tags = module.params["tags"]
 
     if state == "present":
-        # SSM rejects an empty target list, so omitting targets is the only way to keep them.
-        if targets == []:
-            module.fail_json(
-                changed=False,
-                msg="targets must contain at least one entry; omit targets to keep the current targets",
-            )
-
-        require_valid_tags(module, tags, 50, restricted_characters=True)
+        require_valid_tags(module, tags, restricted_characters=True)
 
     client = module.client(
         "ssm",

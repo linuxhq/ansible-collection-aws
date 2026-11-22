@@ -18,7 +18,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     ModuleInitialized,
     assert_documents_shape,
     assert_module_contract,
-    assert_module_rejects,
     documented_returns,
 )
 
@@ -202,19 +201,22 @@ def test_omitted_tags_do_not_gate_create_tags_parameter():
     assert "Tags" not in methods["create_resolver_rule"]
 
 
-def test_empty_target_ips_are_rejected():
-    assert_module_rejects(
-        plugin,
-        {
-            "domain_name": "example.com",
-            "name": "rule",
-            "resolver_endpoint_id": "rslvr-out-1",
-            "state": "present",
-            "tags": None,
-            "target_ips": [],
-        },
-        "target_ips must contain at least one entry",
-    )
+@pytest.mark.parametrize(
+    "target_ips",
+    [[], [{"ip": None, "ipv6": None, "port": 53, "protocol": None, "server_name_indication": None}]],
+    ids=["empty", "no-address"],
+)
+def test_target_ips_that_aws_rejects_reach_the_provider(target_ips):
+    # AWS rejects an empty target list and a target without an address before changing anything.
+    module = FakeModule(rule_params(target_ips=target_ips))
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    ensure_present.assert_called_once()
 
 
 def test_no_wait_present_still_validates_internal_wait_bounds():
@@ -240,22 +242,6 @@ def test_no_wait_present_still_validates_internal_wait_bounds():
     assert raised.value.values["msg"] == "wait_delay must be 1 or greater"
 
 
-def test_replacement_sensitive_limits_are_rejected():
-    base = {
-        "domain_name": "example.com",
-        "name": "rule",
-        "resolver_endpoint_id": "rslvr-out-1",
-        "state": "present",
-        "tags": None,
-        "target_ips": [{"ip": "192.0.2.1", "port": 53}],
-    }
-    assert_module_rejects(
-        plugin,
-        dict(base, tags={str(index): "" for index in range(201)}),
-        "tags must contain at most 200 entries",
-    )
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("blank", ["", " "])
 def test_blank_resolver_endpoint_id_is_rejected_before_any_aws_call(check_mode, blank):
@@ -275,28 +261,18 @@ def test_blank_resolver_endpoint_id_is_rejected_before_any_aws_call(check_mode, 
     ensure_present.assert_not_called()
 
 
-def test_target_without_an_address_is_rejected():
-    spec = assert_module_contract(plugin)
-    spec.pop("supports_check_mode")
-    # ansible-core's required_one_of counts an explicit null as set, so this passes argument validation.
-    result = ArgumentSpecValidator(**spec).validate(rule_params(target_ips=[{"ip": None, "port": 53}]))
-
-    assert not result.error_messages
-    assert_module_rejects(plugin, result.validated_parameters, "target_ips entries must set ip or ipv6")
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
     "options",
-    [("domain_name",), ("resolver_endpoint_id",), ("domain_name", "resolver_endpoint_id")],
-    ids=["domain_name", "resolver_endpoint_id", "both"],
+    [("domain_name",), ("resolver_endpoint_id",), ("domain_name", "resolver_endpoint_id"), ("target_ips",)],
+    ids=["domain_name", "resolver_endpoint_id", "both", "target_ips"],
 )
 def test_null_present_inputs_are_rejected_before_any_aws_call(check_mode, options):
     spec = assert_module_contract(plugin)
     spec.pop("supports_check_mode")
     # required_if counts only supplied keys, so ansible-core accepts these explicit nulls and keeps them None.
     result = ArgumentSpecValidator(**spec).validate(
-        rule_params(target_ips=[{"ip": "192.0.2.1"}], **dict.fromkeys(options))
+        rule_params(**dict({"target_ips": [{"ip": "192.0.2.1"}]}, **dict.fromkeys(options)))
     )
 
     assert not result.error_messages
@@ -574,6 +550,21 @@ def test_server_name_indication_requires_a_supporting_botocore(server_name_indic
         module.require_botocore_at_least.assert_not_called()
 
 
+def test_server_name_indication_does_not_gate_deletion():
+    target_ip = {"ip": "192.0.2.1", "protocol": "DoH", "server_name_indication": "dns.example.com"}
+    module = FakeModule(rule_params(state="absent", target_ips=[target_ip]))
+    module.require_botocore_at_least = Mock(side_effect=ModuleFail({"msg": "botocore"}))
+
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods", side_effect=ModuleExit({})),
+        pytest.raises(ModuleExit),
+    ):
+        plugin.main()
+
+    module.require_botocore_at_least.assert_not_called()
+
+
 @pytest.mark.parametrize("wait", [False, True])
 def test_update_mismatch_preserves_rule(wait):
     module = FakeModule(
@@ -696,9 +687,9 @@ def test_waiting_for_a_complete_rule_stops_when_it_is_deleting():
     model = plugin.ROUTE53_RESOLVER_RULE_WAITER_MODEL_DATA
     complete = {a["expected"]: a["state"] for a in model["resolver_rule_complete"]["acceptors"]}
     deleted = {a["expected"]: a["state"] for a in model["resolver_rule_deleted"]["acceptors"]}
-    assert complete == {"COMPLETE": "success", "UPDATING": "retry", "DELETING": "failure", "FAILED": "success"}
+    assert complete == {"COMPLETE": "success", "DELETING": "failure", "FAILED": "success"}
     # A failed delete stops the wait, which then reports the rule's status message.
-    assert deleted == {"ResourceNotFoundException": "success", "DELETING": "retry", "FAILED": "success"}
+    assert deleted == {"ResourceNotFoundException": "success", "FAILED": "success"}
 
 
 def test_a_completed_delete_returns_no_rule():
@@ -1460,3 +1451,33 @@ def test_reserved_tag_key_is_left_to_aws_on_a_new_rule():
         plugin.ensure_present(client, FakeModule(rule_params(tags={"aws:owner": "me"}), check_mode=True))
 
     assert raised.value.values["changed"] is True
+
+
+def test_validate_resolver_rule_accepts_the_aws_owned_rule():
+    rule = {
+        "Arn": "arn:aws:route53resolver:us-east-1::autodefined-rule/rslvr-autodefined-rr-internet-resolver",
+        "DomainName": ".",
+        "Id": "rslvr-autodefined-rr-internet-resolver",
+        "Name": "Internet Resolver",
+        "OwnerId": route53_resolver_utils.AWS_OWNED_RULE_OWNER,
+        "RuleType": "RECURSIVE",
+        "Status": "COMPLETE",
+    }
+
+    assert plugin.validate_resolver_rule(FakeModule({}), rule, "list_resolver_rules") is rule
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"expected_id": "rslvr-rr-2"}, "get_resolver_rule: AWS returned an unexpected resolver rule ID rslvr-rr-1"),
+        ({"expected_name": "other"}, "get_resolver_rule: AWS returned an unexpected resolver rule name"),
+    ],
+)
+def test_validate_resolver_rule_rejects_another_rule(kwargs, message):
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_resolver_rule(
+            FakeModule({}), {"Id": "rslvr-rr-1", "Name": "main"}, "get_resolver_rule", **kwargs
+        )
+
+    assert raised.value.values == {"changed": False, "msg": message}
