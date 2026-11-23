@@ -292,7 +292,12 @@ def test_pool_lookup_uses_name_tag_to_disambiguate_sender_pools():
             "pool_with_origination_identities",
             side_effect=lambda client, module, pool, **kwargs: dict(
                 pool,
-                OriginationIdentities=[{"OriginationIdentity": "sender-1"}],
+                OriginationIdentities=[
+                    {
+                        "OriginationIdentity": "sender-1",
+                        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
+                    }
+                ],
             ),
         ),
         patch.object(
@@ -476,7 +481,13 @@ def test_identity_in_another_country_pool_does_not_conflict():
             "pool_with_origination_identities",
             return_value=dict(
                 pool,
-                OriginationIdentities=[{"IsoCountryCode": "CA", "OriginationIdentity": "sender-1"}],
+                OriginationIdentities=[
+                    {
+                        "IsoCountryCode": "CA",
+                        "OriginationIdentity": "sender-1",
+                        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/CA",
+                    }
+                ],
             ),
         ),
         patch.object(plugin, "pool_with_tags") as pool_with_tags,
@@ -774,6 +785,41 @@ def test_absent_activation_wait_accepts_disappearing_pool():
         result = plugin.wait_for_pool_active(Mock(), module, "pool-1")
 
     assert result == {}
+
+
+def test_wait_checks_tag_changes_against_the_settled_pool():
+    # The tag limit is checked against the tags the pool has once ACTIVE, not those it had while transitioning.
+    client = Mock()
+    module = FakeModule(
+        {
+            "deletion_protection_enabled": None,
+            "message_type": "TRANSACTIONAL",
+            "name": "primary",
+            "purge_tags": False,
+            "state": "present",
+            "tags": {"new": "tag"},
+            "wait": True,
+        }
+    )
+    transitioning = {
+        "MessageType": "TRANSACTIONAL",
+        "PoolArn": "arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1",
+        "PoolId": "pool-1",
+        "Status": "CREATING",
+        "Tags": [{"Key": "Name", "Value": "primary"}] + [{"Key": f"key{index}", "Value": "v"} for index in range(199)],
+    }
+    active = dict(transitioning, Status="ACTIVE", Tags=[{"Key": "Name", "Value": "primary"}])
+    with (
+        patch.object(plugin, "find_pool", return_value=transitioning),
+        patch.object(plugin, "wait_for_pool_active", return_value=active) as wait_for_pool_active,
+        patch.object(plugin, "pool_with_details", side_effect=lambda client, module, pool: pool),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        run_ensure_present(client, module)
+
+    wait_for_pool_active.assert_called_once_with(client, module, "pool-1")
+    assert raised.value.values["changed"] is True
+    client.tag_resource.assert_called_once()
 
 
 @pytest.mark.parametrize("waited", [{}, {"PoolId": "pool-1", "Status": "DELETING"}])

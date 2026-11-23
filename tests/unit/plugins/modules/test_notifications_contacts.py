@@ -124,7 +124,7 @@ def test_tag_only_update_does_not_recreate_the_contact(check_mode):
 @pytest.mark.parametrize(
     ("email_address", "name"),
     [("ops@example.com", name) for name in ("山田a", "é-", "~", "_", "Z", "7", "山田", " ", "x" * 65)]
-    + [("invalid", "Operations"), ("a@b.c", "Operations")],
+    + [(email_address, "Operations") for email_address in ("invalid", "a@b.c", "ops@@example.com", "ops @example.com")],
 )
 def test_address_and_name_reach_aws(email_address, name):
     module = FakeModule(
@@ -153,7 +153,9 @@ def test_null_name_is_rejected_before_api_calls():
 def test_new_contact_omits_empty_tags():
     client = Mock()
     client.create_email_contact.return_value = {"arn": "arn:new"}
-    client.get_email_contact.return_value = {"emailContact": None}
+    client.get_email_contact.return_value = {
+        "emailContact": {"address": "ops@example.com", "arn": "arn:new", "name": "Operations", "status": "inactive"}
+    }
     module = FakeModule(
         {
             "email_address": "ops@example.com",
@@ -281,19 +283,6 @@ def test_name_change_preserves_contact(check_mode, tags):
 
     assert "name cannot be changed" in raised.value.values["msg"]
     assert not client.mock_calls
-
-
-def test_email_address_follows_the_api_pattern():
-    for email_address in ("ops@@example.com", "ops @example.com"):
-        module = FakeModule({"email_address": email_address, "name": "Operations", "state": "present", "tags": None})
-        with (
-            patch.object(plugin, "AnsibleAWSModule", return_value=module),
-            patch.object(plugin, "require_client_methods"),
-            patch.object(plugin, "ensure_present") as ensure_present,
-        ):
-            plugin.main()
-
-        ensure_present.assert_called_once()
 
 
 @pytest.mark.parametrize(("current_tags", "changed"), [({"remove": "yes"}, True), ({}, False)])

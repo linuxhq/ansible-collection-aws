@@ -81,7 +81,7 @@ notification_hub:
       type: str
     status_summary:
       description: The hub status and its reason.
-      returned: when provided by AWS
+      returned: always
       type: dict
       contains:
         reason:

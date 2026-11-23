@@ -132,13 +132,14 @@ def test_result_is_read_again_after_setting_attributes():
         get_sms_attributes=Mock(
             side_effect=[
                 {"attributes": {"MonthlySpendLimit": "1"}},
-                {"attributes": {"MonthlySpendLimit": "25.00"}},
+                # Live: SNS returns the spend limit as it was sent.
+                {"attributes": {"MonthlySpendLimit": "25"}},
             ]
         )
     )
     result, _require = run(FakeModule(params(monthly_spend_limit="25"), client=client))
 
-    assert result.values == {"attributes": {"monthly_spend_limit": "25.00"}, "changed": True}
+    assert result.values == {"attributes": {"monthly_spend_limit": "25"}, "changed": True}
     client.set_sms_attributes.assert_called_once_with(attributes={"MonthlySpendLimit": "25"}, aws_retry=True)
     assert client.get_sms_attributes.call_count == 2
 

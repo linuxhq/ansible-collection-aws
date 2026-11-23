@@ -462,11 +462,12 @@ def ensure_present(client, module):
         # Mirror the real run: an existing provider keeps the URL AWS returned and every list no call would write.
         if current is None:
             current = new_provider(created_url, desired, tags)
-        elif resource_changed:
-            current = updated_provider(current, desired, written)
+        else:
+            if resource_changed:
+                current = updated_provider(current, desired, written)
 
-        if tags is not None:
-            current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
+            if tags is not None:
+                current = apply_tag_deltas(current, tags_to_set, tag_keys_to_unset)
 
     result = {
         "changed": changed,

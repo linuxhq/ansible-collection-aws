@@ -101,6 +101,7 @@ def test_country_code_is_optional_for_non_country_specific_identities():
     association = {
         "IsoCountryCode": "US",
         "OriginationIdentity": "sender-1",
+        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
     }
     assert plugin.current_association(module, [association]) == association
     assert plugin.association_request(module) == {
@@ -372,8 +373,16 @@ def test_disassociate_response_without_the_identity_is_returned_unchanged():
             return_value=(
                 {"PoolId": "pool-1"},
                 [
-                    {"OriginationIdentity": "sender-1", "PoolId": "pool-1"},
-                    {"OriginationIdentity": "sender-2", "PoolId": "pool-1"},
+                    {
+                        "OriginationIdentity": "sender-1",
+                        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
+                        "PoolId": "pool-1",
+                    },
+                    {
+                        "OriginationIdentity": "sender-2",
+                        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-2/US",
+                        "PoolId": "pool-1",
+                    },
                 ],
             ),
         ),
@@ -407,7 +416,16 @@ def test_absent_does_not_return_association_that_disappeared():
             "current_associations",
             return_value=(
                 {"PoolId": "pool-1"},
-                [{"OriginationIdentity": "sender-1"}, {"OriginationIdentity": "sender-2"}],
+                [
+                    {
+                        "OriginationIdentity": "sender-1",
+                        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
+                    },
+                    {
+                        "OriginationIdentity": "sender-2",
+                        "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-2/US",
+                    },
+                ],
             ),
         ),
         pytest.raises(ModuleExit) as raised,
@@ -458,6 +476,31 @@ def test_present_rejects_empty_origination_identity_before_any_aws_call(originat
     assert raised.value.values["msg"] == "origination_identity must not be empty"
     connect.assert_not_called()
     assert client.mock_calls == []
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("iso_country_code", ["us", "USA"])
+def test_absent_with_a_country_code_no_association_has_reports_no_change(iso_country_code, check_mode):
+    # Only a listed association's country can match, so another value leaves the real run with nothing to do.
+    client = Mock()
+    module = FakeModule(
+        associate_params(iso_country_code=iso_country_code, state="absent"), check_mode=check_mode, client=client
+    )
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(
+            pinpoint_sms_voice,
+            "paginated_query_with_retries",
+            return_value={"OriginationIdentities": [PHONE_1, PHONE_2]},
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["association"] == {}
+    client.disassociate_origination_identity.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1044,7 +1087,21 @@ def test_absent_without_a_country_requires_botocore_1_42_80_before_disassociatin
         module.require_botocore_at_least.assert_not_called()
 
 
-@pytest.mark.parametrize(("listed_after", "replayed"), [([], True), ([{"OriginationIdentity": "sender-1"}], False)])
+@pytest.mark.parametrize(
+    ("listed_after", "replayed"),
+    [
+        ([], True),
+        (
+            [
+                {
+                    "OriginationIdentity": "sender-1",
+                    "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
+                }
+            ],
+            False,
+        ),
+    ],
+)
 def test_client_token_reused_after_a_disassociation_fails_naming_the_token(listed_after, replayed):
     # Live: AssociateOriginationIdentity with a token reused after a disassociation returns the earlier association,
     # and ListPoolOriginationIdentities shows that the identity was not associated again.

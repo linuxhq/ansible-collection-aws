@@ -75,7 +75,6 @@ options:
       - VOICE
     description:
       - The capabilities requested for the phone number.
-      - This must contain 1 to 4 capabilities.
       - This is required when O(state=present).
     elements: str
     type: list
@@ -832,26 +831,19 @@ def ensure_present(client, module, tags):
 
     if current is not None:
         current, updates, tags_to_set, tag_keys_to_unset = phone_number_changes(client, module, current, tags)
-        if (
-            not module.check_mode
-            and current.get("Status") != "ACTIVE"
-            and (wait or updates or tags_to_set or tag_keys_to_unset)
-        ):
-            # Changes always wait for ACTIVE, even when wait=false, and are recalculated from the settled number.
-            current = wait_for_phone_number_active(
-                client,
-                module,
-                module.params["phone_number_id"] or current["PhoneNumberId"],
-                tags=current.get("Tags"),
-            )
-            current, updates, tags_to_set, tag_keys_to_unset = phone_number_changes(client, module, current, tags)
-        elif (
-            module.check_mode
-            and current.get("Status") != "ACTIVE"
-            and (wait or updates or tags_to_set or tag_keys_to_unset)
-        ):
-            # A real run first waits for the number to become ACTIVE.
-            current = dict(current, Status="ACTIVE")
+        if current.get("Status") != "ACTIVE" and (wait or updates or tags_to_set or tag_keys_to_unset):
+            if module.check_mode:
+                # A real run first waits for the number to become ACTIVE.
+                current = dict(current, Status="ACTIVE")
+            else:
+                # Changes always wait for ACTIVE, even when wait=false, and are recalculated from the settled number.
+                current = wait_for_phone_number_active(
+                    client,
+                    module,
+                    module.params["phone_number_id"] or current["PhoneNumberId"],
+                    tags=current.get("Tags"),
+                )
+                current, updates, tags_to_set, tag_keys_to_unset = phone_number_changes(client, module, current, tags)
 
         if updates and current.get("PoolId"):
             options = ", ".join(SETTING_OPTIONS[field] for field in updates)
@@ -1050,9 +1042,6 @@ def main():
 
         if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"]):
             module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
-
-        if not 1 <= len(set(module.params["number_capabilities"])) <= 4:
-            module.fail_json(msg="number_capabilities must contain 1 to 4 capabilities")
 
         if module.params["number_type"] == "SIMULATOR" and module.params["message_type"] != "TRANSACTIONAL":
             module.fail_json(msg="message_type must be TRANSACTIONAL when number_type is SIMULATOR")

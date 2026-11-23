@@ -97,6 +97,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider,
+    get_provider_by_arn,
     get_provider_by_url,
     list_provider_summaries,
 )
@@ -131,9 +132,18 @@ def main():
         provider = get_provider_by_url(client, module, url)
         providers = [provider] if provider else []
     else:
+        provider_summaries = list_provider_summaries(client, module)
+        if provider_summaries:
+            require_client_methods(
+                module,
+                client,
+                "IAM",
+                {"get_open_id_connect_provider": ("OpenIDConnectProviderArn",)},
+            )
+
         providers = []
-        for provider_summary in list_provider_summaries(client, module):
-            provider = get_provider(client, module, provider_summary["Arn"])
+        for provider_summary in provider_summaries:
+            provider = get_provider_by_arn(client, module, provider_summary["Arn"])
 
             if provider:
                 providers.append(provider)

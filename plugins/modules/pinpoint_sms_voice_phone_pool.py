@@ -719,6 +719,7 @@ def ensure_present(client, module, tags):
             msg=f"Cannot modify message_type for existing Pinpoint SMS Voice V2 pool {current.get('PoolId')}"
         )
 
+    # With wait, the changes are calculated, and their tags checked, from the settled pool.
     if wait and not module.check_mode and current is not None and current.get("Status") != "ACTIVE":
         current = pool_with_details(
             client, module, wait_for_pool_active(client, module, pool_reference(module, current))
@@ -728,16 +729,17 @@ def ensure_present(client, module, tags):
 
     changed = current is None or bool(update_request or tags_to_set or tag_keys_to_unset)
 
-    if (wait or changed) and module.check_mode and current is not None and current.get("Status") != "ACTIVE":
-        # A real run first waits for the pool to become ACTIVE.
-        current = dict(current, Status="ACTIVE")
-
-    if changed and not module.check_mode and current is not None and current.get("Status") != "ACTIVE":
-        current = pool_with_details(
-            client, module, wait_for_pool_active(client, module, pool_reference(module, current))
-        )
-        update_request, tags_to_set, tag_keys_to_unset = pool_changes(module, current, tags)
-        changed = bool(update_request or tags_to_set or tag_keys_to_unset)
+    if current is not None and current.get("Status") != "ACTIVE" and (wait or changed):
+        if module.check_mode:
+            # A real run first waits for the pool to become ACTIVE.
+            current = dict(current, Status="ACTIVE")
+        else:
+            # Changes always wait for ACTIVE, even when wait=false, and are recalculated from the settled pool.
+            current = pool_with_details(
+                client, module, wait_for_pool_active(client, module, pool_reference(module, current))
+            )
+            update_request, tags_to_set, tag_keys_to_unset = pool_changes(module, current, tags)
+            changed = bool(update_request or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
         pool_changed = current is None or bool(update_request)

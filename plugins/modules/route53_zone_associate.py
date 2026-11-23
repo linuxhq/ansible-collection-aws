@@ -35,7 +35,7 @@ options:
   vpc_id:
     description:
       - The VPC ID to associate with the hosted zone.
-      - This must not be empty.
+      - This must not be empty when O(state=present).
     required: true
     type: str
   vpc_region:
@@ -285,6 +285,10 @@ def get_shared_vpc_association(client, module, hosted_zone_id):
         {"list_hosted_zones_by_vpc": ("MaxItems", "NextToken", "VPCId", "VPCRegion")},
     )
     requested_vpc = route53_vpc(module)
+    # Only state=absent accepts a blank VPC ID, which no association has, and ListHostedZonesByVPC rejects it.
+    if not requested_vpc["VPCId"].strip():
+        return []
+
     summaries = query_list(
         module,
         client,
@@ -363,7 +367,9 @@ def main():
     if not hosted_zone_id.strip():
         module.fail_json(msg="hosted_zone_id must identify a hosted zone")
 
-    require_non_blank(module, module.params["vpc_id"], "vpc_id")
+    # With state=absent, a blank VPC matches no association, so the real run changes nothing.
+    if state == "present":
+        require_non_blank(module, module.params["vpc_id"], "vpc_id")
 
     require_positive_wait_bounds(module)
 

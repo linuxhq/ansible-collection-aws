@@ -20,6 +20,7 @@ NOT_FOUND = ClientError(
 DENIED = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "denied"}}, "ListTagsForResource")
 
 
+@pytest.mark.parametrize("missing_ok", [False, True])
 @pytest.mark.parametrize(
     ("response", "expected"),
     [
@@ -28,17 +29,10 @@ DENIED = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "den
         ({"tags": {"Name": "ops"}}, {"Name": "ops"}),
     ],
 )
-def test_list_contact_tags_returns_listed_tags(response, expected):
+def test_list_contact_tags_returns_listed_tags(response, expected, missing_ok):
     client = Mock(list_tags_for_resource=Mock(return_value=response))
 
-    assert list_contact_tags(client, FakeModule({}), "arn:contact") == expected
-
-
-@pytest.mark.parametrize("missing_ok", [False, True])
-def test_list_contact_tags_returns_the_tag_dictionary(missing_ok):
-    client = Mock(list_tags_for_resource=Mock(return_value={"tags": {"Name": "ops"}}))
-
-    assert list_contact_tags(client, FakeModule({}), "arn:contact", missing_ok=missing_ok) == {"Name": "ops"}
+    assert list_contact_tags(client, FakeModule({}), "arn:contact", missing_ok=missing_ok) == expected
     client.list_tags_for_resource.assert_called_once_with(arn="arn:contact", aws_retry=True)
 
 

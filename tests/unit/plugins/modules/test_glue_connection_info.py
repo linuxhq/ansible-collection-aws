@@ -47,8 +47,8 @@ def test_named_connection_only_gates_used_parameters():
         "AWS Glue",
         {
             "get_connection": (
-                "CatalogId",
                 "HidePassword",
+                "CatalogId",
                 "Name",
             )
         },

@@ -1505,7 +1505,9 @@ def test_retained_endpoint_groups_are_listed_only_for_port_writes():
     module = FakeModule({"listeners": [review_desired(443, 443)], "purge_listeners": False})
     current = [review_listener("arn:a", 80, 80), review_listener("arn:b", 443, 443)]
     with patch.object(plugin, "get_endpoint_groups") as get_endpoint_groups:
-        plugin.require_compatible_retained_listeners(Mock(), module, current)
+        plugin.require_compatible_retained_listeners(
+            Mock(), module, *plugin.reconcile_listeners(module, current)[:3], endpoint_groups={}
+        )
 
     get_endpoint_groups.assert_not_called()
 

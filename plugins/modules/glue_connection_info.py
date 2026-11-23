@@ -294,7 +294,7 @@ def main():
         client,
         "AWS Glue",
         {
-            "get_connection" if name else "get_connections": tuple(sorted(request))
+            "get_connection" if name else "get_connections": tuple(request)
             + (() if name else ("MaxResults", "NextToken"))
         },
     )
