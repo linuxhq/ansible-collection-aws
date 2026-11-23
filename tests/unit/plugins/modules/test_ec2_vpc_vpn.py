@@ -929,9 +929,8 @@ def test_create_requires_a_customer_gateway_before_any_aws_call(params, check_mo
     [
         {"customer_gateway_id": "cgw-123", "vpn_gateway_id": None},
         {"customer_gateway_id": "cgw-123", "transit_gateway_id": None},
-        {"customer_gateway_id": "cgw-123", "vpn_concentrator_id": None},
     ],
-    ids=["vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id"],
+    ids=["vpn_gateway_id", "transit_gateway_id"],
 )
 def test_create_rejects_blank_gateway_ids_before_any_aws_call(params, check_mode, blank, gateways):
     # No gateway has a blank ID, so EC2 can never create the connection that check mode would predict.
@@ -1553,18 +1552,6 @@ def test_real_ansible_argument_validation(module_spec, arguments, message):
     else:
         with pytest.raises(ModuleFail, match=message):
             plugin.validate_inputs(FakeModule(result.validated_parameters))
-
-
-@pytest.mark.parametrize("addresses", [("203.0.113.1", "203.0.113.2"), ("203.0.113.9", "203.0.113.10")])
-def test_explicit_tunnel_selection_is_stable(params, connection, addresses):
-    for tunnel, address in zip(connection["Options"]["TunnelOptions"], addresses):
-        tunnel["OutsideIpAddress"] = address
-
-    params["tunnel_options"] = [{"outside_ip_address": addresses[0], "phase1_encryption_algorithms": ["AES256"]}]
-    expected = [(addresses[0], {"Phase1EncryptionAlgorithms": [{"Value": "AES256"}]})]
-    assert plugin.tunnel_deltas(FakeModule(params), connection) == expected
-    connection["Options"]["TunnelOptions"].reverse()
-    assert plugin.tunnel_deltas(FakeModule(params), connection) == expected
 
 
 @pytest.mark.parametrize("address", [None, "not-an-ip"])

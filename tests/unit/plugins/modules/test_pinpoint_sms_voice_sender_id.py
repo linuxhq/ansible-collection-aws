@@ -106,10 +106,10 @@ def test_documented_returns_cover_the_sdk_shape(shape_name):
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
-        ({"sender_id": None}, "sender_id must contain 1 to 11 letters, numbers, hyphens, or underscores"),
+        ({"sender_id": ""}, "sender_id must contain 1 to 11 letters, numbers, hyphens, or underscores"),
         ({"sender_id": "TWELVECHARSX"}, "sender_id must contain 1 to 11 letters, numbers, hyphens, or underscores"),
         ({"sender_id": "BAD ID"}, "sender_id must contain 1 to 11 letters, numbers, hyphens, or underscores"),
-        ({"iso_country_code": None}, "iso_country_code must be exactly two uppercase letters"),
+        ({"iso_country_code": ""}, "iso_country_code must be exactly two uppercase letters"),
         ({"iso_country_code": "de"}, "iso_country_code must be exactly two uppercase letters"),
         ({"message_types": []}, "message_types must not be empty"),
         (

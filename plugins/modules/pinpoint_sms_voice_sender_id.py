@@ -438,11 +438,10 @@ def main():
 
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
-    # required counts only supplied keys, so an explicit null passes it.
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,11}", module.params["sender_id"] or ""):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,11}", module.params["sender_id"]):
         module.fail_json(msg="sender_id must contain 1 to 11 letters, numbers, hyphens, or underscores")
 
-    if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"] or ""):
+    if not re.fullmatch(r"[A-Z]{2}", module.params["iso_country_code"]):
         module.fail_json(msg="iso_country_code must be exactly two uppercase letters")
 
     if module.params["state"] == "present":

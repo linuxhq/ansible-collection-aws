@@ -17,7 +17,7 @@ def test_module_contract():
 
 def test_instance_type_filter_is_forwarded():
     module = FakeModule(
-        {"filters": None, "instance_types": ["t3.micro", "t3.micro"]},
+        {"filters": None, "include_unsupported_in_region": False, "instance_types": ["t3.micro", "t3.micro"]},
         client=Mock(),
     )
     with (
@@ -66,7 +66,9 @@ def test_instance_types_are_deduplicated_and_replace_the_instance_type_filter():
 
 
 def run_info(params):
-    module = FakeModule(dict({"filters": None, "instance_types": None}, **params), client=Mock())
+    module = FakeModule(
+        dict({"filters": None, "include_unsupported_in_region": False, "instance_types": None}, **params), client=Mock()
+    )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods") as require,

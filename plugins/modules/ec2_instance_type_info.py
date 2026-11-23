@@ -775,7 +775,7 @@ def main():
     if filters:
         request["Filters"] = ansible_dict_to_string_filter_list(filters)
 
-    if module.params.get("include_unsupported_in_region"):
+    if module.params["include_unsupported_in_region"]:
         request["IncludeUnsupportedInRegion"] = True
 
     require_client_methods(

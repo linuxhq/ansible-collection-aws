@@ -101,7 +101,11 @@ def test_null_required_ids_are_rejected_before_aws_calls():
     [
         (state, {"hosted_zone_id": hosted_zone_id}, "hosted_zone_id must identify a hosted zone")
         for state in ("absent", "present")
-        for hosted_zone_id in ("", " ", "/hostedzone/", "/hostedzone/ ")
+        for hosted_zone_id in ("", "/hostedzone/")
+    ]
+    + [
+        ("present", {"hosted_zone_id": hosted_zone_id}, "hosted_zone_id must identify a hosted zone")
+        for hosted_zone_id in (" ", "/hostedzone/ ")
     ]
     + [("present", {"vpc_id": vpc_id}, "vpc_id must not be empty") for vpc_id in ("", " ", "\t")],
 )
@@ -112,6 +116,26 @@ def test_empty_or_blank_zone_or_vpc_id_is_rejected_before_aws_calls(check_mode, 
 
     assert run_main(module) == message
     module.client.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("hosted_zone_id", [" ", "/hostedzone/ "])
+def test_absent_with_a_whitespace_zone_id_reports_no_change(check_mode, hosted_zone_id):
+    # Live: GetHostedZone(Id=" ") fails with NoSuchHostedZone, so the real run removes nothing.
+    client = Mock()
+    client.get_hosted_zone.side_effect = client_error("NoSuchHostedZone", "GetHostedZone")
+    module = FakeModule(params(hosted_zone_id=hosted_zone_id, state="absent"), check_mode=check_mode, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["vpcs"] == []
+    client.get_hosted_zone.assert_called_once_with(Id=" ", aws_retry=True)
+    client.disassociate_vpc_from_hosted_zone.assert_not_called()
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

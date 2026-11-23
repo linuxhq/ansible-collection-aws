@@ -68,47 +68,40 @@ def test_module_contract():
 
 
 @pytest.mark.parametrize(
-    ("resource_arn", "region", "web_acl"),
+    ("resource_arn", "web_acl"),
     [
-        (ARN, "us-east-1", WEB_ACL),
+        (ARN, WEB_ACL),
         # AWS WAFv2 rejects a web ACL ARN from another region with WAFInvalidParameterException on the first read.
         (
             "arn:aws:wafv2:us-west-2:123456789012:regional/webacl/main/acl-1",
-            "us-east-1",
             {"Id": "acl-1", "Name": "main", "Scope": "REGIONAL"},
         ),
         (
             "arn:aws:wafv2:us-east-1:123456789012:global/webacl/edge/acl-2",
-            "us-east-1",
             {"Id": "acl-2", "Name": "edge", "Scope": "CLOUDFRONT"},
         ),
     ],
 )
-def test_web_acl_identity_is_read_from_the_arn(resource_arn, region, web_acl):
-    result, require_client_methods = run_main(
-        FakeModule(params(resource_arn=resource_arn), client=Mock(), region=region)
-    )
+def test_web_acl_identity_is_read_from_the_arn(resource_arn, web_acl):
+    result, require_client_methods = run_main(FakeModule(params(resource_arn=resource_arn), client=Mock()))
 
     assert result.values["web_acl"] == web_acl
     assert require_client_methods.call_args.args[3]["get_web_acl"] == ("Id", "Name", "Scope")
 
 
 @pytest.mark.parametrize(
-    ("resource_arn", "region", "message"),
+    ("resource_arn", "message"),
     [
-        ("arn:web-acl", "us-east-1", "resource_arn must be an AWS WAFv2 web ACL ARN, not arn:web-acl"),
-        ("", "us-east-1", "resource_arn must be an AWS WAFv2 web ACL ARN, not "),
+        ("arn:web-acl", "resource_arn must be an AWS WAFv2 web ACL ARN, not arn:web-acl"),
+        ("", "resource_arn must be an AWS WAFv2 web ACL ARN, not "),
         (
             "arn:aws:wafv2:us-east-1:123456789012:regional/ipset/main/set-1",
-            "us-east-1",
             "resource_arn must be an AWS WAFv2 web ACL ARN, not arn:aws:wafv2:us-east-1:123456789012:regional/ipset/main/set-1",
         ),
     ],
 )
-def test_unusable_arn_fails_before_aws(resource_arn, region, message):
-    result, require_client_methods = run_main(
-        FakeModule(params(resource_arn=resource_arn), client=Mock(), region=region)
-    )
+def test_unusable_arn_fails_before_aws(resource_arn, message):
+    result, require_client_methods = run_main(FakeModule(params(resource_arn=resource_arn), client=Mock()))
 
     assert result.values["msg"] == message
     require_client_methods.assert_not_called()

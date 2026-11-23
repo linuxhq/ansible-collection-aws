@@ -361,10 +361,12 @@ def main():
     )
     state = module.params["state"]
 
-    # ansible-core turns an explicit null for a required string into "", and like a whitespace-only value it
-    # identifies no zone or VPC.
+    # ansible-core turns an explicit null for a required string into "", and GetHostedZone with an empty ID lists
+    # hosted zones instead of getting one. With state=absent, a whitespace-only ID matches no zone, so the real run
+    # changes nothing; with state=present, a caller without GetHostedZone would be predicted an association that
+    # cannot succeed.
     hosted_zone_id = module.params["hosted_zone_id"].rsplit("/", 1)[-1]
-    if not hosted_zone_id.strip():
+    if not hosted_zone_id or (state == "present" and not hosted_zone_id.strip()):
         module.fail_json(msg="hosted_zone_id must identify a hosted zone")
 
     # With state=absent, a blank VPC matches no association, so the real run changes nothing.

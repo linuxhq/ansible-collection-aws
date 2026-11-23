@@ -879,13 +879,7 @@ def ensure_present(client, module, deadline=None):
                         msg=f"Unable to update AWS Route53 Resolver endpoint {module.params['name']}",
                     )
 
-                endpoint = validate_resolver_endpoint(
-                    module,
-                    response["ResolverEndpoint"],
-                    "update_resolver_endpoint",
-                    expected_id=update_params["resolver_endpoint_id"],
-                    changed=True,
-                )
+                endpoint = response["ResolverEndpoint"]
 
                 ip_addresses_changed = has_failed_ip_addresses or not comparable_ips_match(
                     current["ip_addresses"], desired_comparable["ip_addresses"]
@@ -1097,14 +1091,12 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
         try:
             request_ip_address = snake_dict_to_camel_dict(ip_address, capitalize_first=True)
             if operation == "add":
-                operation_name = "associate_resolver_endpoint_ip_address"
                 response = client.associate_resolver_endpoint_ip_address(
                     IpAddress=request_ip_address,
                     ResolverEndpointId=resolver_endpoint_id,
                     aws_retry=True,
                 )
             else:
-                operation_name = "disassociate_resolver_endpoint_ip_address"
                 response = client.disassociate_resolver_endpoint_ip_address(
                     IpAddress=request_ip_address,
                     ResolverEndpointId=resolver_endpoint_id,
@@ -1132,9 +1124,7 @@ def reconcile_resolver_endpoint_ip_addresses(client, module, endpoint, desired, 
         else:
             # Without a wait, the last change's response is the current endpoint, which is UPDATING and still counts
             # an address it removes.
-            endpoint = validate_resolver_endpoint(
-                module, response["ResolverEndpoint"], operation_name, expected_id=resolver_endpoint_id, changed=True
-            )
+            endpoint = response["ResolverEndpoint"]
 
     if not module.params["wait"]:
         endpoint = dict(endpoint)
@@ -1287,7 +1277,7 @@ def require_ip_address_families(module, ip_addresses, endpoint_type, detail=""):
             )
 
 
-def require_ip_versions(module, entry, option):
+def require_ip_versions(module, entry):
     for field, version in (("ip", 4), ("ipv6", 6)):
         value = entry.get(field)
         if value is None:
@@ -1299,7 +1289,7 @@ def require_ip_versions(module, entry, option):
             valid = False
 
         if not valid:
-            module.fail_json(msg=f"{option}[].{field} must be a valid IPv{version} address")
+            module.fail_json(msg=f"ip_addresses[].{field} must be a valid IPv{version} address")
 
 
 def usable_ip_addresses(ip_addresses):
@@ -1336,19 +1326,6 @@ def comparable_endpoints_match(current, desired):
     return comparable_ips_match(current["ip_addresses"], desired["ip_addresses"])
 
 
-def validate_resolver_endpoint(module, endpoint, operation, expected_id=None, expected_name=None, changed=False):
-    """Fail when AWS returns a different resolver endpoint than the one requested."""
-    if expected_id is not None and endpoint["Id"] != expected_id:
-        module.fail_json(
-            changed=changed, msg=f"{operation}: AWS returned an unexpected resolver endpoint ID {endpoint['Id']}"
-        )
-
-    if expected_name is not None and endpoint.get("Name") != expected_name:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver endpoint name")
-
-    return endpoint
-
-
 def get_resolver_endpoint(client, module, resolver_endpoint_id, changed=False):
     try:
         response = client.get_resolver_endpoint(
@@ -1364,13 +1341,7 @@ def get_resolver_endpoint(client, module, resolver_endpoint_id, changed=False):
             msg=f"Unable to get AWS Route53 Resolver endpoint {resolver_endpoint_id}",
         )
 
-    return validate_resolver_endpoint(
-        module,
-        response["ResolverEndpoint"],
-        "get_resolver_endpoint",
-        expected_id=resolver_endpoint_id,
-        changed=changed,
-    )
+    return response["ResolverEndpoint"]
 
 
 def get_resolver_endpoint_by_name(client, module, changed=False):
@@ -1386,11 +1357,6 @@ def get_resolver_endpoint_by_name(client, module, changed=False):
         changed=changed,
         Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
     )
-
-    endpoints = [
-        validate_resolver_endpoint(module, endpoint, "list_resolver_endpoints", expected_name=name, changed=changed)
-        for endpoint in endpoints
-    ]
 
     if len(endpoints) > 1:
         endpoint_ids = sorted(endpoint["Id"] for endpoint in endpoints)
@@ -1489,7 +1455,7 @@ def main():
             if not entry["subnet_id"].strip() or len(entry["subnet_id"]) > 32:
                 module.fail_json(msg="ip_addresses[].subnet_id must contain 1 to 32 characters")
 
-            require_ip_versions(module, entry, "ip_addresses")
+            require_ip_versions(module, entry)
 
         require_ip_address_families(module, module.params["ip_addresses"], module.params["resolver_endpoint_type"])
         require_valid_tags(module, tags, restricted_characters=True)

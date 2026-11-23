@@ -183,16 +183,6 @@ def test_direction_values_are_not_gated_on_botocore(direction):
     module.require_botocore_at_least.assert_not_called()
 
 
-def test_get_rejects_unexpected_endpoint_id():
-    client = Mock(get_resolver_endpoint=Mock(return_value={"ResolverEndpoint": {"Id": "rslvr-endpt-2"}}))
-    module = FakeModule({"name": "endpoint"})
-
-    with pytest.raises(ModuleFail) as raised:
-        plugin.get_resolver_endpoint(client, module, "rslvr-endpt-1")
-
-    assert "unexpected resolver endpoint ID" in raised.value.values["msg"]
-
-
 def test_absent_waits_for_deleting_endpoint_without_deleting_again():
     client = Mock()
     module = FakeModule({"name": "endpoint", "wait": True, "wait_timeout": 300})
@@ -1104,7 +1094,6 @@ def test_unresolved_update_never_replaces_endpoint(wait):
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=endpoint),
         patch.object(plugin, "resolver_endpoint_with_ip_addresses", return_value=endpoint),
         patch.object(plugin, "resolver_resource_with_tags", return_value=endpoint),
-        patch.object(plugin, "validate_resolver_endpoint", return_value=endpoint),
         patch.object(plugin, "wait_for_resolver_endpoint_status", return_value=endpoint),
         patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", return_value=endpoint),
         pytest.raises(ModuleFail) as raised,
@@ -2635,24 +2624,6 @@ def test_unwaited_address_change_returns_the_last_change_response(current_ips, r
     assert results[True]["ip_addresses"] == results[False]["ip_addresses"]
 
 
-def test_unwaited_address_change_rejects_a_response_for_another_endpoint():
-    client = Mock()
-    client.associate_resolver_endpoint_ip_address.return_value = {"ResolverEndpoint": in_flight_endpoint(Id="rslvr-2")}
-    params = endpoint_params(ip_addresses=endpoint_params()["ip_addresses"] + [{"ip": "192.0.2.3", "subnet_id": "s"}])
-    with (
-        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=existing_endpoint()),
-        patch.object(plugin, "resolver_endpoint_with_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params))
-
-    assert raised.value.values == {
-        "changed": True,
-        "msg": "associate_resolver_endpoint_ip_address: AWS returned an unexpected resolver endpoint ID rslvr-2",
-    }
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize(
     ("extra_address", "status", "count"),
@@ -2915,42 +2886,19 @@ def test_reused_address_on_an_endpoint_with_two_addresses_fails_before_any_write
     ],
 )
 def test_require_ip_versions_accepts_matching_versions(entry):
-    plugin.require_ip_versions(FakeModule({}), entry, "target_ips")
+    plugin.require_ip_versions(FakeModule({}), entry)
 
 
 @pytest.mark.parametrize(
     "entry, message",
     [
-        ({"ip": "2001:db8::1"}, "target_ips[].ip must be a valid IPv4 address"),
-        ({"ipv6": "192.0.2.1"}, "target_ips[].ipv6 must be a valid IPv6 address"),
-        ({"ip": "not-an-ip"}, "target_ips[].ip must be a valid IPv4 address"),
+        ({"ip": "2001:db8::1"}, "ip_addresses[].ip must be a valid IPv4 address"),
+        ({"ipv6": "192.0.2.1"}, "ip_addresses[].ipv6 must be a valid IPv6 address"),
+        ({"ip": "not-an-ip"}, "ip_addresses[].ip must be a valid IPv4 address"),
     ],
 )
 def test_require_ip_versions_rejects_wrong_versions(entry, message):
     with pytest.raises(ModuleFail) as raised:
-        plugin.require_ip_versions(FakeModule({}), entry, "target_ips")
+        plugin.require_ip_versions(FakeModule({}), entry)
 
     assert raised.value.values["msg"] == message
-
-
-@pytest.mark.parametrize(
-    "kwargs, message",
-    [
-        (
-            {"expected_id": "rslvr-in-2"},
-            "get_resolver_endpoint: AWS returned an unexpected resolver endpoint ID rslvr-in-1",
-        ),
-        ({"expected_name": "other"}, "get_resolver_endpoint: AWS returned an unexpected resolver endpoint name"),
-    ],
-)
-def test_validate_resolver_endpoint_rejects_another_endpoint(kwargs, message):
-    endpoint = {"Id": "rslvr-in-1", "Name": "main"}
-    assert (
-        plugin.validate_resolver_endpoint(FakeModule({}), endpoint, "get_resolver_endpoint", expected_id="rslvr-in-1")
-        is endpoint
-    )
-
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_resolver_endpoint(FakeModule({}), endpoint, "get_resolver_endpoint", changed=True, **kwargs)
-
-    assert raised.value.values == {"changed": True, "msg": message}

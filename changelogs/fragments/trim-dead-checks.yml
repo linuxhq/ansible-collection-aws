@@ -1,0 +1,21 @@
+---
+minor_changes:
+  - ec2_vpc_prefix_list_info - pass ``target_version`` to EC2 as given instead of rejecting values below 1 locally;
+    EC2 reports invalid versions for customer-managed prefix lists.
+  - route53_delegation_set_info - stop checking that AWS returned the requested reusable delegation set.
+  - route53_resolver - stop checking that AWS returned the requested resolver endpoint ID and name.
+  - route53_resolver_rule - stop checking that AWS returned the requested resolver rule ID and name.
+  - route53_resolver_rule_associate - stop checking that AWS returned the requested rule association ID, rule, and
+    VPC.
+  - route53_zone_associate - with ``state=absent``, report no change for a whitespace-only ``hosted_zone_id``, which
+    Route 53 reports as a missing hosted zone, instead of failing.
+bugfixes:
+  - global_accelerator - with ``state=absent``, report ``changed=false`` when another writer deletes the accelerator
+    before this run modifies it, and stop waiting for the deletion of an accelerator that is already gone.
+  - route53_delegation_set_info - fail with a clear message instead of a traceback when ``id`` has no delegation set
+    ID after its last ``/``, such as ``/delegationset/``.
+trivial:
+  - ec2_instance_type_info, ec2_pricing_info, ec2_vpc_vpn, global_accelerator, pinpoint_sms_voice_phone_number,
+    pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_sender_id, route53_resolver, ssm_association, ssm_document_info
+    - remove dead code and redundant checks.
+  - Remove duplicate unit tests and tighten unit test assertions.

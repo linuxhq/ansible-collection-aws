@@ -797,7 +797,6 @@ def ensure_present(client, module, tags):
                 predicted_origination_identity(module.params["origination_identity"], module.params["iso_country_code"])
             ]
             current["Tags"] = request["Tags"]
-            tags_to_set, tag_keys_to_unset = ({}, [])
         else:
             if update_request:
                 previous = current

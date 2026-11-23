@@ -1464,33 +1464,3 @@ def test_reserved_tag_key_is_left_to_aws_on_a_new_rule():
         plugin.ensure_present(client, FakeModule(rule_params(tags={"aws:owner": "me"}), check_mode=True))
 
     assert raised.value.values["changed"] is True
-
-
-def test_validate_resolver_rule_accepts_the_aws_owned_rule():
-    rule = {
-        "Arn": "arn:aws:route53resolver:us-east-1::autodefined-rule/rslvr-autodefined-rr-internet-resolver",
-        "DomainName": ".",
-        "Id": "rslvr-autodefined-rr-internet-resolver",
-        "Name": "Internet Resolver",
-        "OwnerId": route53_resolver_utils.AWS_OWNED_RULE_OWNER,
-        "RuleType": "RECURSIVE",
-        "Status": "COMPLETE",
-    }
-
-    assert plugin.validate_resolver_rule(FakeModule({}), rule, "list_resolver_rules") is rule
-
-
-@pytest.mark.parametrize(
-    "kwargs, message",
-    [
-        ({"expected_id": "rslvr-rr-2"}, "get_resolver_rule: AWS returned an unexpected resolver rule ID rslvr-rr-1"),
-        ({"expected_name": "other"}, "get_resolver_rule: AWS returned an unexpected resolver rule name"),
-    ],
-)
-def test_validate_resolver_rule_rejects_another_rule(kwargs, message):
-    with pytest.raises(ModuleFail) as raised:
-        plugin.validate_resolver_rule(
-            FakeModule({}), {"Id": "rslvr-rr-1", "Name": "main"}, "get_resolver_rule", **kwargs
-        )
-
-    assert raised.value.values == {"changed": False, "msg": message}
