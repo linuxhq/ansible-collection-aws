@@ -130,16 +130,6 @@ def test_run_waiter_fails_without_waiting_once_the_budget_is_spent():
     waiter.wait.assert_not_called()
 
 
-def test_run_waiter_translates_sdk_errors():
-    waiter = Mock()
-    waiter.wait.side_effect = ClientError({"Error": {"Code": "Failed", "Message": "no"}}, "Wait")
-    module = FakeModule({"wait_delay": 3, "wait_timeout": 30})
-    with pytest.raises(ModuleFail) as raised:
-        wait.run_waiter(module, waiter, "timed out")
-
-    assert raised.value.values["msg"] == "timed out"
-
-
 def test_run_waiter_reports_the_supplied_changed_state():
     waiter = Mock()
     waiter.wait.side_effect = ClientError({"Error": {"Code": "Failed", "Message": "no"}}, "Wait")
@@ -147,5 +137,5 @@ def test_run_waiter_reports_the_supplied_changed_state():
     with pytest.raises(ModuleFail) as raised:
         wait.run_waiter(module, waiter, "timed out", changed=True, Id="id")
 
-    assert raised.value.values["changed"] is True
+    assert raised.value.values == {"changed": True, "msg": "timed out"}
     assert "changed" not in waiter.wait.call_args.kwargs

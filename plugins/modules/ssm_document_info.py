@@ -329,9 +329,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
-    SSM_DOCUMENT_RESOURCE_TYPE,
     describe_ssm_document,
-    list_ssm_tags,
     require_non_null_ssm_filter_values,
     ssm_filter_list,
 )
@@ -388,7 +386,6 @@ def main():
     )
     methods = {
         "get_document": ("Name",) + tuple(get_request),
-        "list_tags_for_resource": ("ResourceId", "ResourceType"),
     }
     describe_request = {key: value for key, value in get_request.items() if key != "DocumentFormat"}
     if not name:
@@ -406,7 +403,12 @@ def main():
     if name:
         # GetDocument reports a format it cannot serve only as a generic ValidationException, so check the format first.
         current = describe_ssm_document(module, client, name, **describe_request)
-        document_names = [name] if current and format_available(current["DocumentFormat"], document_format) else []
+        # DescribeDocument and ListDocuments both return the document's tags, so no separate tag listing is needed.
+        document_tags = (
+            [(name, current.get("Tags", []))]
+            if current and format_available(current["DocumentFormat"], document_format)
+            else []
+        )
     else:
         request = {}
         if filters:
@@ -422,14 +424,14 @@ def main():
             **request,
         )
 
-        document_names = []
+        document_tags = []
         for document in document_identifiers:
             # ListDocuments returns each document's format, so documents that cannot be served are skipped.
             if format_available(document.get("DocumentFormat"), document_format):
-                document_names.append(document["Name"])
+                document_tags.append((document["Name"], document.get("Tags", [])))
 
     documents = []
-    for document_name in document_names:
+    for document_name, tags in document_tags:
         try:
             document = client.get_document(
                 **get_request,
@@ -446,18 +448,6 @@ def main():
             )
 
         document.pop("ResponseMetadata", None)
-
-        tags = list_ssm_tags(
-            module,
-            client,
-            SSM_DOCUMENT_RESOURCE_TYPE,
-            document_name,
-            "AWS Systems Manager document",
-            missing_ok=True,
-        )
-        if tags is None:
-            continue
-
         document["Tags"] = tags
 
         documents.append(

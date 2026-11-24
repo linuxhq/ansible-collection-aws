@@ -425,11 +425,16 @@ def test_ssm_wait_tolerates_initially_invisible_command():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(sdk, "paginated_query_with_retries", side_effect=responses),
-        patch.object(plugin.time, "sleep"),
+        patch.object(sdk, "paginated_query_with_retries", side_effect=responses) as query,
+        patch_time(0, 1, 2, 3) as mocked_time,
         pytest.raises(ModuleExit),
     ):
         plugin.main()
+
+    client.send_command.assert_called_once()
+    # Each poll lists the command and its invocations; the first poll finds neither and sleeps once.
+    assert query.call_count == 4
+    mocked_time.sleep.assert_called_once()
 
 
 def test_ssm_invisible_command_still_times_out():

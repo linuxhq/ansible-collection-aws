@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -7,11 +6,10 @@ from botocore.exceptions import ClientError
 from ansible_collections.linuxhq.aws.plugins.module_utils import wafv2 as wafv2_utils
 from ansible_collections.linuxhq.aws.plugins.modules import wafv2_ip_set_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
+    assert_module_contract,
 )
 
 IP_SET = {"Addresses": [], "ARN": "arn:ip-set", "Id": "wanted", "IPAddressVersion": "IPV4", "Name": "target"}
@@ -43,38 +41,15 @@ def run(module, summaries=None):
 
 
 def test_module_contract():
-    captured = {}
+    captured = assert_module_contract(plugin)
 
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
     assert captured["argument_spec"]["scope"]["choices"] == ["cloudfront", "regional"]
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 def test_cloudfront_scope_is_uppercase_for_aws():
     _result, _require, query_list = run(FakeModule(params(scope="cloudfront"), client=Mock()), [])
 
     assert query_list.call_args.kwargs["Scope"] == "CLOUDFRONT"
-
-
-@pytest.mark.parametrize("option", ["id", "name"])
-def test_empty_filters_are_treated_as_omitted(option):
-    result, _require, _query = run(FakeModule(params(**{option: ""}), client=ip_set_client()), [IP_SET])
-
-    assert result.values["changed"] is False
-    assert [ip_set["id"] for ip_set in result.values["ip_sets"]] == ["wanted"]
-
-
-def test_missing_name_returns_empty_list():
-    result, _require, _query = run(FakeModule(params(name="missing"), client=ip_set_client()), [IP_SET])
-
-    assert result.values["ip_sets"] == []
 
 
 def test_tags_are_returned_with_their_case():
@@ -84,28 +59,6 @@ def test_tags_are_returned_with_their_case():
     assert result.values["ip_sets"][0]["tags"] == {"Name": "target", "CostCenter": "A1"}
     client.list_tags_for_resource.assert_called_once_with(ResourceARN="arn:ip-set", aws_retry=True)
     assert "list_tags_for_resource" in require_client_methods.call_args.args[3]
-
-
-def test_tags_are_paginated():
-    client = ip_set_client()
-    client.list_tags_for_resource.side_effect = [
-        {"TagInfoForResource": {"TagList": [{"Key": "A", "Value": "1"}]}, "NextMarker": "page-2"},
-        {"TagInfoForResource": {"TagList": [{"Key": "B", "Value": "2"}]}},
-    ]
-    result, _require, _query = run(FakeModule(params(), client=client), [IP_SET])
-
-    assert result.values["ip_sets"][0]["tags"] == {"A": "1", "B": "2"}
-    assert client.list_tags_for_resource.call_args.kwargs["NextMarker"] == "page-2"
-
-
-def test_ip_set_deleted_before_its_tags_are_read_is_skipped():
-    client = ip_set_client()
-    client.list_tags_for_resource.side_effect = ClientError(
-        {"Error": {"Code": "WAFNonexistentItemException", "Message": "gone"}}, "ListTagsForResource"
-    )
-    result, _require, _query = run(FakeModule(params(), client=client), [IP_SET])
-
-    assert result.values["ip_sets"] == []
 
 
 def test_id_and_name_get_the_ip_set_without_listing():

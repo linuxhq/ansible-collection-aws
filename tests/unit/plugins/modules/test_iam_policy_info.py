@@ -128,11 +128,18 @@ def test_path_prefix_reaches_iam(path_prefix):
     )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "entity_names", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[]) as query_list,
         patch.object(plugin, "build_entity_policies", return_value=[]),
         pytest.raises(ModuleExit),
     ):
         plugin.main()
+
+    assert {call.args[2]: call.kwargs["PathPrefix"] for call in query_list.call_args_list} == {
+        "list_groups": path_prefix,
+        "list_roles": path_prefix,
+        "list_users": path_prefix,
+    }
 
 
 def test_empty_entity_names_require_no_policy_operations():

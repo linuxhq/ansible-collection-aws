@@ -1564,9 +1564,6 @@ def create_connection(client, module):
             "use name instead of the selector to create a VPN connection."
         )
 
-    if not module.params["name"]:
-        module.fail_json(msg="Creation requires name")
-
     # CreateVpnConnection requires a customer gateway, which check mode would otherwise predict without one.
     if not (module.params["customer_gateway_id"] or "").strip():
         module.fail_json(msg="Creation requires customer_gateway_id")

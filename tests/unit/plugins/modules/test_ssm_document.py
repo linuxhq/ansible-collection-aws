@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from unittest.mock import ANY, Mock, call, patch
 
 import pytest
@@ -8,12 +7,12 @@ from botocore.exceptions import ClientError
 from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_document as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
     assert_documents_shape,
+    assert_module_contract,
     documented_returns,
 )
 
@@ -74,21 +73,12 @@ def run_absent(client, module, current):
 
 
 def test_module_contract():
-    captured = {}
-
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
+    captured = assert_module_contract(plugin)
 
     spec = captured["argument_spec"]
-    assert captured["supports_check_mode"]
     assert captured["required_if"] == [("state", "present", ["content", "document_type"])]
     assert spec["force"]["default"] is False
     assert spec["wait"]["default"] is True
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 def test_documented_returns_cover_the_sdk_shape():
@@ -1117,15 +1107,14 @@ def test_absent_ignores_null_content_and_document_type():
 def test_50_tags_and_aws_reserved_tags_reach_aws():
     tags = {f"key{index}": "" for index in range(50)}
     tags["aws:reserved"] = ""
-    module = FakeModule(params(tags=tags))
-    module.client = Mock(side_effect=ModuleInitialized)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleInitialized),
-    ):
-        plugin.main()
+    client = Mock()
+    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
+    result, _wait, _get = run_present(client, FakeModule(params(tags=tags)), [None, None], description=None)
 
-    module.client.assert_called_once()
+    assert isinstance(result, ModuleExit)
+    sent = client.create_document.call_args.kwargs["Tags"]
+    assert {tag["Key"]: tag["Value"] for tag in sent} == tags
+    assert len(sent) == 51
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

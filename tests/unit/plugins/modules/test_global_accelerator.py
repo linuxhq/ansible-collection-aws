@@ -9,6 +9,7 @@ from botocore.stub import Stubber
 
 from ansible_collections.amazon.aws.plugins.module_utils.retries import RetryingBotoClientWrapper
 
+from ansible_collections.linuxhq.aws.plugins.module_utils import global_accelerator as global_accelerator_utils
 from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import global_accelerator as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules import utils
@@ -137,6 +138,7 @@ def test_absent_with_a_long_name_converges(arn):
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
+        patch.object(global_accelerator_utils, "require_client_methods"),
         patch.object(plugin, "query_list", return_value=[]),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -269,18 +271,6 @@ def test_null_identifiers_fail_before_any_aws_call(params, message):
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
-
-
-def test_describe_rejects_a_different_accelerator():
-    client = Mock(describe_accelerator=Mock(return_value={"Accelerator": {"AcceleratorArn": "arn:other"}}))
-    module = FakeModule({})
-    with (
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.get_accelerator_by_arn(client, module, "arn:accelerator")
-
-    assert raised.value.values["msg"] == "Global Accelerator returned an invalid accelerator"
 
 
 def test_listeners_keep_the_listed_port_range_order():

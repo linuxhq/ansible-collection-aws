@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -6,11 +5,11 @@ from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import sns_sms_attributes as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    assert_module_contract,
 )
 
 
@@ -32,18 +31,9 @@ def run(module):
 
 
 def test_module_contract():
-    captured = {}
+    captured = assert_module_contract(plugin)
 
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
     assert captured["argument_spec"]["default_sms_type"]["choices"] == ["Promotional", "Transactional"]
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 def test_client_retries_throttled():

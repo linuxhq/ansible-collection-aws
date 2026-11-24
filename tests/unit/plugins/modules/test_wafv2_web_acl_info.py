@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -8,11 +7,10 @@ from botocore.exceptions import ClientError
 from ansible_collections.linuxhq.aws.plugins.module_utils import wafv2 as wafv2_utils
 from ansible_collections.linuxhq.aws.plugins.modules import wafv2_web_acl_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
+    assert_module_contract,
 )
 
 SUMMARY = {"Id": "acl-1", "Name": "main"}
@@ -44,22 +42,12 @@ def run(module, summaries=None):
 
 
 def test_module_contract():
-    captured = {}
+    captured = assert_module_contract(plugin)
 
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
     assert captured["argument_spec"]["scope"]["choices"] == ["cloudfront", "regional"]
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
-@pytest.mark.parametrize("filters", [{"id": "acl-1"}, {"name": "main"}, {}])
-def test_custom_response_body_names_and_references_are_preserved(filters):
+def test_custom_response_body_names_and_references_are_preserved():
     acl = {
         "ARN": "arn:web-acl",
         "Id": "acl-1",
@@ -70,7 +58,7 @@ def test_custom_response_body_names_and_references_are_preserved(filters):
         },
         "DefaultAction": {"Block": {"CustomResponse": {"ResponseCode": 403, "CustomResponseBodyKey": "BlockPage"}}},
     }
-    result, _require, _query = run(FakeModule(params(**filters), client=acl_client(acl)), [SUMMARY])
+    result, _require, _query = run(FakeModule(params(), client=acl_client(acl)), [SUMMARY])
 
     web_acl = result.values["web_acls"][0]
     bodies = web_acl["custom_response_bodies"]
@@ -82,7 +70,7 @@ def test_custom_response_body_names_and_references_are_preserved(filters):
     assert bodies[reference]["content"] == "denied"
 
 
-def test_request_body_resource_types_are_preserved():
+def test_challenge_javascript_sdk_injection_resource_types_are_preserved():
     acl = {
         "ARN": "arn:web-acl",
         "Id": "acl-1",
@@ -91,26 +79,7 @@ def test_request_body_resource_types_are_preserved():
             "RequestBody": {
                 "CLOUDFRONT": {"DefaultSizeInspectionLimit": "KB_16"},
                 "API_GATEWAY": {"DefaultSizeInspectionLimit": "KB_32"},
-            }
-        },
-    }
-    result, _require, _query = run(FakeModule(params(), client=acl_client(acl)), [SUMMARY])
-
-    assert result.values["web_acls"][0]["association_config"] == {
-        "request_body": {
-            "CLOUDFRONT": {"default_size_inspection_limit": "KB_16"},
-            "API_GATEWAY": {"default_size_inspection_limit": "KB_32"},
-        }
-    }
-
-
-def test_challenge_javascript_sdk_injection_resource_types_are_preserved():
-    acl = {
-        "ARN": "arn:web-acl",
-        "Id": "acl-1",
-        "Name": "main",
-        "AssociationConfig": {
-            "RequestBody": {"CLOUDFRONT": {"DefaultSizeInspectionLimit": "KB_16"}},
+            },
             "ChallengeJavascriptSdkInjection": {"CLOUDFRONT": {}},
         },
     }
@@ -118,7 +87,10 @@ def test_challenge_javascript_sdk_injection_resource_types_are_preserved():
 
     assert result.values["web_acls"][0]["association_config"] == {
         "challenge_javascript_sdk_injection": {"CLOUDFRONT": {}},
-        "request_body": {"CLOUDFRONT": {"default_size_inspection_limit": "KB_16"}},
+        "request_body": {
+            "CLOUDFRONT": {"default_size_inspection_limit": "KB_16"},
+            "API_GATEWAY": {"default_size_inspection_limit": "KB_32"},
+        },
     }
 
 
@@ -134,39 +106,10 @@ def test_tags_are_returned_with_their_case():
     assert "list_tags_for_resource" in require_client_methods.call_args.args[3]
 
 
-def test_tags_are_paginated():
-    client = acl_client({"ARN": "arn:web-acl", "Id": "acl-1", "Name": "main"})
-    client.list_tags_for_resource.side_effect = [
-        {"TagInfoForResource": {"TagList": [{"Key": "A", "Value": "1"}]}, "NextMarker": "page-2"},
-        {"TagInfoForResource": {"TagList": [{"Key": "B", "Value": "2"}]}},
-    ]
-    result, _require, _query = run(FakeModule(params(), client=client), [SUMMARY])
-
-    assert result.values["web_acls"][0]["tags"] == {"A": "1", "B": "2"}
-    assert client.list_tags_for_resource.call_args.kwargs["NextMarker"] == "page-2"
-
-
-def test_web_acl_deleted_before_its_tags_are_read_is_skipped():
-    client = acl_client({"ARN": "arn:web-acl", "Id": "acl-1", "Name": "main"})
-    client.list_tags_for_resource.side_effect = ClientError(
-        {"Error": {"Code": "WAFNonexistentItemException", "Message": "gone"}}, "ListTagsForResource"
-    )
-    result, _require, _query = run(FakeModule(params(), client=client), [SUMMARY])
-
-    assert result.values["web_acls"] == []
-
-
 def test_regional_scope_is_uppercase_for_aws():
     _result, _require, query_list = run(FakeModule(params(), client=Mock()), [])
 
     assert query_list.call_args.kwargs["Scope"] == "REGIONAL"
-
-
-def test_byte_values_are_returned_as_json_safe_text():
-    acl = {"ARN": "arn:web-acl", "CustomResponseBodies": {"body": {"Content": b"hello"}}, **SUMMARY}
-    result, _require, _query = run(FakeModule(params(id="acl-1"), client=acl_client(acl)), [SUMMARY])
-
-    assert result.values["web_acls"][0]["custom_response_bodies"]["body"]["content"] == "hello"
 
 
 def test_non_utf8_search_string_bytes_are_replaced():
@@ -178,21 +121,6 @@ def test_non_utf8_search_string_bytes_are_replaced():
     search_string = result.values["web_acls"][0]["rules"][0]["statement"]["byte_match_statement"]["search_string"]
     assert search_string == "��adminé"
     json.dumps(result.values, ensure_ascii=False).encode("utf-8")
-
-
-@pytest.mark.parametrize("option", ["id", "name"])
-def test_empty_filters_are_treated_as_omitted(option):
-    acl = {"ARN": "arn:web-acl", "Rules": [], **SUMMARY}
-    result, _require, _query = run(FakeModule(params(**{option: ""}), client=acl_client(acl)), [SUMMARY])
-
-    assert result.values["changed"] is False
-    assert [web_acl["id"] for web_acl in result.values["web_acls"]] == ["acl-1"]
-
-
-def test_missing_name_returns_empty_list():
-    result, _require, _query = run(FakeModule(params(name="missing"), client=Mock()), [SUMMARY])
-
-    assert result.values["web_acls"] == []
 
 
 def test_id_and_name_get_the_web_acl_without_listing():

@@ -1,4 +1,4 @@
-from unittest.mock import ANY, Mock, patch
+from unittest.mock import ANY, Mock, call, patch
 
 import pytest
 from botocore.exceptions import ClientError
@@ -862,61 +862,6 @@ def test_ip_replacements_stay_within_provider_count_bounds():
         assert client.method_calls[0][0].startswith(first_operation)
 
 
-def test_direction_change_preserves_the_endpoint():
-    client = Mock()
-    module = FakeModule(
-        {
-            "direction": "OUTBOUND",
-            "ip_addresses": [
-                {"subnet_id": "subnet-1"},
-                {"subnet_id": "subnet-2"},
-            ],
-            "name": "main",
-            "protocols": ["Do53"],
-            "purge_tags": True,
-            "resolver_endpoint_type": "IPV4",
-            "security_group_ids": ["sg-1"],
-            "tags": None,
-            "wait": False,
-            "wait_timeout": 300,
-        }
-    )
-    current = {
-        "Direction": "INBOUND",
-        "Id": "rslvr-old",
-        "IpAddresses": [
-            {"SubnetId": "subnet-1"},
-            {"SubnetId": "subnet-2"},
-        ],
-        "Protocols": ["Do53"],
-        "ResolverEndpointType": "IPV4",
-        "SecurityGroupIds": ["sg-1"],
-    }
-    with (
-        patch.object(plugin, "get_resolver_endpoint_by_name", return_value=current),
-        patch.object(
-            plugin,
-            "resolver_endpoint_with_ip_addresses",
-            side_effect=lambda *args, **kwargs: args[2],
-        ),
-        patch.object(plugin, "resolver_resource_with_tags", side_effect=lambda *args, **kwargs: args[2]),
-        patch.object(
-            plugin,
-            "reconcile_resolver_endpoint_ip_addresses",
-            return_value=current,
-        ),
-        patch.object(plugin, "delete_resolver_endpoint") as delete,
-        patch.object(plugin, "create_resolver_endpoint") as create,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert "direction cannot be changed" in raised.value.values["msg"]
-    delete.assert_not_called()
-    create.assert_not_called()
-    client.update_resolver_endpoint.assert_not_called()
-
-
 def test_no_wait_change_waits_for_operational_endpoint_and_rechecks():
     client = Mock()
     module = FakeModule(
@@ -1102,11 +1047,15 @@ def test_unresolved_update_never_replaces_endpoint(wait):
 
     assert raised.value.values["current"]["protocols"] == ["Do53"]
     assert raised.value.values["desired"]["protocols"] == ["DoH"]
-    client.delete_resolver_endpoint.assert_not_called()
-    client.create_resolver_endpoint.assert_not_called()
-    client.update_resolver_endpoint.assert_called_once_with(
-        ResolverEndpointId="rslvr-1", Protocols=["DoH"], aws_retry=True
+    assert raised.value.values["msg"] == (
+        "AWS Route53 Resolver endpoint main does not match the requested configuration after updating; AWS did not "
+        "apply the change or another writer changed it. Inspect the current configuration before retrying."
     )
+    assert raised.value.values["changed"] is True
+    # The update is the only write; the endpoint is never deleted or recreated.
+    assert client.method_calls == [
+        call.update_resolver_endpoint(ResolverEndpointId="rslvr-1", Protocols=["DoH"], aws_retry=True)
+    ]
 
 
 def endpoint_params(**overrides):

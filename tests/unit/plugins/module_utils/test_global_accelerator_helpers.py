@@ -1,11 +1,15 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from botocore.exceptions import ClientError
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import list_accelerator_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils import global_accelerator as global_accelerator_utils
+from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import (
+    get_accelerator_by_arn,
+    list_accelerator_tags,
+)
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleFail,
@@ -47,3 +51,32 @@ def test_list_accelerator_tags_defaults_to_no_tags():
     client = Mock(list_tags_for_resource=Mock(return_value={}))
 
     assert list_accelerator_tags(client, FakeModule({}), ARN) == []
+
+
+def test_get_accelerator_by_arn_returns_the_described_accelerator():
+    accelerator = {"AcceleratorArn": ARN, "Name": "example"}
+    client = Mock(describe_accelerator=Mock(return_value={"Accelerator": accelerator}))
+    with patch.object(global_accelerator_utils, "require_client_methods") as require:
+        assert get_accelerator_by_arn(client, FakeModule({}), ARN) == accelerator
+
+    assert require.call_args.args[3] == {"describe_accelerator": ("AcceleratorArn",)}
+    client.describe_accelerator.assert_called_once_with(AcceleratorArn=ARN, aws_retry=True)
+
+
+def test_get_accelerator_by_arn_returns_none_for_a_missing_accelerator():
+    missing = ClientError({"Error": {"Code": "AcceleratorNotFoundException", "Message": "gone"}}, "DescribeAccelerator")
+    client = Mock(describe_accelerator=Mock(side_effect=missing))
+    with patch.object(global_accelerator_utils, "require_client_methods"):
+        assert get_accelerator_by_arn(client, FakeModule({}), ARN) is None
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_get_accelerator_by_arn_rejects_a_different_accelerator(changed):
+    client = Mock(describe_accelerator=Mock(return_value={"Accelerator": {"AcceleratorArn": "arn:other"}}))
+    with (
+        patch.object(global_accelerator_utils, "require_client_methods"),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        get_accelerator_by_arn(client, FakeModule({}), ARN, changed=changed)
+
+    assert raised.value.values == {"changed": changed, "msg": "Global Accelerator returned an invalid accelerator"}

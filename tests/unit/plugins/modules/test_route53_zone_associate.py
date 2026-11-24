@@ -1,4 +1,3 @@
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -12,11 +11,11 @@ from ansible_collections.amazon.aws.plugins.module_utils.waiter import custom_wa
 
 from ansible_collections.linuxhq.aws.plugins.modules import route53_zone_associate as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    assert_module_contract,
 )
 
 VPC_1 = {"VPCId": "vpc-1", "VPCRegion": "us-east-1"}
@@ -53,32 +52,16 @@ def run_main(module):
 
 
 def test_module_contract():
-    captured = {}
-
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
+    captured = assert_module_contract(plugin)
 
     spec = captured["argument_spec"]
-    assert captured["supports_check_mode"]
     assert all(spec[key]["required"] for key in ("hosted_zone_id", "vpc_id", "vpc_region"))
     assert spec["wait"]["default"] is False
     assert spec["wait_timeout"]["default"] == 300
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 def test_null_required_ids_are_rejected_before_aws_calls():
-    captured = {}
-
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
+    captured = assert_module_contract(plugin)
 
     result = ArgumentSpecValidator(captured["argument_spec"]).validate(params(hosted_zone_id=None, vpc_id=None))
 

@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import ANY, Mock, patch
 
 import pytest
@@ -6,11 +5,10 @@ import pytest
 from ansible_collections.linuxhq.aws.plugins.module_utils import wait as wait_utils
 from ansible_collections.linuxhq.aws.plugins.modules import route53_resolver_rule_associate as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
+    assert_module_contract,
 )
 
 ASSOCIATION = {
@@ -44,19 +42,10 @@ def acceptors(waiter_name):
 
 
 def test_module_contract():
-    captured = {}
+    captured = assert_module_contract(plugin)
 
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
     assert captured["argument_spec"]["wait_timeout"]["default"] == 300
     assert "required_if" not in captured
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 def test_complete_waiter_stops_on_deleting_and_returns_failed_for_inspection():

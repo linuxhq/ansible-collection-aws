@@ -35,6 +35,7 @@ def test_query_list_failures_report_the_supplied_changed_state(changed):
         sdk.query_list(FakeModule({}), client, "list_items", "Items", "failed", changed=changed, Limit=2)
 
     assert raised.value.values["changed"] is changed
+    assert raised.value.values["msg"] == "failed"
     query.assert_called_once_with(client, "list_items", Limit=2)
 
 
@@ -153,27 +154,10 @@ def test_reads_client_method_output_members():
     assert sdk.get_client_method_output_members(client, "list_items") == []
 
 
-def test_query_list_translates_sdk_errors():
-    module = FakeModule({})
-    error = ClientError({"Error": {"Code": "Failed", "Message": "no"}}, "List")
-    with patch.object(sdk, "paginated_query_with_retries", side_effect=error), pytest.raises(ModuleFail) as raised:
-        sdk.query_list(module, Mock(), "list_items", "Items", "unable to list")
-
-    assert raised.value.values["msg"] == "unable to list"
-
-
 def test_requires_supported_client_parameters():
     module = FakeModule({})
     with patch.object(sdk, "get_boto3_client_method_parameters", return_value=["Name"]):
         sdk.require_client_methods(module, Mock(), "Example", {"get_item": ("Name",)})
-
-    with (
-        patch.object(sdk, "get_boto3_client_method_parameters", return_value=["Name"]),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        sdk.require_client_methods(module, Mock(), "Example", {"get_item": ("Unsupported",)})
-
-    assert "parameter Unsupported" in raised.value.values["msg"]
 
 
 def model_client():
@@ -181,14 +165,6 @@ def model_client():
     return get_session().create_client(
         "ssm", region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
     )
-
-
-def test_reports_missing_client_operation():
-    module = FakeModule({})
-    with pytest.raises(ModuleFail) as raised:
-        sdk.require_client_methods(module, model_client(), "Example", {"missing": ()})
-
-    assert raised.value.values["msg"] == "Installed botocore does not support Example missing"
 
 
 @pytest.mark.parametrize("changed", [False, True])
@@ -201,8 +177,10 @@ def test_unsupported_client_methods_report_earlier_changes(changed):
         sdk.require_client_methods(module, Mock(), "Example", {"get_item": ("Unsupported",)}, changed=changed)
 
     assert raised.value.values["changed"] is changed
+    assert "parameter Unsupported" in raised.value.values["msg"]
 
+    # A real botocore client raises OperationNotFoundError for a missing operation; no request is sent.
     with pytest.raises(ModuleFail) as raised:
         sdk.require_client_methods(module, model_client(), "Example", {"missing": ()}, changed=changed)
 
-    assert raised.value.values["changed"] is changed
+    assert raised.value.values == {"changed": changed, "msg": "Installed botocore does not support Example missing"}

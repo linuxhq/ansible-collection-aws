@@ -616,8 +616,9 @@ def ensure_present(client, module, deadline=None):
             if not rules_match(current, desired):
                 module.fail_json(
                     msg=(
-                        "AWS Route53 Resolver rule does not match the requested configuration after updating. "
-                        "The rule has not been deleted; inspect the current configuration before retrying."
+                        f"AWS Route53 Resolver rule {request['Name']} does not match the requested configuration "
+                        "after updating; AWS did not apply the change or another writer changed it. "
+                        "Inspect the current configuration before retrying."
                     ),
                     changed=True,
                     current=current,

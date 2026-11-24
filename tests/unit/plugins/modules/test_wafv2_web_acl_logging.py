@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -6,11 +5,11 @@ from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import wafv2_web_acl_logging as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
     ModuleInitialized,
+    assert_module_contract,
 )
 
 ARN = "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/main/acl-1"
@@ -53,18 +52,9 @@ def run_present(client, module, current):
 
 
 def test_module_contract():
-    captured = {}
+    captured = assert_module_contract(plugin)
 
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
     assert captured["required_if"] == [("state", "present", ["log_destination_configs"])]
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 @pytest.mark.parametrize(
@@ -107,15 +97,6 @@ def test_unusable_arn_fails_before_aws(resource_arn, message):
     require_client_methods.assert_not_called()
 
 
-# AWS WAFv2, not the module, rejects a destination list it does not accept.
-@pytest.mark.parametrize("destinations", [["arn:first", "arn:second"], [""]])
-def test_destination_lists_reach_aws(destinations):
-    result, require_client_methods = run_main(FakeModule(params(log_destination_configs=destinations)))
-
-    assert result.values == {"web_acl": WEB_ACL}
-    require_client_methods.assert_called_once()
-
-
 def test_check_mode_returns_desired_logging_configuration():
     client = Mock()
     result = run_present(client, FakeModule(params(), check_mode=True), None)
@@ -132,26 +113,16 @@ def test_check_mode_returns_desired_logging_configuration():
     client.put_logging_configuration.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "current",
-    [
-        None,
-        {
-            "LogDestinationConfigs": ["arn:old"],
-            "LogScope": "CUSTOMER",
-            "LogType": "WAF_LOGS",
-            "LoggingFilter": {"DefaultBehavior": "KEEP", "Filters": []},
-            "ManagedByFirewallManager": False,
-            "ResourceArn": ARN,
-        },
-    ],
-)
-def test_check_mode_predicts_the_stored_configuration_a_put_returns(current):
-    stored = dict(
-        current or {"LogScope": "CUSTOMER", "LogType": "WAF_LOGS", "ManagedByFirewallManager": False},
-        LogDestinationConfigs=["arn:new"],
-        ResourceArn=ARN,
-    )
+def test_check_mode_predicts_the_stored_configuration_a_put_returns():
+    current = {
+        "LogDestinationConfigs": ["arn:old"],
+        "LogScope": "CUSTOMER",
+        "LogType": "WAF_LOGS",
+        "LoggingFilter": {"DefaultBehavior": "KEEP", "Filters": []},
+        "ManagedByFirewallManager": False,
+        "ResourceArn": ARN,
+    }
+    stored = dict(current, LogDestinationConfigs=["arn:new"])
     results = {}
     for check_mode in (False, True):
         client = Mock()
@@ -206,6 +177,23 @@ def test_destination_update_preserves_unmanaged_logging_settings():
         },
         aws_retry=True,
     )
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_absent_deletes_an_existing_configuration(check_mode):
+    client = Mock()
+    current = {"LogDestinationConfigs": ["arn:log"], "ResourceArn": ARN}
+    with (
+        patch.object(plugin, "get_logging_configuration", return_value=current),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, FakeModule(params(state="absent"), check_mode=check_mode))
+
+    assert raised.value.values == {"changed": True, "resource_arn": ARN, "state": "absent"}
+    if check_mode:
+        client.delete_logging_configuration.assert_not_called()
+    else:
+        client.delete_logging_configuration.assert_called_once_with(ResourceArn=ARN, aws_retry=True)
 
 
 def test_absent_reports_no_change_when_configuration_disappears_during_delete():

@@ -921,8 +921,9 @@ def ensure_present(client, module, deadline=None):
                 module.fail_json(
                     msg=(
                         "AWS Route53 Resolver endpoint "
-                        f"{module.params['name']} does not match the requested configuration after updating. "
-                        "The endpoint has not been deleted; inspect the current configuration before retrying."
+                        f"{module.params['name']} does not match the requested configuration after updating; "
+                        "AWS did not apply the change or another writer changed it. "
+                        "Inspect the current configuration before retrying."
                     ),
                     changed=True,
                     current=current,

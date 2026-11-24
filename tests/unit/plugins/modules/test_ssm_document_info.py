@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -7,12 +6,11 @@ from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_document_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
     assert_documents_shape,
+    assert_module_contract,
     documented_returns,
 )
 
@@ -40,18 +38,9 @@ def run(module, documents=None):
 
 
 def test_module_contract():
-    captured = {}
+    captured = assert_module_contract(plugin)
 
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
     assert len(captured["mutually_exclusive"]) == 2
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 @pytest.mark.parametrize("key", ["document", "documents"])
@@ -72,7 +61,6 @@ def test_yaml_and_text_content_is_returned_as_a_string_even_in_json_syntax(docum
     client = Mock()
     client.describe_document.return_value = described(document_format)
     client.get_document.return_value = {"Content": content, "DocumentFormat": document_format, "Name": "example"}
-    client.list_tags_for_resource.return_value = {"TagList": []}
     result, _require, _query = run(FakeModule(params(name="example", document_format=document_format), client=client))
 
     assert result.values["document"]["content"] == content
@@ -90,9 +78,10 @@ def test_empty_name_lists_every_document():
 
 def test_version_name_omits_document_version_and_loads_content_and_tags():
     client = Mock()
-    client.describe_document.return_value = described()
+    client.describe_document.return_value = {
+        "Document": {"DocumentFormat": "JSON", "Name": "example", "Tags": [{"Key": "Name", "Value": "example"}]}
+    }
     client.get_document.return_value = {"Content": '{"schemaVersion":"2.2"}', "Name": "example"}
-    client.list_tags_for_resource.return_value = {"TagList": [{"Key": "Name", "Value": "example"}]}
     module = FakeModule(params(name="example", version_name="production"), client=client)
     result, require_client_methods, _query = run(module)
 
@@ -103,13 +92,27 @@ def test_version_name_omits_document_version_and_loads_content_and_tags():
         {
             "describe_document": ("Name", "VersionName"),
             "get_document": ("Name", "DocumentFormat", "VersionName"),
-            "list_tags_for_resource": ("ResourceId", "ResourceType"),
         },
     )
     assert "DocumentVersion" not in client.get_document.call_args.kwargs
     assert client.get_document.call_args.kwargs["VersionName"] == "production"
     assert result.values["document"]["content"] == {"schemaVersion": "2.2"}
     assert result.values["document"]["tags"] == {"Name": "example"}
+    client.list_tags_for_resource.assert_not_called()
+
+
+def test_listed_documents_return_the_tags_listed_with_them():
+    client = Mock(
+        get_document=Mock(side_effect=[{"Content": "{}", "Name": "first"}, {"Content": "{}", "Name": "second"}])
+    )
+    identifiers = [
+        {"DocumentFormat": "JSON", "Name": "first", "Tags": [{"Key": "Team", "Value": "Blue"}]},
+        {"DocumentFormat": "JSON", "Name": "second", "Tags": []},
+    ]
+    result, _require, _query = run(FakeModule(params(), client=client), identifiers)
+
+    assert [document["tags"] for document in result.values["documents"]] == [{"Team": "Blue"}, {}]
+    client.list_tags_for_resource.assert_not_called()
 
 
 def test_content_keys_are_returned_unchanged():
@@ -121,7 +124,6 @@ def test_content_keys_are_returned_unchanged():
     client = Mock()
     client.describe_document.return_value = described()
     client.get_document.return_value = {"Content": json.dumps(content), "Name": "example"}
-    client.list_tags_for_resource.return_value = {"TagList": []}
     result, _require, _query = run(FakeModule(params(name="example"), client=client))
 
     assert result.values["documents"][0]["content"] == content
@@ -148,7 +150,6 @@ def missing_version_error(operation="GetDocument"):
 def test_listed_documents_without_the_requested_version_are_omitted(version):
     client = Mock(
         get_document=Mock(side_effect=[missing_version_error(), {"Content": "{}", "Name": "second"}]),
-        list_tags_for_resource=Mock(return_value={"TagList": []}),
     )
     module = FakeModule(params(**version), client=client)
     result, _require, _query = run(module, [{"Name": "first"}, {"Name": "second"}])
@@ -164,7 +165,6 @@ def test_named_document_without_the_requested_version_returns_empty():
     assert result.values["documents"] == []
     client.describe_document.assert_called_once_with(Name="example", VersionName="production", aws_retry=True)
     client.get_document.assert_not_called()
-    client.list_tags_for_resource.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -187,7 +187,6 @@ def test_format_available_only_converts_between_json_and_yaml(document_format, r
 def test_listed_documents_that_cannot_be_served_in_the_requested_format_are_skipped():
     client = Mock(
         get_document=Mock(return_value={"Content": "echo", "DocumentFormat": "TEXT", "Name": "text"}),
-        list_tags_for_resource=Mock(return_value={"TagList": []}),
     )
     identifiers = [
         {"DocumentFormat": "JSON", "Name": "json"},

@@ -1,0 +1,21 @@
+---
+minor_changes:
+  - ssm_document_info - read document tags from the ``ListDocuments`` or ``DescribeDocument`` response instead of
+    calling ``ListTagsForResource`` for each document, so the module no longer needs
+    ``ssm:ListTagsForResource``.
+  - route53_resolver - reword the post-update configuration mismatch failure, which an unapplied update or another
+    writer can cause, and drop its reference to a removed delete-and-recreate path.
+  - route53_resolver_rule - name the rule in the post-update configuration mismatch failure, reword it, and drop its
+    reference to a removed delete-and-recreate path.
+trivial:
+  - ec2_transit_gateway_route_table - return the route search result directly.
+  - ec2_vpc_vpn - remove an unreachable check for a missing ``name`` on create.
+  - eks_cluster - remove an unreachable SDK check for ``elasticLoadBalancing`` members, and report an empty
+    ``remote_network_config`` CIDR list as empty; a blank CIDR fails the existing CIDR validation.
+  - global_accelerator, global_accelerator_info - share one accelerator lookup by ARN.
+  - pinpoint_sms_voice_phone_pool - drop a deletion protection condition that was always false.
+  - service_quota - document that ``pending_requests[].desired_value`` and ``pending_requests[].status`` are returned
+    only when AWS returns them.
+  - wafv2_ip_set_info, wafv2_web_acl_info - mark ``scope`` choices as values in the documentation.
+  - Remove duplicate and vacuous unit tests, share the module contract test helper, and make tag limit, path prefix,
+    wait, and absent-state tests assert what they describe.
