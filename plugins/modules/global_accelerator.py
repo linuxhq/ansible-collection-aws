@@ -2753,8 +2753,7 @@ def main():
                 endpoint_ids = set()
                 for configuration in endpoint_group["endpoint_configurations"] or []:
                     endpoint_id = configuration["endpoint_id"]
-                    if not endpoint_id.strip():
-                        module.fail_json(msg=f"Endpoint group {region} endpoint_id must not be empty")
+                    require_non_blank(module, endpoint_id, f"Endpoint group {region} endpoint_id")
 
                     if len(endpoint_id) > 255 or len(configuration["attachment_arn"] or "") > 255:
                         module.fail_json(

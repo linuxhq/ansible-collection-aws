@@ -117,39 +117,18 @@ def test_accepts_four_capabilities():
     client.request_phone_number.assert_not_called()
 
 
-def test_capability_limit_counts_unique_values():
-    client = model_client()
-    module = FakeModule(
-        {
-            "client_token": None,
-            "deletion_protection_enabled": False,
-            "international_sending_enabled": None,
-            "iso_country_code": "US",
-            "message_type": "TRANSACTIONAL",
-            "name": "sms",
-            "number_capabilities": ["SMS"] * 5,
-            "number_type": "LONG_CODE",
-            "opt_out_list_name": None,
-            "pool_id": None,
-            "registration_id": None,
-            "phone_number_id": None,
-            "purge_tags": True,
-            "state": "present",
-            "tags": None,
-            "wait": False,
-            "wait_delay": 5,
-            "wait_timeout": 300,
-        },
-        check_mode=True,
-        client=client,
-    )
+def test_new_number_request_sends_deduplicated_capabilities():
+    client = Mock()
+    client.request_phone_number.return_value = existing_number(NumberCapabilities=["SMS", "VOICE"], Status="PENDING")
+    module = FakeModule(phone_number_params(number_capabilities=["VOICE", "SMS", "SMS"]))
     with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit),
     ):
-        plugin.main()
+        run_ensure_present(client, module)
+
+    assert client.request_phone_number.call_args.kwargs["NumberCapabilities"] == ["SMS", "VOICE"]
 
 
 def test_simulator_numbers_require_transactional_messages():

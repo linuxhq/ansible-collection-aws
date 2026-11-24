@@ -641,12 +641,13 @@ def ensure_present(client, module, owner_id, deadline=None):
                 )
                 current = dict(current, Tags=current_tag_list)
                 current_prefix_list = comparable_prefix_list(current)
+                # Only a concurrent writer can leave the waited prefix list different from the request.
                 if wait and current_prefix_list != desired_prefix_list:
                     module.fail_json(
                         changed=True,
                         msg=(
-                            "EC2 VPC managed prefix list does not match the requested configuration after updating. "
-                            "The prefix list has not been deleted; inspect the current configuration before retrying."
+                            "EC2 VPC managed prefix list does not match the requested configuration after updating; "
+                            "another writer may have changed it. Inspect the current configuration before retrying."
                         ),
                         current=current_prefix_list,
                         desired=desired_prefix_list,

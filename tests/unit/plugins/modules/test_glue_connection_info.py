@@ -62,8 +62,7 @@ def test_named_connection_only_gates_used_parameters():
 
 
 def test_connection_list_only_gates_used_parameters():
-    client = Mock(get_connections=Mock(return_value={"ConnectionList": []}))
-    client.can_paginate.return_value = False
+    client = Mock()
     module = FakeModule(
         {
             "apply_override_for_compute_environment": None,

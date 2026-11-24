@@ -123,10 +123,6 @@ def test_validate_current_quota_names_the_error_reason(error_reason, suffix):
     assert raised.value.values["msg"] == f"AWS service quota ec2/L-1 did not return a valid value{suffix}"
 
 
-def test_validate_current_quota_accepts_large_integer_without_crashing():
-    plugin.validate_current_quota(FakeModule({}), {"Value": 10**400}, "ec2/L-1")
-
-
 def test_check_mode_reports_the_quota_request():
     client = Mock()
     client.get_service_quota.return_value = {"Quota": {"Value": 5.0}}

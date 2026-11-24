@@ -1173,6 +1173,45 @@ def test_absent_check_mode_and_already_absent(params, connection):
     assert client.mock_calls == []
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("name", [" ", "\u00a0", "\u3000"])
+def test_absent_whitespace_name_matches_nothing(params, check_mode, name):
+    # Live: EC2 stores " " as an empty Name and cannot find a Name of only U+00A0 or U+3000, so no connection matches.
+    params.update(name=name, state="absent")
+    module = FakeModule(params, check_mode=check_mode)
+    module.client = Mock()
+    module.client.return_value.describe_vpn_connections.return_value = {"VpnConnections": []}
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        pytest.raises(ModuleExit) as result,
+    ):
+        plugin.main()
+
+    assert result.value.values == {"changed": False, "vpn_connection": {}}
+    module.client.return_value.describe_vpn_connections.assert_called_once_with(
+        Filters=[{"Name": "tag:Name", "Values": [name]}], aws_retry=True
+    )
+
+
+@pytest.mark.parametrize("state", ["present", "absent"])
+def test_empty_name_fails_before_any_aws_call(params, state):
+    params.update(name="", state=state)
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_inputs(FakeModule(params))
+
+    assert raised.value.values == {"msg": "name must not be empty"}
+
+
+@pytest.mark.parametrize("name", [" ", "\t", "\u00a0", "\u3000"])
+def test_present_whitespace_name_fails_before_any_aws_call(params, name):
+    # Live: the tag:Name filter cannot find such a name, so every run would create another connection.
+    params["name"] = name
+    with pytest.raises(ModuleFail) as raised:
+        plugin.validate_inputs(FakeModule(params))
+
+    assert raised.value.values == {"msg": "name must not be empty"}
+
+
 def test_deleting_connection_is_never_recreated(params, connection):
     connection["State"] = "deleting"
     client = Mock()

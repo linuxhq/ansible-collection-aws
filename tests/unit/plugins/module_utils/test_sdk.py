@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from botocore.exceptions import ClientError
+from botocore.session import get_session
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import sdk
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
@@ -175,13 +176,17 @@ def test_requires_supported_client_parameters():
     assert "parameter Unsupported" in raised.value.values["msg"]
 
 
+def model_client():
+    """Return a real botocore client, whose missing operations raise OperationNotFoundError; no request is sent."""
+    return get_session().create_client(
+        "ssm", region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
+    )
+
+
 def test_reports_missing_client_operation():
     module = FakeModule({})
-    with (
-        patch.object(sdk, "get_boto3_client_method_parameters", side_effect=AttributeError),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        sdk.require_client_methods(module, Mock(), "Example", {"missing": ()})
+    with pytest.raises(ModuleFail) as raised:
+        sdk.require_client_methods(module, model_client(), "Example", {"missing": ()})
 
     assert raised.value.values["msg"] == "Installed botocore does not support Example missing"
 
@@ -197,10 +202,7 @@ def test_unsupported_client_methods_report_earlier_changes(changed):
 
     assert raised.value.values["changed"] is changed
 
-    with (
-        patch.object(sdk, "get_boto3_client_method_parameters", side_effect=AttributeError),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        sdk.require_client_methods(module, Mock(), "Example", {"missing": ()}, changed=changed)
+    with pytest.raises(ModuleFail) as raised:
+        sdk.require_client_methods(module, model_client(), "Example", {"missing": ()}, changed=changed)
 
     assert raised.value.values["changed"] is changed

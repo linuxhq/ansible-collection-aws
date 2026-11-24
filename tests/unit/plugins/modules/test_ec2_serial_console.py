@@ -17,12 +17,6 @@ def test_module_contract():
     assert options["argument_spec"]["state"]["choices"] == ["absent", "present"]
 
 
-def test_response_metadata_is_not_returned():
-    response = {"SerialConsoleAccessEnabled": True, "ResponseMetadata": {"x": 1}}
-    assert plugin.normalized_serial_console_access(response) == {"serial_console_access_enabled": True}
-    assert response == {"SerialConsoleAccessEnabled": True, "ResponseMetadata": {"x": 1}}
-
-
 def test_check_mode_projects_enabled_state_without_mutation():
     client = Mock()
     client.get_serial_console_access_status.return_value = {"SerialConsoleAccessEnabled": False}

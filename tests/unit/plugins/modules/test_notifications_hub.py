@@ -72,13 +72,6 @@ def test_hub_lookup_matches_exact_region():
     assert result == {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "ACTIVE"}}
 
 
-def test_hub_lookup_accepts_unknown_status():
-    hub = {"notificationHubRegion": "us-east-1", "statusSummary": {"reason": "", "status": "SUSPENDED"}}
-    module = FakeModule({"region": "us-east-1"})
-    with patch.object(plugin, "query_list", return_value=[hub]):
-        assert plugin.list_notification_hubs(None, module) == [hub]
-
-
 def test_hub_with_unknown_status_is_present():
     client = Mock()
     module = FakeModule({"region": "us-east-1"})

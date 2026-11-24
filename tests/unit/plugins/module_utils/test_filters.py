@@ -92,7 +92,7 @@ def test_filter_value_batches_honor_a_lower_max_values():
         ("a*b", r"a\*b"),
         ("a?b", r"a\?b"),
         (r"a\b", r"a\\b"),
-        # The backslash is escaped first, so the escapes added for * and ? are not doubled.
+        # Each character is escaped once, so the escapes added for * and ? are not doubled.
         (r"*a?\b", r"\*a\?\\b"),
     ],
 )

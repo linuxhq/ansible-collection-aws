@@ -644,7 +644,7 @@ def test_address_family_change_preserves_prefix_list(check_mode):
     assert not client.mock_calls
 
 
-def test_update_mismatch_preserves_prefix_list():
+def test_waited_update_fails_when_another_writer_changes_the_prefix_list():
     module = FakeModule(
         {
             "address_family": "IPv4",
@@ -663,12 +663,14 @@ def test_update_mismatch_preserves_prefix_list():
         "Version": 1,
     }
     grown = dict(current, MaxEntries=2, Version=2)
+    # A concurrent writer resized the prefix list before the re-read.
+    reread = dict(current, MaxEntries=3, Version=4)
     client = Mock()
     with (
         patch.object(
             plugin,
             "get_current",
-            side_effect=[(current, [{"Cidr": "10.0.0.0/8"}]), (current, [{"Cidr": "10.0.0.0/8"}])],
+            side_effect=[(current, [{"Cidr": "10.0.0.0/8"}]), (reread, [{"Cidr": "10.0.0.0/8"}])],
         ),
         patch.object(plugin, "describe_prefix_list", return_value=grown),
         patch.object(plugin, "wait_for_ready_state"),
@@ -679,7 +681,9 @@ def test_update_mismatch_preserves_prefix_list():
     ):
         plugin.ensure_present(client, module, OWNER)
 
-    assert "has not been deleted" in raised.value.values["msg"]
+    assert raised.value.values["changed"] is True
+    assert "another writer may have changed it" in raised.value.values["msg"]
+    assert raised.value.values["current"]["max_entries"] == 3
     assert modify.call_args_list == [
         call(client, module, current, changed=False, max_entries=2),
         call(client, module, grown, changed=True, add_entries=[{"cidr": "192.0.2.0/24"}], remove_entries=None),

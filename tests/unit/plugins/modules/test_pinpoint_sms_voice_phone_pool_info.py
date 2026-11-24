@@ -251,3 +251,32 @@ def test_pools_always_return_origination_identities_and_tags():
     pool = raised.value.values["pools"][0]
     assert pool["origination_identities"] == []
     assert pool["tags"] == {}
+
+
+@pytest.mark.parametrize("operation", ["ListPoolOriginationIdentities", "ListTagsForResource"])
+def test_pool_deleted_while_listing_details_is_omitted(operation):
+    missing = pinpoint_sms_voice.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
+        operation,
+    )
+    client = Mock()
+    client.list_tags_for_resource.side_effect = missing
+    module = FakeModule({"filters": None, "max_results": None, "owner": "SELF", "pool_ids": None}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[{"PoolArn": POOL_ARN, "PoolId": "pool-1"}]),
+        patch.object(
+            pinpoint_sms_voice,
+            "paginated_query_with_retries",
+            side_effect=missing if operation == "ListPoolOriginationIdentities" else None,
+            return_value={"OriginationIdentities": []},
+        ),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["pools"] == []
+    assert raised.value.values["pool_ids"] == []
+    if operation == "ListPoolOriginationIdentities":
+        client.list_tags_for_resource.assert_not_called()

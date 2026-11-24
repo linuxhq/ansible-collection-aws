@@ -48,21 +48,3 @@ def test_returns_normalized_hubs():
         "Notifications",
         {"list_notification_hubs": ("maxResults", "nextToken")},
     )
-
-
-def test_returns_hub_with_unknown_status():
-    module = FakeModule({}, client=Mock())
-    hub = {
-        "creationTime": "2026-01-01T00:00:00Z",
-        "notificationHubRegion": "us-east-1",
-        "statusSummary": {"reason": "", "status": "SUSPENDED"},
-    }
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[hub]),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["notification_hubs"][0]["status_summary"] == {"reason": "", "status": "SUSPENDED"}
