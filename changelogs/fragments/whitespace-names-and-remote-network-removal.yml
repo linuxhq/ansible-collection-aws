@@ -1,0 +1,18 @@
+---
+minor_changes:
+  - ec2_vpc_vpn - with ``state=absent``, report no change for a whitespace-only ``name``, which matches no connection,
+    instead of failing. An empty ``name`` still fails for both states.
+  - eks_cluster - describe the cluster VPC only when remote node or pod networks remain, so removing every remote
+    network no longer needs ``ec2:DescribeVpcs``.
+bugfixes:
+  - ec2_transit_gateway_route_table - with ``state=present``, reject a ``name`` made only of whitespace, including
+    Unicode whitespace such as a no-break space. EC2 stores it, but the ``tag:Name`` filter cannot find it, so every
+    run created another route table.
+trivial:
+  - ec2_vpc_prefix_list - reword the post-update configuration mismatch failure, which only a concurrent writer can
+    cause, and drop its reference to a removed delete-and-recreate path.
+  - eks_cluster - compute the desired cluster only on the update path.
+  - global_accelerator - use the shared blank-value check for ``endpoint_id``.
+  - pinpoint_sms_voice - identify phone numbers in pool listings by their origination identity ARN only.
+  - require_client_methods - catch only ``OperationNotFoundError`` for a missing client operation.
+  - Remove duplicate and vestigial unit tests, add missing-resource skip tests, and fix invalid test fixtures.

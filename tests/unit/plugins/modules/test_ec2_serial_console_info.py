@@ -2,7 +2,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ansible_collections.linuxhq.aws.plugins.module_utils import ec2_serial_console as helper
 from ansible_collections.linuxhq.aws.plugins.modules import ec2_serial_console_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -16,25 +15,17 @@ def test_module_contract():
     assert options["argument_spec"] == {}
 
 
-def test_response_metadata_is_removed():
-    client = Mock(
-        get_serial_console_access_status=Mock(
-            return_value={
-                "ManagedBy": "declarative-policy",
-                "SerialConsoleAccessEnabled": True,
-                "ResponseMetadata": {"RequestId": "request"},
-            }
-        )
-    )
+def test_returns_the_serial_console_access_status():
+    client = Mock()
     module = FakeModule({}, client=client)
+    status = {"managed_by": "account", "serial_console_access_enabled": True}
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(helper, "require_client_methods"),
+        patch.object(plugin, "get_serial_console_access", return_value=status) as get_status,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
 
-    assert raised.value.values["serial_console_access"] == {
-        "managed_by": "declarative-policy",
-        "serial_console_access_enabled": True,
-    }
+    get_status.assert_called_once_with(client, module)
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["serial_console_access"] == status

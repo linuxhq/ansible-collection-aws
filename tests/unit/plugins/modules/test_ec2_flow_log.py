@@ -247,15 +247,6 @@ def test_absent_checks_the_delete_operation_before_deleting():
     client.delete_flow_logs.assert_not_called()
 
 
-def test_delete_does_not_check_the_delete_operation_again():
-    client = Mock()
-    client.delete_flow_logs.return_value = {}
-    with patch.object(plugin, "require_client_methods") as require:
-        assert plugin.delete_flow_logs(client, FakeModule({}), ["fl-1"]) == ["fl-1"]
-
-    require.assert_not_called()
-
-
 def test_tag_keys_may_contain_128_characters_but_not_129():
     params = dict(dict.fromkeys(plugin.PRESENT_MATCH_FIELDS), name="main")
     params.update(
@@ -1234,12 +1225,14 @@ def test_delete_batches_flow_log_ids():
     flow_log_ids = [f"fl-{index}" for index in range(101)]
     client = Mock()
     client.delete_flow_logs.return_value = {}
-    with patch.object(plugin, "require_client_methods"):
+    with patch.object(plugin, "require_client_methods") as require:
         removed = plugin.delete_flow_logs(client, FakeModule({}), flow_log_ids)
 
     batches = [call.kwargs["FlowLogIds"] for call in client.delete_flow_logs.call_args_list]
     assert [len(batch) for batch in batches] == [100, 1]
     assert removed == flow_log_ids
+    # ensure_absent checks the delete operation before deleting; the delete does not check it again.
+    require.assert_not_called()
 
 
 @pytest.mark.parametrize(

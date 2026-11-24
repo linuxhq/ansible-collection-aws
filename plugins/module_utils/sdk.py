@@ -70,7 +70,7 @@ def require_client_methods(module, client, service, methods, changed=False):
     for method_name in methods:
         try:
             available_parameters = get_boto3_client_method_parameters(client, method_name)
-        except (AttributeError, OperationNotFoundError):
+        except OperationNotFoundError:
             module.fail_json(changed=changed, msg=f"Installed botocore does not support {service} {method_name}")
 
         for parameter_name in sorted(methods[method_name]):

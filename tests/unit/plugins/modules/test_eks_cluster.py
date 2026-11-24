@@ -4078,6 +4078,28 @@ def test_remote_networks_outside_the_associated_vpc_cidr_blocks_are_updated():
     assert result["changed"] is True
 
 
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_removing_every_remote_network_does_not_describe_the_vpc(check_mode):
+    # No block remains to overlap the VPC, so the removal needs no ec2:DescribeVpcs permission.
+    params = eks_params(
+        remote_network_config={"remote_node_networks": [], "remote_pod_networks": []},
+        wait=False,
+    )
+    ec2 = Mock()
+    current = vpc_cluster({"remoteNodeNetworks": NODE_NETWORKS})
+    client, result = run_present(FakeModule(params, check_mode=check_mode, client=ec2), [current, current])
+
+    assert result["changed"] is True
+    ec2.describe_vpcs.assert_not_called()
+    if check_mode:
+        client.update_cluster_config.assert_not_called()
+    else:
+        assert client.update_cluster_config.call_args.kwargs["remoteNetworkConfig"] == {
+            "remoteNodeNetworks": [],
+            "remotePodNetworks": [],
+        }
+
+
 def test_remote_network_vpc_lookup_failure_names_the_vpc():
     params = eks_params(
         remote_network_config={"remote_node_networks": [{"cidrs": ["10.80.0.0/16"]}], "remote_pod_networks": None}

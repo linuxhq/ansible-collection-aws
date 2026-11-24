@@ -427,15 +427,11 @@ def test_phone_number_in_a_non_matching_pool_fails_before_create(check_mode, poo
     client.create_pool.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "origination",
-    [
-        {"OriginationIdentity": "phone-1", "OriginationIdentityArn": PHONE_ORIGINATION["OriginationIdentityArn"]},
-        {"OriginationIdentity": "phone-1", "PhoneNumber": "+12065550100"},
-    ],
-    ids=["arn", "phone-number-field"],
-)
-def test_phone_number_identity_is_detected_from_listed_item(origination):
+def test_phone_number_identity_is_detected_from_listed_item():
+    origination = {
+        "OriginationIdentity": "phone-1",
+        "OriginationIdentityArn": PHONE_ORIGINATION["OriginationIdentityArn"],
+    }
     module = create_params("phone-1")
     pool = {"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}
     describe, originations, tags = patch_held_pool(pool, origination)
@@ -1164,7 +1160,7 @@ def test_tag_failure_reports_whether_the_pool_was_updated(deletion_protection_en
 def test_wait_timeout_after_create_reports_changed():
     client = Mock()
     client.create_pool.return_value = active_pool(Status="CREATING")
-    module = FakeModule(present_params(origination_identity="+15555550100", iso_country_code="US", wait=True))
+    module = FakeModule(present_params(origination_identity="phone-1", iso_country_code="US", wait=True))
     module.params["client_token"] = None
     with (
         patch.object(plugin, "find_pool", return_value=None),
@@ -1865,7 +1861,7 @@ def named_pools_client(names):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_absent_without_pool_id_deletes_the_pool_with_the_name_tag(check_mode):
     client = named_pools_client({"arn:pool-1": "other", "arn:pool-2": "main"})
-    client.update_pool.return_value = described_pool("pool-2", Status="UPDATING")
+    client.update_pool.return_value = described_pool("pool-2", Status="ACTIVE")
     client.delete_pool.return_value = described_pool("pool-2", Status="DELETING")
     module = FakeModule(main_params(state="absent"), check_mode=check_mode)
     pools = [described_pool("pool-1"), described_pool("pool-2", DeletionProtectionEnabled=True)]
@@ -1888,7 +1884,8 @@ def test_absent_without_pool_id_deletes_the_pool_with_the_name_tag(check_mode):
         client.delete_pool.assert_not_called()
     else:
         client.update_pool.assert_called_once_with(PoolId="pool-2", DeletionProtectionEnabled=False, aws_retry=True)
-        wait.assert_called_once_with(client, module, "pool-2", changed=True)
+        # UpdatePool returns the ACTIVE, unprotected pool, so DeletePool follows without a wait.
+        wait.assert_not_called()
         client.delete_pool.assert_called_once_with(PoolId="pool-2", aws_retry=True)
 
 

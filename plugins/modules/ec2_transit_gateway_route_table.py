@@ -31,9 +31,9 @@ options:
       - When O(tags) contains C(Name), its value must match this value.
       - Required when O(transit_gateway_route_table_id) is omitted.
       - This must not be empty when specified.
-      - When O(state=present), this must not be made only of spaces, tabs,
-        carriage returns, and line feeds, because EC2 stores such a C(Name) tag
-        as an empty value.
+      - When O(state=present), this must not be made only of whitespace,
+        because EC2 stores some such C(Name) tags as an empty value and cannot
+        filter on the others.
     type: str
   purge_routes:
     description:
@@ -311,13 +311,13 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     require_client_methods,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
-    EC2_BLANK_TAG_VALUE_CHARACTERS,
     apply_tag_deltas,
     reconcile_ec2_tags,
     require_no_reserved_tag_keys,
     require_resulting_tag_limit,
     require_valid_tags,
 )
+from ansible_collections.linuxhq.aws.plugins.module_utils.validation import require_non_blank
 from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     require_positive_wait_bounds,
     sleep_until_next_poll,
@@ -1270,9 +1270,9 @@ def main():
     if state == "present":
         tags = module.params["tags"]
         name = module.params["name"]
-        # EC2 would store the Name tag as "", so the route table could never be found by this name again.
-        if name is not None and not name.strip(EC2_BLANK_TAG_VALUE_CHARACTERS):
-            module.fail_json(msg="name must not be empty")
+        # EC2 stores some whitespace-only names as "" and the tag:Name filter cannot find the others, so the route
+        # table could never be found by this name again.
+        require_non_blank(module, name, "name")
 
         require_valid_tags(module, tags, ec2=True)
         if name and tags is not None and tags.get("Name", name) != name:

@@ -1354,7 +1354,9 @@ def validate_network(module, value, name, version):
 def validate_inputs(module):
     require_positive_wait_bounds(module, always=True)
 
-    require_non_blank(module, module.params["name"], "name")
+    # An empty name would leave find_connection without filters.
+    if module.params["name"] is not None and not module.params["name"]:
+        module.fail_json(msg="name must not be empty")
 
     if module.params["filters"] is not None and not module.params["filters"]:
         module.fail_json(msg="filters must not be empty")
@@ -1364,6 +1366,9 @@ def validate_inputs(module):
 
     if module.params["state"] == "absent":
         return
+
+    # The tag:Name filter cannot find a whitespace-only name, so creating one would never converge.
+    require_non_blank(module, module.params["name"], "name")
 
     # Older botocore cannot send these options, and before 1.40.71 it drops the returned TunnelBandwidth.
     if module.params["pre_shared_key_storage"] is not None:

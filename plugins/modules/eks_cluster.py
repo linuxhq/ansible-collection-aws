@@ -1689,7 +1689,6 @@ def ensure_present(client, module, deadline=None):
     version = module.params["version"]
     wait = module.params["wait"]
     current = describe_cluster(client, module)
-    desired = desired_cluster(module)
 
     if current is not None and current.get("status") == "DELETING":
         if module.check_mode:
@@ -1755,6 +1754,7 @@ def ensure_present(client, module, deadline=None):
         if current is None:
             module.fail_json(msg=f"EKS cluster {name} disappeared while waiting for it to become active")
 
+    desired = desired_cluster(module)
     desired_boto3 = snake_dict_to_camel_dict(desired, capitalize_first=False)
     for field, camel_field in CREATE_ONLY_FIELDS.items():
         if desired_boto3.get(camel_field) is None:
@@ -1958,22 +1958,24 @@ def ensure_present(client, module, deadline=None):
         # EKS checks the networks the cluster would have, including those of an omitted list, against each other, the
         # cluster's service CIDR block, and its VPC CIDR blocks (live: "overlaps with VPC CIDR").
         current_remote_network_config = current.get("remoteNetworkConfig") or {}
+        remote_networks = {
+            network: [
+                ipaddress.ip_network(cidr, strict=False)
+                for entry in remote_network_config.get(key, current_remote_network_config.get(key)) or []
+                for cidr in entry.get("cidrs") or []
+            ]
+            for network, key in (
+                ("remote_node_networks", "remoteNodeNetworks"),
+                ("remote_pod_networks", "remotePodNetworks"),
+            )
+        }
         vpc_id = (current.get("resourcesVpcConfig") or {}).get("vpcId")
+        # Only remaining blocks are checked against the VPC, so removing them needs no ec2:DescribeVpcs.
         require_valid_remote_networks(
             module,
-            {
-                network: [
-                    ipaddress.ip_network(cidr, strict=False)
-                    for entry in remote_network_config.get(key, current_remote_network_config.get(key)) or []
-                    for cidr in entry.get("cidrs") or []
-                ]
-                for network, key in (
-                    ("remote_node_networks", "remoteNodeNetworks"),
-                    ("remote_pod_networks", "remotePodNetworks"),
-                )
-            },
+            remote_networks,
             ip_network_or_none(current_network_config.get("serviceIpv4Cidr")),
-            describe_vpc_cidr_blocks(module, vpc_id) if vpc_id else (),
+            describe_vpc_cidr_blocks(module, vpc_id) if vpc_id and any(remote_networks.values()) else (),
         )
 
     if auto_mode_changed:

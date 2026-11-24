@@ -54,7 +54,7 @@ def unique_resource_ids(identifiers):
 
 def is_phone_number_identity(origination):
     """Return whether a ListPoolOriginationIdentities item is a phone number rather than a sender ID."""
-    return origination.get("PhoneNumber") is not None or ":phone-number/" in origination["OriginationIdentityArn"]
+    return ":phone-number/" in origination["OriginationIdentityArn"]
 
 
 def is_phone_number_reference(origination_identity):

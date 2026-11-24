@@ -1352,15 +1352,16 @@ def test_blank_tag_keys_fail_before_any_aws_call(key, check_mode):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("name", [" ", "\t\n\r"])
+@pytest.mark.parametrize("name", [" ", "\t\n\r", "\N{NO-BREAK SPACE}", "\N{IDEOGRAPHIC SPACE}"])
 @pytest.mark.parametrize(
     "identifiers",
     [{"transit_gateway_id": "tgw-1", "transit_gateway_route_table_id": None}, {}],
     ids=["by-name", "by-id"],
 )
 def test_present_rejects_a_name_ec2_stores_as_an_empty_tag(identifiers, name, check_mode):
-    # Live: EC2 stores a tag value made only of spaces, tabs, and line breaks as "", so a Name tag of this name could
-    # never be found again and every run would create another route table.
+    # Live: EC2 stores a tag value made only of spaces, tabs, and line breaks as "", and the tag:Name filter cannot
+    # find a stored U+00A0 or U+3000 value, so this name could never be found again and every run would create another
+    # route table.
     module = FakeModule(present_params(name=name, **identifiers), check_mode=check_mode)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -1373,19 +1374,16 @@ def test_present_rejects_a_name_ec2_stores_as_an_empty_tag(identifiers, name, ch
     assert raised.value.values == {"msg": "name must not be empty"}
 
 
-@pytest.mark.parametrize(
-    "name, state",
-    [(" ", "absent"), ("\N{NO-BREAK SPACE}", "absent"), ("\N{NO-BREAK SPACE}", "present")],
-)
-def test_absent_blank_names_and_stored_names_reach_the_route_table_lookup(name, state):
-    # Absent only looks the name up, and EC2 stores a no-break space Name tag as sent.
+@pytest.mark.parametrize("name", [" ", "\N{NO-BREAK SPACE}"])
+def test_absent_blank_names_reach_the_route_table_lookup(name):
+    # Absent only looks the name up.
     client = Mock()
-    module = FakeModule(present_params(name=name, state=state), client=client)
+    module = FakeModule(present_params(name=name, state="absent"), client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_positive_wait_bounds"),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, f"ensure_{state}") as ensure,
+        patch.object(plugin, "ensure_absent") as ensure,
     ):
         plugin.main()
 

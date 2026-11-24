@@ -255,3 +255,22 @@ def test_phone_numbers_are_enriched_with_tags():
             {"list_tags_for_resource": ("ResourceArn",)},
         ),
     ]
+
+
+def test_phone_number_released_while_listing_tags_is_omitted():
+    client = Mock()
+    client.list_tags_for_resource.side_effect = pinpoint_sms_voice.ClientError(
+        {"Error": {"Code": "ResourceNotFoundException", "Message": "missing"}},
+        "ListTagsForResource",
+    )
+    module = FakeModule({"filters": None, "max_results": None, "owner": None, "phone_number_ids": None}, client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[{"PhoneNumberArn": "arn:phone", "PhoneNumberId": "phone-1"}]),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["phone_numbers"] == []
+    assert raised.value.values["phone_number_ids"] == []

@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import boto3
@@ -11,11 +10,10 @@ from ansible.module_utils.common.dict_transformations import camel_dict_to_snake
 
 from ansible_collections.linuxhq.aws.plugins.modules import sqs_queue_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
+    assert_module_contract,
     documented_returns,
 )
 
@@ -53,18 +51,8 @@ def run(module):
 
 
 def test_module_contract():
-    captured = {}
-
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
-    assert captured["required_by"] == {"queue_owner_aws_account_id": ["name"]}
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
+    options = assert_module_contract(plugin)
+    assert options["required_by"] == {"queue_owner_aws_account_id": ["name"]}
 
 
 def test_queue_name_is_derived_from_the_url():
