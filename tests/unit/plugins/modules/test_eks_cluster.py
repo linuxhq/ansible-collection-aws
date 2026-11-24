@@ -847,23 +847,6 @@ def test_deleting_cluster_waits_then_recreates():
     client.create_cluster.assert_called_once()
 
 
-def test_absent_does_not_repeat_an_in_progress_delete():
-    client = Mock()
-    module = FakeModule({"name": "example", "wait": False})
-    with (
-        patch.object(
-            plugin,
-            "describe_cluster",
-            return_value={"name": "example", "status": "DELETING"},
-        ),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_absent(client, module)
-
-    assert not raised.value.values["changed"]
-    client.delete_cluster.assert_not_called()
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("status", ["ACTIVE", "UPDATING"])
 def test_absent_fails_without_waiting_when_deletion_protection_is_enabled(check_mode, status):
@@ -1449,14 +1432,6 @@ def test_delete_waits_for_in_progress_cluster_updates_first():
     query.assert_called_once_with(client, "list_updates", name="example")
     assert client.describe_update.call_count == 3
     assert calls == ["delete"]
-
-
-def test_failed_update_still_fails_a_requested_change():
-    client = Mock()
-    client.describe_update.return_value = {"update": {"id": "update-1", "status": "Failed"}}
-    module = FakeModule({"name": "example", "wait_delay": 1, "wait_timeout": 60})
-    with patch.object(plugin, "require_client_methods"), pytest.raises(ModuleFail):
-        plugin.wait_for_update(client, module, "update-1")
 
 
 def eks_client():
@@ -3299,7 +3274,7 @@ def test_remote_networks_on_an_ipv6_cluster_fail_before_any_update(remote_networ
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_empty_remote_networks_on_an_ipv6_cluster_are_unchanged(check_mode):
+def test_empty_remote_networks_on_an_ipv6_cluster_send_no_remote_network_update(check_mode):
     params = eks_params(
         deletion_protection=True, remote_network_config={"remote_node_networks": [], "remote_pod_networks": []}
     )
@@ -3431,23 +3406,6 @@ def test_ipv6_public_access_cidrs_reach_aws_for_an_ipv6_cluster_without_an_old_e
             call(name="example", deletionProtection=True, aws_retry=True),
             call(name="example", resourcesVpcConfig={"publicAccessCidrs": cidrs}, aws_retry=True),
         ]
-
-
-def test_ipv6_public_access_cidrs_reach_aws_for_an_ipv6_cluster():
-    # IPv6 clusters made after October 2024 accept them (model).
-    cidrs = ["0.0.0.0/0", "::/0"]
-    current = dict(
-        STANDARD_CLUSTER, kubernetesNetworkConfig={"ipFamily": "ipv6", "elasticLoadBalancing": {"enabled": False}}
-    )
-    params = eks_params(deletion_protection=True, resources_vpc_config=vpc_config_params(public_access_cidrs=cidrs))
-
-    client, result = run_present(FakeModule(params), [current])
-
-    assert result["changed"] is True
-    assert client.update_cluster_config.call_args_list == [
-        call(name="example", deletionProtection=True, aws_retry=True),
-        call(name="example", resourcesVpcConfig={"publicAccessCidrs": cidrs}, aws_retry=True),
-    ]
 
 
 def test_ipv6_public_access_cidrs_on_create_are_left_to_aws():

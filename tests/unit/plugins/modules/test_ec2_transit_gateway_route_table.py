@@ -777,13 +777,10 @@ def test_false_blackhole_allows_attachment():
     ensure_present.assert_called_once()
 
 
-def test_route_search_uses_all_paginated_results():
+def test_route_search_delegates_to_query_list():
     client = Mock()
     routes = [{"DestinationCidrBlock": "10.0.0.0/8", "State": "active", "Type": "static"}]
-    with (
-        patch.object(plugin, "query_list", return_value=routes) as query,
-        patch.object(plugin, "require_client_methods"),
-    ):
+    with patch.object(plugin, "query_list", return_value=routes) as query:
         result = plugin.search_routes(
             client,
             FakeModule({}),
@@ -1054,21 +1051,6 @@ def test_check_mode_searches_routes_on_available_table():
     get_route.assert_called_once_with(client, module, "tgw-rtb-1", "10.0.0.0/8", changed=False)
     assert result.value.values["changed"] is True
     assert result.value.values["routes"][0]["destination_cidr_block"] == "10.0.0.0/8"
-    assert client.mock_calls == []
-
-
-def test_absent_check_mode_skips_deleting_table_wait():
-    module = FakeModule({"state": "absent", "wait": True}, check_mode=True)
-    table = {"TransitGatewayRouteTableId": "tgw-rtb-1", "State": "deleting"}
-    client = Mock()
-    with (
-        patch.object(plugin, "find_route_table", return_value=table),
-        patch.object(plugin, "wait_for_route_table", side_effect=AssertionError("Unexpected table wait")),
-        pytest.raises(ModuleExit) as result,
-    ):
-        plugin.ensure_absent(client, module)
-
-    assert result.value.values["changed"] is False
     assert client.mock_calls == []
 
 

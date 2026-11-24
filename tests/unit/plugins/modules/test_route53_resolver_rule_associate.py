@@ -180,21 +180,12 @@ def test_creating_association_wait_allows_failed_so_it_can_be_replaced():
     client.disassociate_resolver_rule.assert_called_once()
 
 
-@pytest.mark.parametrize(
-    ("associations", "message"),
-    [
-        (
-            [dict(ASSOCIATION, Id="rslvr-rrassoc-1"), dict(ASSOCIATION, Id="rslvr-rrassoc-2")],
-            "Multiple AWS Route53 Resolver rule associations",
-        ),
-        ([dict(ASSOCIATION, VPCId="vpc-2")], "unexpected resolver rule association VPCId"),
-    ],
-)
-def test_list_rejects_malformed_and_ambiguous_associations(associations, message):
+def test_list_rejects_ambiguous_associations():
+    associations = [dict(ASSOCIATION, Id="rslvr-rrassoc-1"), dict(ASSOCIATION, Id="rslvr-rrassoc-2")]
     with patch.object(plugin, "query_list", return_value=associations), pytest.raises(ModuleFail) as raised:
         plugin.get_resolver_rule_association_by_rule_and_vpc(Mock(), FakeModule(params()))
 
-    assert message in raised.value.values["msg"]
+    assert "Multiple AWS Route53 Resolver rule associations" in raised.value.values["msg"]
     assert raised.value.values["changed"] is False
 
 

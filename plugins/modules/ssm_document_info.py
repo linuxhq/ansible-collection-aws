@@ -338,16 +338,13 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
 
 
 def content_transform(content, document_format):
-    if content is None:
-        return {}
-
     # AWS returns YAML content as stored, so YAML written in JSON-compatible syntax must stay a string too.
     if document_format != "JSON":
         return content
 
     try:
         return json.loads(content)
-    except (TypeError, ValueError):
+    except ValueError:
         return content
 
 

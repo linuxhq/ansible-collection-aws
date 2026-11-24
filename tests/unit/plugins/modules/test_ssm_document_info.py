@@ -63,7 +63,6 @@ def test_documented_returns_cover_the_sdk_shape(key):
 def test_content_transform_returns_json_unchanged_and_text_as_is():
     assert plugin.content_transform('{"schemaVersion":"2.2"}', "JSON") == {"schemaVersion": "2.2"}
     assert plugin.content_transform("not-json", "JSON") == "not-json"
-    assert plugin.content_transform(None, "JSON") == {}
 
 
 @pytest.mark.parametrize("document_format", ["TEXT", "YAML"])
@@ -77,7 +76,6 @@ def test_yaml_and_text_content_is_returned_as_a_string_even_in_json_syntax(docum
     result, _require, _query = run(FakeModule(params(name="example", document_format=document_format), client=client))
 
     assert result.values["document"]["content"] == content
-    assert plugin.content_transform(None, document_format) == {}
 
 
 def test_empty_name_lists_every_document():

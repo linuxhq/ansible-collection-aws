@@ -1567,7 +1567,7 @@ def create_connection(client, module):
         module.fail_json(msg="Creation requires customer_gateway_id")
 
     # Live: EC2 ignores a whitespace-only gateway ID, so no later run could match it.
-    for name in ("vpn_gateway_id", "transit_gateway_id", "vpn_concentrator_id"):
+    for name in ("vpn_gateway_id", "transit_gateway_id"):
         require_non_blank(module, module.params[name], name)
 
     if any(tunnel.get("outside_ip_address") for tunnel in module.params["tunnel_options"] or []):

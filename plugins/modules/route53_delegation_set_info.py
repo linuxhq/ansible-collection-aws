@@ -94,8 +94,12 @@ def main():
     delegation_set_id = module.params["id"]
 
     if delegation_set_id:
-        require_client_methods(module, client, "Route53", {"get_reusable_delegation_set": ("Id",)})
         operation = f"Unable to get AWS Route53 reusable delegation set {delegation_set_id}"
+        # Live: GetReusableDelegationSet returns no delegation set, and no error, for an ID with an empty last segment.
+        if not delegation_set_id.rsplit("/", 1)[-1]:
+            module.fail_json(msg=f"{operation}: id must end with a delegation set ID")
+
+        require_client_methods(module, client, "Route53", {"get_reusable_delegation_set": ("Id",)})
         try:
             response = client.get_reusable_delegation_set(
                 Id=delegation_set_id,
@@ -109,11 +113,7 @@ def main():
                 msg=operation,
             )
         else:
-            delegation_set = response["DelegationSet"]
-            if delegation_set["Id"].rsplit("/", 1)[-1] != delegation_set_id.rsplit("/", 1)[-1]:
-                module.fail_json(msg=f"{operation}: AWS returned the wrong reusable delegation set")
-
-            delegation_sets = [delegation_set]
+            delegation_sets = [response["DelegationSet"]]
     else:
         require_client_methods(module, client, "Route53", {"list_reusable_delegation_sets": ("Marker", "MaxItems")})
         delegation_sets = query_list(

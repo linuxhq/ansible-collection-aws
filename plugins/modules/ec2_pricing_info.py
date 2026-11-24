@@ -297,19 +297,15 @@ def main():
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, msg="Unable to get AWS Price List products")
 
-    products = []
-    for product in response.get("PriceList", []):
-        parsed = json.loads(product)
-        normalized = boto3_resource_to_ansible_dict(
-            parsed,
+    products = [
+        boto3_resource_to_ansible_dict(
+            json.loads(product),
             transform_tags=False,
             force_tags=False,
+            nested_transforms={"terms": normalize_terms},
         )
-
-        if "terms" in normalized:
-            normalized["terms"] = normalize_terms(parsed["terms"])
-
-        products.append(normalized)
+        for product in response.get("PriceList", [])
+    ]
 
     module.exit_json(
         changed=False,

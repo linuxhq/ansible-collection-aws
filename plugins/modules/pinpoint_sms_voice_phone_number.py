@@ -724,7 +724,7 @@ def ensure_absent(client, module):
 
         if current.get("DeletionProtectionEnabled"):
             try:
-                current = client.update_phone_number(
+                client.update_phone_number(
                     PhoneNumberId=phone_number_id,
                     DeletionProtectionEnabled=False,
                     aws_retry=True,

@@ -723,6 +723,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.wait import (
     wait_deadline,
 )
 
+EC2_ENDPOINT_ID_PREFIXES = {"elastic-ip": "eipalloc-", "instance": "i-"}
+
 # Scalar endpoint group settings and their request parameters.
 ENDPOINT_GROUP_SETTINGS = {
     "health_check_interval_seconds": "HealthCheckIntervalSeconds",
@@ -1170,9 +1172,6 @@ def ec2_endpoint_arn(endpoint_id, resource_types=("elastic-ip", "instance")):
     return None
 
 
-EC2_ENDPOINT_ID_PREFIXES = {"elastic-ip": "eipalloc-", "instance": "i-"}
-
-
 def is_ec2_endpoint(endpoint_id, resource_type):
     """Return whether an endpoint ID names an EC2 resource of resource_type, by resource ID or by ARN."""
     return (
@@ -1187,9 +1186,9 @@ def require_dual_stack_endpoints(module, ip_address_type):
         return
 
     for listener in module.params["listeners"] or []:
-        for endpoint_group in listener.get("endpoint_groups") or []:
+        for endpoint_group in listener["endpoint_groups"] or []:
             region = endpoint_group["endpoint_group_region"]
-            for configuration in endpoint_group.get("endpoint_configurations") or []:
+            for configuration in endpoint_group["endpoint_configurations"] or []:
                 endpoint_id = configuration["endpoint_id"]
                 # Live: AWS rejects both at the endpoint group write, which follows any accelerator and listener writes.
                 if is_ec2_endpoint(endpoint_id, "elastic-ip"):
@@ -1202,7 +1201,7 @@ def require_dual_stack_endpoints(module, ip_address_type):
 
                 endpoint_arn = parse_aws_arn(endpoint_id) or {}
                 if (
-                    configuration.get("client_ip_preservation_enabled") is False
+                    configuration["client_ip_preservation_enabled"] is False
                     and endpoint_arn.get("service") == "elasticloadbalancing"
                     and (endpoint_arn.get("resource_id") or "").startswith("app/")
                 ):
@@ -1406,9 +1405,9 @@ def predicted_endpoint_group(current, desired, default_health_check_port=None, s
     """Predict an endpoint group; scope is as for listed_endpoint_id."""
     if current is None:
         # AWS returns an empty endpoint list for a group created without endpoints.
-        predicted = dict(ENDPOINT_GROUP_CREATE_DEFAULTS, endpoint_descriptions=[])
-        if default_health_check_port is not None:
-            predicted["health_check_port"] = default_health_check_port
+        predicted = dict(
+            ENDPOINT_GROUP_CREATE_DEFAULTS, endpoint_descriptions=[], health_check_port=default_health_check_port
+        )
     else:
         predicted = dict(current)
 
@@ -1515,23 +1514,20 @@ def ensure_endpoint_groups(
     module,
     listener_arn,
     endpoint_groups,
+    current_endpoint_groups,
     mutated=False,
     default_health_check_port=None,
     accelerator_arn=None,
-    current_endpoint_groups=None,
 ):
     """Reconcile endpoint groups; mutated reports earlier modifications, for failure results.
 
-    default_health_check_port is the port AWS checks health on when a created group omits health_check_port, if it is
-    known, for check-mode predictions. accelerator_arn is the ARN of the accelerator, when it exists, which decides the
-    IDs AWS lists endpoints given by ARN under. current_endpoint_groups are the listener's endpoint groups when they
-    were already listed.
+    current_endpoint_groups are the listener's listed endpoint groups, empty for a listener that does not exist yet.
+    default_health_check_port is the port AWS checks health on when a created group omits health_check_port, for
+    check-mode predictions. accelerator_arn is the ARN of the accelerator, when it exists, which decides the
+    IDs AWS lists endpoints given by ARN under.
     """
-    if current_endpoint_groups is None and listener_arn is not None:
-        current_endpoint_groups = get_endpoint_groups(client, module, listener_arn, changed=mutated)
-
     current_by_region = {}
-    for endpoint_group in current_endpoint_groups or []:
+    for endpoint_group in current_endpoint_groups:
         current_by_region[endpoint_group["endpoint_group_region"]] = endpoint_group
 
     changed = False
@@ -1722,12 +1718,12 @@ def endpoint_port_release_order(module, plans, changed=False):
                 (region, port)
                 for region, port in current_ports
                 if (region not in desired_by_region and not module.params["purge_endpoint_groups"])
-                or (region in desired_by_region and desired_by_region[region].get("port_overrides") is None)
+                or (region in desired_by_region and desired_by_region[region]["port_overrides"] is None)
             }
             final_ports.update(
                 (region, port_override["endpoint_port"])
                 for region, endpoint_group in desired_by_region.items()
-                for port_override in endpoint_group.get("port_overrides") or []
+                for port_override in endpoint_group["port_overrides"] or []
             )
 
         releases.append(current_ports - final_ports)
@@ -1837,7 +1833,7 @@ def require_compatible_retained_listeners(client, module, matched, updates, crea
         for desired in [desired for current, desired in matched + updates] + creates
         if desired is not None
         for endpoint_group in desired["endpoint_groups"] or []
-        for port_override in endpoint_group.get("port_overrides") or []
+        for port_override in endpoint_group["port_overrides"] or []
     }
     endpoint_ports = sorted({port for region, port in requested_ports})
     for current in retained:
@@ -2015,8 +2011,7 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
     # stores them, which is the listed order, or the sorted order in which this run sends them.
     for current, desired in matched:
         result = dict(current, port_ranges=normalized_port_ranges(current["port_ranges"]))
-        default_port = current["port_ranges"][0]["from_port"] if current["port_ranges"] else None
-        result_listeners.append((result, desired, default_port))
+        result_listeners.append((result, desired, current["port_ranges"][0]["from_port"]))
 
     for current, desired in updates:
         listener_arn = current["listener_arn"]
@@ -2146,10 +2141,10 @@ def ensure_listeners(client, module, accelerator_arn, mutated=False, deadline=No
                 module,
                 result.get("listener_arn"),
                 desired["endpoint_groups"],
+                endpoint_groups.get(result.get("listener_arn"), []),
                 mutated=mutated,
                 default_health_check_port=default_health_check_port,
                 accelerator_arn=accelerator_arn,
-                current_endpoint_groups=endpoint_groups.get(result.get("listener_arn")),
             )
             changed = changed or endpoint_groups_changed
             mutated = mutated or (endpoint_groups_changed and not module.check_mode)
@@ -2234,7 +2229,8 @@ def ensure_absent(client, module):
                 aws_retry=True,
             )
         except is_boto3_error_code("AcceleratorNotFoundException"):
-            pass
+            # Another writer deleted the accelerator; only the writes of this run count as changes.
+            module.exit_json(changed=mutated, state="absent")
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, changed=mutated, msg=f"Unable to delete AWS Global Accelerator {accelerator_arn}")
 
@@ -2273,7 +2269,7 @@ def ensure_present(client, module, deadline=None):
         desired["ip_addresses"] = sorted(ip_addresses)
 
     accelerator = get_accelerator(client, module)
-    if accelerator is None and module.params.get("arn") is not None:
+    if accelerator is None and module.params["arn"] is not None:
         module.fail_json(msg=f"AWS Global Accelerator {module.params['arn']} does not exist")
 
     created = accelerator is None
@@ -2680,7 +2676,7 @@ def main():
     if state == "present":
         listeners = module.params["listeners"] or []
         listener_port_ranges = {}
-        if sum(len(listener.get("endpoint_groups") or []) for listener in listeners) > 42:
+        if sum(len(listener["endpoint_groups"] or []) for listener in listeners) > 42:
             module.fail_json(msg="listeners must contain at most 42 endpoint groups in total")
 
         # Every listener's ports, of either protocol, and the port override endpoint ports seen so far, by region.
@@ -2701,7 +2697,7 @@ def main():
                     module.fail_json(msg="port_ranges entries require from_port to be less than or equal to to_port")
 
             ordered_port_ranges = normalized_port_ranges(listener["port_ranges"])
-            protocol_port_ranges = listener_port_ranges.setdefault(listener.get("protocol"), [])
+            protocol_port_ranges = listener_port_ranges.setdefault(listener["protocol"], [])
             for port_range in ordered_port_ranges:
                 if any(port_ranges_overlap(port_range, current) for current in protocol_port_ranges):
                     module.fail_json(msg="listeners port_ranges entries must not overlap")
@@ -2709,7 +2705,7 @@ def main():
                 protocol_port_ranges.append(port_range)
 
             regions = set()
-            for endpoint_group in listener.get("endpoint_groups") or []:
+            for endpoint_group in listener["endpoint_groups"] or []:
                 region = endpoint_group["endpoint_group_region"]
 
                 # Ansible turns a null required string into "". AWS rejects an empty or blank region only after earlier
@@ -2724,20 +2720,20 @@ def main():
 
                 regions.add(region)
 
-                if len(endpoint_group.get("endpoint_configurations") or []) > 10:
+                if len(endpoint_group["endpoint_configurations"] or []) > 10:
                     module.fail_json(
                         msg=f"Endpoint group {region} endpoint_configurations must contain at most 10 entries"
                     )
 
-                if len(endpoint_group.get("port_overrides") or []) > 10:
+                if len(endpoint_group["port_overrides"] or []) > 10:
                     module.fail_json(msg=f"Endpoint group {region} port_overrides must contain at most 10 entries")
 
-                if endpoint_group.get("health_check_port") is not None and not (
+                if endpoint_group["health_check_port"] is not None and not (
                     1 <= endpoint_group["health_check_port"] <= 65535
                 ):
                     module.fail_json(msg=f"Endpoint group {region} health_check_port must be between 1 and 65535")
 
-                health_check_path = endpoint_group.get("health_check_path")
+                health_check_path = endpoint_group["health_check_path"]
                 if health_check_path is not None and (
                     len(health_check_path) > 255
                     or re.fullmatch(r"/[-a-zA-Z0-9@:%_+.~#?&/=]*", health_check_path) is None
@@ -2746,23 +2742,21 @@ def main():
                         msg=f"Endpoint group {region} health_check_path must be a valid path of at most 255 characters"
                     )
 
-                if endpoint_group.get("threshold_count") is not None and not (
-                    1 <= endpoint_group["threshold_count"] <= 10
-                ):
+                if endpoint_group["threshold_count"] is not None and not (1 <= endpoint_group["threshold_count"] <= 10):
                     module.fail_json(msg=f"Endpoint group {region} threshold_count must be between 1 and 10")
 
-                if endpoint_group.get("traffic_dial_percentage") is not None and not (
+                if endpoint_group["traffic_dial_percentage"] is not None and not (
                     0 <= endpoint_group["traffic_dial_percentage"] <= 100
                 ):
                     module.fail_json(msg=f"Endpoint group {region} traffic_dial_percentage must be between 0 and 100")
 
                 endpoint_ids = set()
-                for configuration in endpoint_group.get("endpoint_configurations") or []:
+                for configuration in endpoint_group["endpoint_configurations"] or []:
                     endpoint_id = configuration["endpoint_id"]
                     if not endpoint_id.strip():
                         module.fail_json(msg=f"Endpoint group {region} endpoint_id must not be empty")
 
-                    if len(endpoint_id) > 255 or len(configuration.get("attachment_arn") or "") > 255:
+                    if len(endpoint_id) > 255 or len(configuration["attachment_arn"] or "") > 255:
                         module.fail_json(
                             msg=(
                                 f"Endpoint group {region} endpoint IDs and attachment "
@@ -2786,9 +2780,7 @@ def main():
 
                     # AWS rejects this endpoint group write, reached after accelerator and listener changes, for an
                     # Elastic IP address given by allocation ID or by ARN.
-                    if configuration.get("client_ip_preservation_enabled") and is_ec2_endpoint(
-                        endpoint_id, "elastic-ip"
-                    ):
+                    if configuration["client_ip_preservation_enabled"] and is_ec2_endpoint(endpoint_id, "elastic-ip"):
                         module.fail_json(
                             msg=(
                                 f"Endpoint group {region} endpoint {endpoint_id} is an Elastic IP address, "
@@ -2797,7 +2789,7 @@ def main():
                         )
 
                     # Likewise for false on an EC2 instance given by instance ID or by ARN.
-                    if configuration.get("client_ip_preservation_enabled") is False and is_ec2_endpoint(
+                    if configuration["client_ip_preservation_enabled"] is False and is_ec2_endpoint(
                         endpoint_id, "instance"
                     ):
                         module.fail_json(
@@ -2808,7 +2800,7 @@ def main():
                         )
 
                 override_listener_ports = set()
-                for port_override in endpoint_group.get("port_overrides") or []:
+                for port_override in endpoint_group["port_overrides"] or []:
                     if not (
                         1 <= port_override["listener_port"] <= 65535 and 1 <= port_override["endpoint_port"] <= 65535
                     ):
@@ -2852,10 +2844,10 @@ def main():
         require_valid_tags(module, module.params["tags"], restricted_characters=True)
 
     # Some ansible-core versions let an explicit null past required_if and required_one_of; fail as if it were omitted.
-    if module.params.get("arn") is None and module.params.get("name") is None:
+    if module.params["arn"] is None and module.params["name"] is None:
         module.fail_json(msg="one of the following is required: arn, name")
 
-    if state == "present" and module.params.get("name") is None:
+    if state == "present" and module.params["name"] is None:
         module.fail_json(msg="state is present but all of the following are missing: name")
 
     client = module.client(

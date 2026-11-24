@@ -605,9 +605,7 @@ def ensure_present(client, module, deadline=None):
             except (BotoCoreError, ClientError) as e:
                 module.fail_json_aws(e, msg=f"Unable to update AWS Route53 Resolver rule {request['Name']}")
 
-            rule = validate_resolver_rule(
-                module, response["ResolverRule"], "update_resolver_rule", expected_id=resolver_rule_id, changed=True
-            )
+            rule = response["ResolverRule"]
 
             if module.params["wait"]:
                 rule = wait_for_resolver_rule_status(
@@ -770,17 +768,6 @@ def rules_match(current, desired):
     ) and comparable_ips_match(current["target_ips"], desired["target_ips"])
 
 
-def validate_resolver_rule(module, rule, operation, expected_id=None, expected_name=None, changed=False):
-    """Fail when AWS returns a different resolver rule than the one requested."""
-    if expected_id is not None and rule["Id"] != expected_id:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule ID {rule['Id']}")
-
-    if expected_name is not None and rule.get("Name") != expected_name:
-        module.fail_json(changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule name")
-
-    return rule
-
-
 def get_resolver_rule(client, module, resolver_rule_id, changed=False):
     try:
         response = client.get_resolver_rule(
@@ -796,13 +783,7 @@ def get_resolver_rule(client, module, resolver_rule_id, changed=False):
             msg=f"Unable to get AWS Route53 Resolver rule {resolver_rule_id}",
         )
 
-    return validate_resolver_rule(
-        module,
-        response["ResolverRule"],
-        "get_resolver_rule",
-        expected_id=resolver_rule_id,
-        changed=changed,
-    )
+    return response["ResolverRule"]
 
 
 def get_resolver_rule_by_name(client, module, changed=False):
@@ -819,10 +800,6 @@ def get_resolver_rule_by_name(client, module, changed=False):
         Filters=ansible_dict_to_boto3_filter_list({"Name": name}),
     )
 
-    rules = [
-        validate_resolver_rule(module, rule, "list_resolver_rules", expected_name=name, changed=changed)
-        for rule in rules
-    ]
     # Only rules this account owns can be managed; skip rules shared from other accounts and AWS-owned rules.
     rules = [
         rule

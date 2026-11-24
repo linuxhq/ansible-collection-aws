@@ -448,13 +448,7 @@ def wait_for_resolver_rule_association_status(
             msg=f"Unable to get AWS Route53 Resolver rule association {resolver_rule_association_id}",
         )
 
-    association = validate_resolver_rule_association(
-        module,
-        response["ResolverRuleAssociation"],
-        "get_resolver_rule_association",
-        expected_id=resolver_rule_association_id,
-        changed=changed,
-    )
+    association = response["ResolverRuleAssociation"]
     if association.get("Status") == "FAILED" and not allow_failed:
         module.fail_json(
             changed=changed,
@@ -490,18 +484,6 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module, changed=False)
         ),
     )
 
-    associations = [
-        validate_resolver_rule_association(
-            module,
-            association,
-            "list_resolver_rule_associations",
-            expected_resolver_rule_id=resolver_rule_id,
-            expected_vpc_id=vpc_id,
-            changed=changed,
-        )
-        for association in associations
-    ]
-
     if len(associations) > 1:
         association_ids = sorted(association["Id"] for association in associations)
         module.fail_json(
@@ -513,35 +495,6 @@ def get_resolver_rule_association_by_rule_and_vpc(client, module, changed=False)
         )
 
     return associations[0] if associations else None
-
-
-def validate_resolver_rule_association(
-    module,
-    association,
-    operation,
-    expected_id=None,
-    expected_resolver_rule_id=None,
-    expected_vpc_id=None,
-    changed=False,
-):
-    """Fail when AWS returns a different resolver rule association than the one requested."""
-    if expected_id is not None and association["Id"] != expected_id:
-        module.fail_json(
-            changed=changed,
-            msg=f"{operation}: AWS returned an unexpected resolver rule association ID {association['Id']}",
-        )
-
-    expected_fields = {
-        "ResolverRuleId": expected_resolver_rule_id,
-        "VPCId": expected_vpc_id,
-    }
-    for field, expected_value in expected_fields.items():
-        if expected_value is not None and association.get(field) != expected_value:
-            module.fail_json(
-                changed=changed, msg=f"{operation}: AWS returned an unexpected resolver rule association {field}"
-            )
-
-    return association
 
 
 def valid_resolver_name(name):

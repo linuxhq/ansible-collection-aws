@@ -118,7 +118,7 @@ def test_present_state_only_requires_list_before_reconciliation():
         ("123456789013", "absent"),
     ],
 )
-def test_alias_names_aws_accepts_reach_reconciliation(check_mode, name, state):
+def test_alias_names_are_left_to_aws(check_mode, name, state):
     module = FakeModule({"name": name, "state": state}, check_mode=check_mode, client=Mock())
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),

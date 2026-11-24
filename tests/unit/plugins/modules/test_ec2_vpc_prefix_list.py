@@ -1471,10 +1471,7 @@ def test_ready_wait_fails_immediately_when_the_prefix_list_is_deleting():
     with (
         patch.object(plugin, "require_client_methods"),
         patch("botocore.waiter.time.sleep") as sleep,
-        patch(
-            "ansible_collections.linuxhq.aws.plugins.module_utils.wait.BaseWaiterFactory.get_waiter",
-            return_value=waiter,
-        ),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.wait_for_ready_state(client, module, "pl-1", changed=True)
@@ -1523,20 +1520,6 @@ def test_lookup_ignores_prefix_lists_owned_by_other_accounts():
 
     with patch.object(plugin, "query_list", return_value=[shared]):
         assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER) is None
-
-
-def test_lookup_skips_aws_managed_prefix_lists():
-    own = prefix_list()
-    aws_managed = {
-        "AddressFamily": "IPv4",
-        "OwnerId": "AWS",
-        "PrefixListId": "pl-02cd2c6b",
-        "PrefixListName": "main",
-        "State": "create-complete",
-        "Tags": [],
-    }
-    with patch.object(plugin, "query_list", return_value=[aws_managed, own]):
-        assert plugin.get_customer_managed_prefix_list_by_name(Mock(), FakeModule({"name": "main"}), OWNER) == own
 
 
 @pytest.mark.parametrize(

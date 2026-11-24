@@ -728,10 +728,8 @@ def ensure_present(client, module, current):
     changed = bool(changed or tags_to_set or tag_keys_to_unset)
 
     if changed and not module.check_mode:
-        association_id = association.get("AssociationId")
-
         # A create sends its tags in its only write, so only an existing association needs the tag deltas.
-        if association_id and tags is not None and current is not None:
+        if tags is not None and current is not None:
             # UpdateAssociation cannot change tags, so the tags read before the update still apply.
             association = dict(association, Tags=current.get("Tags", []))
             reconcile_ssm_tags(
@@ -816,8 +814,7 @@ def main():
     tags = module.params["tags"]
 
     if state == "present":
-        # An empty list compares equal to an association without Targets, such as one using TargetMaps, so SSM would
-        # never see it; omitting targets is the way to keep them.
+        # Live: UpdateAssociation rejects Targets=[] with InvalidTarget "Target list cannot be empty".
         if module.params["targets"] == []:
             module.fail_json(
                 changed=False,

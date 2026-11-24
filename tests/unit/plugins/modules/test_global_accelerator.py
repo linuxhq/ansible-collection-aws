@@ -146,20 +146,28 @@ def test_absent_with_a_long_name_converges(arn):
     client.delete_accelerator.assert_not_called()
 
 
-def test_absent_tolerates_accelerator_disappearing_during_delete():
+@pytest.mark.parametrize("wait", [False, True])
+@pytest.mark.parametrize(
+    "listeners, changed",
+    [([], False), ([{"listener_arn": "arn:listener"}], True)],
+    ids=["nothing-modified", "listeners-deleted"],
+)
+def test_absent_tolerates_accelerator_disappearing_during_delete(wait, listeners, changed):
     client = Mock()
     client.delete_accelerator.side_effect = plugin.ClientError(
         {"Error": {"Code": "AcceleratorNotFoundException", "Message": "gone"}},
         "DeleteAccelerator",
     )
-    module = FakeModule({"wait": False})
+    module = FakeModule({"wait": wait, "wait_timeout": 600})
     with (
         patch.object(
             plugin,
             "get_accelerator",
             return_value={"AcceleratorArn": "arn:accelerator", "Enabled": False},
         ),
-        patch.object(plugin, "get_listeners", return_value=[]),
+        patch.object(plugin, "get_listeners", return_value=listeners),
+        patch.object(plugin, "delete_listener") as delete_listener,
+        patch.object(plugin, "wait_for_accelerator") as wait_for_accelerator,
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleExit) as raised,
     ):
@@ -171,7 +179,10 @@ def test_absent_tolerates_accelerator_disappearing_during_delete():
         "Global Accelerator",
         {"delete_accelerator": ("AcceleratorArn",)},
     )
-    assert raised.value.values["changed"]
+    assert delete_listener.call_count == len(listeners)
+    # The accelerator is already gone, so the run does not wait for its deletion.
+    assert [call.args[3] for call in wait_for_accelerator.call_args_list] == ["accelerator_deployed"] * len(listeners)
+    assert raised.value.values == {"changed": changed, "state": "absent"}
 
 
 def test_absent_tolerates_accelerator_disappearing_while_waiting():
@@ -508,6 +519,17 @@ def test_endpoint_group_comparison_ignores_unmanaged_fields():
     assert plugin.endpoint_group_requires_update(current, desired)
 
 
+def unset_listener(**settings):
+    desired = {
+        "client_affinity": None,
+        "endpoint_groups": None,
+        "port_ranges": [{"from_port": 443, "to_port": 443}],
+        "protocol": "TCP",
+    }
+    desired.update(settings)
+    return desired
+
+
 def unset_endpoint_group(**settings):
     desired = {
         "endpoint_configurations": None,
@@ -573,14 +595,14 @@ def test_health_check_path_is_compared_only_for_http_health_checks(current_proto
                 "traffic_dial_percentage": 100.0,
             },
         ),
-        # Without a known default health check port, none is predicted.
         (
             {"health_check_protocol": "HTTP"},
-            None,
+            443,
             {
                 "endpoint_descriptions": [],
                 "health_check_interval_seconds": 30,
                 "health_check_path": "/",
+                "health_check_port": 443,
                 "health_check_protocol": "HTTP",
                 "threshold_count": 3,
                 "traffic_dial_percentage": 100.0,
@@ -591,14 +613,14 @@ def test_health_check_path_is_compared_only_for_http_health_checks(current_proto
 def test_check_mode_endpoint_group_create_predicts_the_stored_settings(settings, default_health_check_port, expected):
     module = FakeModule({"purge_endpoint_groups": True}, check_mode=True)
     client = Mock()
-    with patch.object(plugin, "get_endpoint_groups", return_value=[]):
-        changed, groups = plugin.ensure_endpoint_groups(
-            client,
-            module,
-            "arn:listener",
-            [unset_endpoint_group(**settings)],
-            default_health_check_port=default_health_check_port,
-        )
+    changed, groups = plugin.ensure_endpoint_groups(
+        client,
+        module,
+        "arn:listener",
+        [unset_endpoint_group(**settings)],
+        [],
+        default_health_check_port=default_health_check_port,
+    )
 
     assert changed
     assert groups == [dict(expected, endpoint_group_region="us-west-2")]
@@ -1539,9 +1561,7 @@ def test_provider_limits_are_rejected():
             {
                 "ip_addresses": None,
                 "listeners": [
-                    {
-                        "port_ranges": [{"from_port": 1, "to_port": 1}] * 11,
-                    }
+                    unset_listener(port_ranges=[{"from_port": 1, "to_port": 1}] * 11),
                 ],
             },
             "listeners entries allow at most 10 port_ranges entries",
@@ -1549,7 +1569,7 @@ def test_provider_limits_are_rejected():
         (
             {
                 "ip_addresses": None,
-                "listeners": [{"port_ranges": []}],
+                "listeners": [unset_listener(port_ranges=[])],
             },
             "listeners entries require at least one port_ranges entry",
         ),
@@ -1557,10 +1577,10 @@ def test_provider_limits_are_rejected():
             {
                 "ip_addresses": None,
                 "listeners": [
-                    {
-                        "endpoint_groups": [{"endpoint_group_region": f"region-{index}"}],
-                        "port_ranges": [{"from_port": index + 1, "to_port": index + 1}],
-                    }
+                    unset_listener(
+                        endpoint_groups=[unset_endpoint_group(endpoint_group_region=f"region-{index}")],
+                        port_ranges=[{"from_port": index + 1, "to_port": index + 1}],
+                    )
                     for index in range(43)
                 ],
             },
@@ -1569,14 +1589,14 @@ def test_provider_limits_are_rejected():
         (
             {
                 "ip_addresses": None,
-                "listeners": [{"port_ranges": [{"from_port": 0, "to_port": 443}]}],
+                "listeners": [unset_listener(port_ranges=[{"from_port": 0, "to_port": 443}])],
             },
             "port_ranges entries must be between 1 and 65535",
         ),
         (
             {
                 "ip_addresses": None,
-                "listeners": [{"port_ranges": [{"from_port": 443, "to_port": 80}]}],
+                "listeners": [unset_listener(port_ranges=[{"from_port": 443, "to_port": 80}])],
             },
             "port_ranges entries require from_port to be less than or equal to to_port",
         ),
@@ -1584,12 +1604,12 @@ def test_provider_limits_are_rejected():
             {
                 "ip_addresses": None,
                 "listeners": [
-                    {
-                        "port_ranges": [
+                    unset_listener(
+                        port_ranges=[
                             {"from_port": 80, "to_port": 90},
                             {"from_port": 90, "to_port": 100},
                         ]
-                    }
+                    )
                 ],
             },
             "listeners port_ranges entries must not overlap",
@@ -1605,14 +1625,8 @@ def test_listener_port_ranges_must_not_overlap_across_listeners():
         {
             "ip_addresses": None,
             "listeners": [
-                {
-                    "port_ranges": [{"from_port": 80, "to_port": 90}],
-                    "protocol": "TCP",
-                },
-                {
-                    "port_ranges": [{"from_port": 90, "to_port": 100}],
-                    "protocol": "TCP",
-                },
+                unset_listener(port_ranges=[{"from_port": 80, "to_port": 90}]),
+                unset_listener(port_ranges=[{"from_port": 90, "to_port": 100}]),
             ],
             "state": "present",
         },
@@ -2164,10 +2178,9 @@ def test_an_ec2_endpoint_group_requested_by_arn_converges(check_mode, listed_id,
     current = listed_endpoint_group(listed_id)
     client = Mock()
     module = FakeModule({"purge_endpoint_groups": True}, check_mode=check_mode)
-    with patch.object(plugin, "get_endpoint_groups", return_value=[current]):
-        changed, groups = plugin.ensure_endpoint_groups(
-            client, module, "arn:listener", [endpoint_group_with(endpoint_id)], accelerator_arn=ACCELERATOR_ARN
-        )
+    changed, groups = plugin.ensure_endpoint_groups(
+        client, module, "arn:listener", [endpoint_group_with(endpoint_id)], [current], accelerator_arn=ACCELERATOR_ARN
+    )
 
     assert changed is False
     assert groups == [current]
@@ -2209,10 +2222,9 @@ def run_endpoint_group_change(check_mode, current, desired, response):
     client.create_endpoint_group.return_value = {"EndpointGroup": response}
     client.update_endpoint_group.return_value = {"EndpointGroup": response}
     module = FakeModule({"purge_endpoint_groups": True}, check_mode=check_mode)
-    with patch.object(plugin, "get_endpoint_groups", return_value=[current] if current else []):
-        changed, groups = plugin.ensure_endpoint_groups(
-            client, module, "arn:listener", [desired], accelerator_arn=ACCELERATOR_ARN
-        )
+    changed, groups = plugin.ensure_endpoint_groups(
+        client, module, "arn:listener", [desired], [current] if current else [], accelerator_arn=ACCELERATOR_ARN
+    )
 
     assert changed
     return client, groups[0]
@@ -2331,10 +2343,7 @@ def test_endpoint_groups_reject_duplicate_regions_and_endpoints():
         "endpoint_id": "endpoint-1",
         "weight": 128,
     }
-    base = {
-        "endpoint_configurations": [endpoint],
-        "endpoint_group_region": "us-east-1",
-    }
+    base = unset_endpoint_group(endpoint_configurations=[endpoint], endpoint_group_region="us-east-1")
     cases = [
         (
             [base, base],
@@ -2349,11 +2358,7 @@ def test_endpoint_groups_reject_duplicate_regions_and_endpoints():
         params = {
             "ip_addresses": None,
             "listeners": [
-                {
-                    "endpoint_groups": endpoint_groups,
-                    "port_ranges": [{"from_port": 443, "to_port": 443}],
-                    "protocol": "TCP",
-                }
+                unset_listener(endpoint_groups=endpoint_groups, port_ranges=[{"from_port": 443, "to_port": 443}])
             ],
             "state": "present",
         }
@@ -2501,14 +2506,7 @@ def test_empty_required_endpoint_strings_fail_before_any_aws_call(endpoint_group
 
 
 def test_endpoint_group_provider_limits_are_rejected():
-    base = {
-        "endpoint_configurations": [],
-        "endpoint_group_region": "us-east-1",
-        "health_check_port": None,
-        "port_overrides": [],
-        "threshold_count": None,
-        "traffic_dial_percentage": None,
-    }
+    base = unset_endpoint_group(endpoint_configurations=[], endpoint_group_region="us-east-1", port_overrides=[])
     cases = [
         (
             dict(base, endpoint_group_region="r" * 256),
@@ -2545,14 +2543,28 @@ def test_endpoint_group_provider_limits_are_rejected():
         (
             dict(
                 base,
-                endpoint_configurations=[{"endpoint_id": "endpoint-1", "weight": 256}],
+                endpoint_configurations=[
+                    {
+                        "attachment_arn": None,
+                        "client_ip_preservation_enabled": None,
+                        "endpoint_id": "endpoint-1",
+                        "weight": 256,
+                    }
+                ],
             ),
             "Endpoint group us-east-1 endpoint_configurations weight must be between 0 and 255",
         ),
         (
             dict(
                 base,
-                endpoint_configurations=[{"endpoint_id": "e" * 256, "weight": 128}],
+                endpoint_configurations=[
+                    {
+                        "attachment_arn": None,
+                        "client_ip_preservation_enabled": None,
+                        "endpoint_id": "e" * 256,
+                        "weight": 128,
+                    }
+                ],
             ),
             "Endpoint group us-east-1 endpoint IDs and attachment ARNs must contain at most 255 characters",
         ),
@@ -2585,10 +2597,7 @@ def test_endpoint_group_provider_limits_are_rejected():
         params = {
             "ip_addresses": None,
             "listeners": [
-                {
-                    "endpoint_groups": [endpoint_group],
-                    "port_ranges": [{"from_port": 443, "to_port": 443}],
-                }
+                unset_listener(endpoint_groups=[endpoint_group], port_ranges=[{"from_port": 443, "to_port": 443}])
             ],
             "state": "present",
         }
@@ -2632,8 +2641,7 @@ def test_endpoint_group_weight_update_sends_attachment():
         "endpoint_group_arn": "arn:group",
         "endpoint_group_region": "us-east-1",
     }
-    with patch.object(plugin, "get_endpoint_groups", return_value=[current]):
-        changed, groups = plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
+    changed, groups = plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired], [current])
 
     assert changed
     assert groups[0]["endpoint_group_arn"] == "arn:group"
@@ -2784,7 +2792,7 @@ def test_listener_creation_waits_before_endpoint_groups():
     }
     desired = {
         "client_affinity": "NONE",
-        "endpoint_groups": [{"endpoint_group_region": "us-east-1"}],
+        "endpoint_groups": [unset_endpoint_group(endpoint_group_region="us-east-1")],
         "port_ranges": [{"from_port": 443, "to_port": 443}],
         "protocol": "TCP",
     }
@@ -2797,14 +2805,23 @@ def test_listener_creation_waits_before_endpoint_groups():
         ),
         patch.object(plugin, "get_listeners", return_value=[]),
         patch.object(plugin, "wait_for_accelerator") as wait_for_accelerator,
-        patch.object(plugin, "ensure_endpoint_groups", return_value=(False, [])),
+        patch.object(plugin, "ensure_endpoint_groups", return_value=(False, [])) as ensure_endpoint_groups,
         patch.object(plugin, "require_client_methods"),
     ):
+        calls = Mock()
+        calls.attach_mock(client.create_listener, "create_listener")
+        calls.attach_mock(wait_for_accelerator, "wait_for_accelerator")
+        calls.attach_mock(ensure_endpoint_groups, "ensure_endpoint_groups")
         plugin.ensure_listeners(client, module, "arn:accelerator")
 
     wait_for_accelerator.assert_called_once_with(
         client, module, "arn:accelerator", "accelerator_deployed", changed=True, deadline=ANY
     )
+    assert [name for name, args, kwargs in calls.mock_calls] == [
+        "create_listener",
+        "wait_for_accelerator",
+        "ensure_endpoint_groups",
+    ]
 
 
 def test_listener_replacement_retries_after_freeing_quota():
@@ -2875,6 +2892,7 @@ def test_accelerator_creation_waits_before_listeners():
     }
     module = FakeModule(
         {
+            "arn": None,
             "enabled": True,
             "idempotency_token": None,
             "ip_addresses": None,
@@ -2890,15 +2908,24 @@ def test_accelerator_creation_waits_before_listeners():
     with (
         patch.object(plugin, "get_accelerator", return_value=None),
         patch.object(plugin, "wait_for_accelerator") as wait_for_accelerator,
-        patch.object(plugin, "ensure_listeners", return_value=(True, [])),
+        patch.object(plugin, "ensure_listeners", return_value=(True, [])) as ensure_listeners,
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleExit),
     ):
+        calls = Mock()
+        calls.attach_mock(client.create_accelerator, "create_accelerator")
+        calls.attach_mock(wait_for_accelerator, "wait_for_accelerator")
+        calls.attach_mock(ensure_listeners, "ensure_listeners")
         plugin.ensure_present(client, module)
 
     wait_for_accelerator.assert_called_once_with(
         client, module, "arn:accelerator", "accelerator_deployed", changed=True, deadline=ANY
     )
+    assert [name for name, args, kwargs in calls.mock_calls] == [
+        "create_accelerator",
+        "wait_for_accelerator",
+        "ensure_listeners",
+    ]
     assert require.call_args.args[3] == {
         "create_accelerator": (
             "Enabled",
@@ -3089,9 +3116,8 @@ def test_endpoint_group_creates_with_identical_inputs_use_unique_tokens():
         "threshold_count": None,
         "traffic_dial_percentage": None,
     }
-    with patch.object(plugin, "get_endpoint_groups", return_value=[]):
-        plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
-        plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
+    plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired], [])
+    plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired], [])
 
     first, second = client.create_endpoint_group.call_args_list
     assert first.kwargs["IdempotencyToken"] != second.kwargs["IdempotencyToken"]
@@ -3109,6 +3135,7 @@ def test_accelerator_creates_with_identical_inputs_use_unique_tokens():
     }
     module = FakeModule(
         {
+            "arn": None,
             "enabled": None,
             "idempotency_token": None,
             "ip_address_type": None,
@@ -3146,6 +3173,7 @@ def test_create_replaying_a_renamed_accelerator_fails_before_any_other_write(tok
     }
     module = FakeModule(
         {
+            "arn": None,
             "enabled": None,
             "idempotency_token": token,
             "ip_address_type": None,
@@ -3583,6 +3611,7 @@ def test_update_never_sends_ip_addresses():
 def test_create_sends_ip_addresses():
     module = FakeModule(
         {
+            "arn": None,
             "enabled": None,
             "idempotency_token": "token",
             "ip_address_type": None,
@@ -3620,7 +3649,7 @@ def test_create_sends_ip_addresses():
 
 
 def test_client_retries_only_transient_accelerator_transactions():
-    module = Mock(params={"name": "example", "state": "absent", "tags": None})
+    module = Mock(params={"arn": None, "name": "example", "state": "absent", "tags": None})
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "AWSRetry") as retry,
@@ -3742,8 +3771,7 @@ def test_matching_cross_account_endpoint_is_unchanged(check_mode):
     }
     client = Mock()
     module = FakeModule({"purge_endpoint_groups": True}, check_mode=check_mode)
-    with patch.object(plugin, "get_endpoint_groups", return_value=[current]):
-        changed, groups = plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired])
+    changed, groups = plugin.ensure_endpoint_groups(client, module, "arn:listener", [desired], [current])
 
     assert changed is False
     assert groups == [current]
@@ -3997,6 +4025,7 @@ def test_deployment_wait_failure_after_create_reports_changed():
     }
     module = FakeModule(
         {
+            "arn": None,
             "enabled": True,
             "idempotency_token": None,
             "ip_addresses": None,
@@ -4015,10 +4044,7 @@ def test_deployment_wait_failure_after_create_reports_changed():
     with (
         patch.object(plugin, "get_accelerator", return_value=None),
         patch.object(plugin, "require_client_methods"),
-        patch(
-            "ansible_collections.linuxhq.aws.plugins.module_utils.wait.BaseWaiterFactory.get_waiter",
-            return_value=waiter,
-        ),
+        patch.object(plugin, "custom_waiter", return_value=waiter),
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
@@ -4122,7 +4148,7 @@ def test_endpoint_group_listing_failure_reports_earlier_changes(mutated):
         patch.object(plugin, "query_list", side_effect=failing_query),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_endpoint_groups(Mock(), FakeModule({}), "arn:listener", [], mutated=mutated)
+        plugin.get_endpoint_groups(Mock(), FakeModule({}), "arn:listener", changed=mutated)
 
     assert raised.value.values["changed"] is mutated
 
@@ -4423,20 +4449,24 @@ def test_reserved_tag_key_fails_before_any_write(key, check_mode):
     client.untag_resource.assert_not_called()
 
 
-def test_stored_reserved_tag_key_and_aws_value_keep_working():
-    module, current, client = tag_limit_case(True, {"aws:owner": "me"}, {"aws:owner": "me", "Env": "aws:prod"})
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_stored_reserved_tag_key_and_aws_value_keep_working(check_mode):
+    tags = {"aws:owner": "me", "Env": "aws:prod"}
+    module = FakeModule(accelerator_params(purge_tags=False, tags=tags), check_mode=check_mode)
+    client = Mock()
+    client.list_tags_for_resource.return_value = {"Tags": [{"Key": key, "Value": value} for key, value in tags.items()]}
     with (
-        patch.object(plugin, "get_accelerator", return_value=current),
-        patch.object(plugin, "get_listeners", return_value=[]),
+        patch.object(plugin, "get_accelerator", return_value=deployed_accelerator()),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "wait_for_accelerator", return_value=current),
-        patch.object(plugin, "ensure_listeners", return_value=(False, [])),
-        patch.object(plugin, "reconcile_arn_tags", return_value=True) as tagger,
-        pytest.raises(ModuleExit),
+        pytest.raises(ModuleExit) as raised,
     ):
         plugin.ensure_present(client, module)
 
-    tagger.assert_not_called()
+    assert raised.value.values["changed"] is False
+    assert raised.value.values["accelerator"]["tags"] == tags
+    client.update_accelerator.assert_not_called()
+    client.tag_resource.assert_not_called()
+    client.untag_resource.assert_not_called()
 
 
 def test_reserved_tag_key_is_left_to_aws_on_a_new_accelerator():
