@@ -1282,22 +1282,6 @@ def require_nested_request_parameters(module, client, operation_name, request):
                     )
                 )
 
-        elastic_load_balancing = nested_request.get("elasticLoadBalancing")
-        if elastic_load_balancing is None:
-            continue
-
-        available_elastic_parameters = available_parameters["elasticLoadBalancing"].members
-        for nested_parameter in sorted(elastic_load_balancing):
-            if nested_parameter not in available_elastic_parameters:
-                module.fail_json(
-                    msg=(
-                        "Installed botocore does not support EKS "
-                        f"{operation_name} {parameter_name} "
-                        "elasticLoadBalancing parameter "
-                        f"{nested_parameter}"
-                    )
-                )
-
 
 def enabled_log_types(logging_config):
     return {
@@ -2422,10 +2406,8 @@ def main():
 
             # EKS rejects these, but check mode would predict success, and on an update they reach EKS after other
             # updates.
-            if any(not entry["cidrs"] or "" in entry["cidrs"] for entry in entries):
-                module.fail_json(
-                    msg=f"remote_network_config.{network}[].cidrs must not be empty or contain empty entries"
-                )
+            if any(not entry["cidrs"] for entry in entries):
+                module.fail_json(msg=f"remote_network_config.{network}[].cidrs must not be empty")
 
             # EKS rejects more than 15 per cluster, but check mode would predict success, and on an update they reach
             # EKS after other updates. Repeats are counted once, as the cluster comparison ignores them.

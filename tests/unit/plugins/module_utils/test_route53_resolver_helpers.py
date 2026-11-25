@@ -92,10 +92,11 @@ def test_resolver_resource_with_tags_adds_tags_and_keeps_the_message(resource_ty
         module.fail_json(changed=changed, msg=error_msg)
 
     resource = {"Arn": "arn:resource", "Id": "rslvr-1"}
-    with patch.object(route53_resolver_utils, "query_list", return_value=[{"Key": "Name", "Value": "main"}]):
+    with patch.object(route53_resolver_utils, "query_list", return_value=[{"Key": "Name", "Value": "main"}]) as query:
         tagged = resolver_resource_with_tags(Mock(), FakeModule({}), resource, resource_type)
 
     assert tagged == dict(resource, Tags=[{"Key": "Name", "Value": "main"}])
+    assert query.call_args.kwargs["ResourceArn"] == "arn:resource"
     assert "Tags" not in resource
 
     with (
@@ -115,14 +116,6 @@ def test_resolver_resource_with_tags_skips_a_missing_resource():
         assert resolver_resource_with_tags(Mock(), FakeModule({}), None, "rule") is None
 
     query.assert_not_called()
-
-
-def test_resolver_resource_with_tags_lists_tags_by_arn():
-    with patch.object(route53_resolver_utils, "query_list", return_value=[{"Key": "a", "Value": "b"}]) as query:
-        resource = resolver_resource_with_tags(Mock(), FakeModule({}), {"Arn": "arn:rule", "Id": "rslvr-1"}, "rule")
-
-    assert resource == {"Arn": "arn:rule", "Id": "rslvr-1", "Tags": [{"Key": "a", "Value": "b"}]}
-    assert query.call_args.kwargs["ResourceArn"] == "arn:rule"
 
 
 def test_comparable_ips_matches_reports_each_desired_entry_match():

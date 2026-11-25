@@ -3627,8 +3627,16 @@ def test_empty_version_and_network_ids_fail_before_any_aws_call(overrides, messa
 
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("network", ["remote_node_networks", "remote_pod_networks"])
-@pytest.mark.parametrize("cidrs", [[], [""], ["10.82.0.0/16", ""]], ids=["empty", "blank", "blank-entry"])
-def test_remote_network_cidrs_that_are_empty_or_blank_fail_before_any_aws_call(cidrs, network, check_mode):
+@pytest.mark.parametrize(
+    ("cidrs", "message"),
+    [
+        ([], "must not be empty"),
+        ([""], "must contain valid CIDR blocks: '' does not appear to be an IPv4 or IPv6 network"),
+        (["10.82.0.0/16", ""], "must contain valid CIDR blocks: '' does not appear to be an IPv4 or IPv6 network"),
+    ],
+    ids=["empty", "blank", "blank-entry"],
+)
+def test_remote_network_cidrs_that_are_empty_or_blank_fail_before_any_aws_call(cidrs, message, network, check_mode):
     # EKS rejects them on create and update (live: "CIDRs can not be null or empty when specifying
     # remoteNodeNetworks." and "Invalid remote node network:  is not a valid CIDR"), and an update sends them only
     # after the deletion protection update.
@@ -3643,9 +3651,7 @@ def test_remote_network_cidrs_that_are_empty_or_blank_fail_before_any_aws_call(c
     ):
         plugin.main()
 
-    assert raised.value.values == {
-        "msg": f"remote_network_config.{network}[].cidrs must not be empty or contain empty entries"
-    }
+    assert raised.value.values == {"msg": f"remote_network_config.{network}[].cidrs {message}"}
     module.client.assert_not_called()
 
 

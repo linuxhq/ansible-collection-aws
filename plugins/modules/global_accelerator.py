@@ -703,7 +703,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     scrub_none_parameters,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import list_accelerator_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import (
+    get_accelerator_by_arn,
+    list_accelerator_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -799,32 +802,6 @@ def require_expected_endpoint_group(module, endpoint_group, expected_arn=None, e
         module.fail_json(changed=True, msg="Global Accelerator returned an invalid endpoint group")
 
     return endpoint_group
-
-
-def get_accelerator_by_arn(client, module, accelerator_arn, changed=False):
-    """Describe an accelerator; changed reports whether it was already modified, for failure results."""
-    require_client_methods(
-        module,
-        client,
-        "Global Accelerator",
-        {"describe_accelerator": ("AcceleratorArn",)},
-        changed=changed,
-    )
-    try:
-        response = client.describe_accelerator(
-            AcceleratorArn=accelerator_arn,
-            aws_retry=True,
-        )
-    except is_boto3_error_code("AcceleratorNotFoundException"):
-        return None
-    except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, changed=changed, msg=f"Unable to describe AWS Global Accelerator {accelerator_arn}")
-
-    accelerator = response["Accelerator"]
-    if accelerator["AcceleratorArn"] != accelerator_arn:
-        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid accelerator")
-
-    return accelerator
 
 
 def get_accelerator(client, module):

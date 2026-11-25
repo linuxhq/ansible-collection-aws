@@ -504,7 +504,7 @@ def search_routes(client, module, transit_gateway_route_table_id, filters, chang
 
     main() checks the SDK supports the search before any route is reconciled.
     """
-    routes = query_list(
+    return query_list(
         module,
         client,
         "search_transit_gateway_routes",
@@ -515,7 +515,6 @@ def search_routes(client, module, transit_gateway_route_table_id, filters, chang
         Filters=ansible_dict_to_boto3_filter_list(filters),
         MaxResults=1000,
     )
-    return routes
 
 
 def managed_static_route(route):

@@ -14,20 +14,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
-def test_empty_unfiltered_rules_skip_association_query():
-    module = FakeModule({"filters": None}, client=Mock())
-    query = Mock(return_value=[])
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", query),
-        pytest.raises(ModuleExit),
-    ):
-        plugin.main()
-
-    assert query.call_count == 1
-
-
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["filters"]["type"] == "dict"
@@ -40,17 +26,18 @@ def test_documented_returns_cover_the_sdk_shapes():
     assert_documents_shape(contains["associations"]["contains"], "route53resolver", "ResolverRuleAssociation")
 
 
-def test_paginated_methods_are_required():
+def test_empty_unfiltered_rules_skip_association_query():
     module = FakeModule({"filters": None}, client=Mock())
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "query_list", return_value=[]) as query,
         pytest.raises(ModuleExit),
     ):
         plugin.main()
 
-    # With no rules, only the listing call is checked.
+    # With no rules, only the listing call is made and checked.
+    query.assert_called_once()
     require.assert_called_once()
     assert require.call_args.args[3] == {"list_resolver_rules": ("Filters", "MaxResults", "NextToken")}
 

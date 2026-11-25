@@ -8,6 +8,8 @@ except ImportError:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
 
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
+
 
 def list_accelerator_tags(client, module, accelerator_arn, missing_ok=False):
     """Return an accelerator's tag list, or None when missing_ok and it was deleted."""
@@ -26,3 +28,29 @@ def list_accelerator_tags(client, module, accelerator_arn, missing_ok=False):
         module.fail_json_aws(e, msg=msg)
 
     return response.get("Tags", [])
+
+
+def get_accelerator_by_arn(client, module, accelerator_arn, changed=False):
+    """Describe an accelerator; changed reports whether it was already modified, for failure results."""
+    require_client_methods(
+        module,
+        client,
+        "Global Accelerator",
+        {"describe_accelerator": ("AcceleratorArn",)},
+        changed=changed,
+    )
+    try:
+        response = client.describe_accelerator(
+            AcceleratorArn=accelerator_arn,
+            aws_retry=True,
+        )
+    except is_boto3_error_code("AcceleratorNotFoundException"):
+        return None
+    except (BotoCoreError, ClientError) as e:
+        module.fail_json_aws(e, changed=changed, msg=f"Unable to describe AWS Global Accelerator {accelerator_arn}")
+
+    accelerator = response["Accelerator"]
+    if accelerator["AcceleratorArn"] != accelerator_arn:
+        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid accelerator")
+
+    return accelerator

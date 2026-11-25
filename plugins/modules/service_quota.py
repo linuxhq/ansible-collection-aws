@@ -216,11 +216,11 @@ pending_requests:
   contains:
     desired_value:
       description: The requested quota value.
-      returned: always
+      returned: when returned by AWS
       type: float
     status:
       description: The request status.
-      returned: always
+      returned: when returned by AWS
       type: str
     case_id:
       description: The support case ID.

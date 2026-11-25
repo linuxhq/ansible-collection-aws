@@ -303,7 +303,10 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
     boto3_resource_list_to_ansible_dict,
 )
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import list_accelerator_tags
+from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import (
+    get_accelerator_by_arn,
+    list_accelerator_tags,
+)
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
     require_client_methods,
@@ -346,30 +349,9 @@ def main():
             "Unable to list AWS Global Accelerator accelerators",
         )
     else:
-        require_client_methods(
-            module,
-            client,
-            "Global Accelerator",
-            {"describe_accelerator": ("AcceleratorArn",)},
-        )
-        try:
-            response = client.describe_accelerator(
-                AcceleratorArn=arn,
-                aws_retry=True,
-            )
-        except is_boto3_error_code("AcceleratorNotFoundException"):
-            response = None
-        except (BotoCoreError, ClientError) as e:
-            module.fail_json_aws(
-                e,
-                msg=f"Unable to describe AWS Global Accelerator {arn}",
-            )
-
-        if response is not None:
-            if response["Accelerator"]["AcceleratorArn"] != arn:
-                module.fail_json(msg="Global Accelerator returned an invalid accelerator")
-
-            accelerators.append(response["Accelerator"])
+        accelerator = get_accelerator_by_arn(client, module, arn)
+        if accelerator is not None:
+            accelerators.append(accelerator)
 
     if accelerators:
         methods = {"list_tags_for_resource": ("ResourceArn",)}

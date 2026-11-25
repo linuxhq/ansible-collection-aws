@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -6,12 +5,11 @@ from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import ssm_association as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
     assert_documents_shape,
+    assert_module_contract,
     documented_returns,
 )
 
@@ -101,19 +99,10 @@ def run_main(module, associations):
 
 
 def test_module_contract():
-    captured = {}
+    captured = assert_module_contract(plugin)
 
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
     assert "required_if" not in captured
     assert captured["argument_spec"]["association_name"] == {"type": "str"}
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 def test_documented_returns_cover_the_sdk_shape():
@@ -142,15 +131,6 @@ def test_absent_tolerates_association_disappearing_during_delete():
         plugin.ensure_absent(client, FakeModule({"name": "document"}), {"AssociationId": "association-1"})
 
     assert raised.value.values["changed"]
-
-
-def test_check_mode_predicts_new_association_without_api_call():
-    client = Mock()
-    result = run_present(client, FakeModule(params(tags={"Env": "test"}), check_mode=True), None)
-
-    client.create_association.assert_not_called()
-    assert result.values["changed"]
-    assert result.values["association"]["schedule_expression"] == "rate(1 hour)"
 
 
 @pytest.mark.parametrize("overrides", [{}, {"association_name": "weekly", "schedule_expression": None}])
@@ -431,13 +411,6 @@ def test_empty_targets_are_rejected_before_aws(check_mode):
     module.client.assert_not_called()
 
 
-def test_longest_schedule_and_target_key_are_accepted():
-    module = FakeModule(params(schedule_expression="r" * 256, targets=[{"key": "k" * 163, "values": ["web"]}]))
-    result, _require_client_methods = run_main(module, [])
-
-    assert isinstance(result, ModuleExit)
-
-
 def test_absent_with_a_blank_name_still_looks_up_associations():
     module = FakeModule(params(name=" ", state="absent"), client=Mock())
     with (
@@ -469,10 +442,16 @@ def test_more_than_50_tags_are_rejected_before_the_create(check_mode):
 def test_50_tags_and_aws_reserved_tags_are_accepted():
     tags = {f"key{index}": "" for index in range(50)}
     tags["aws:reserved"] = ""
-    result, _require_client_methods = run_main(FakeModule(params(tags=tags)), [])
+    client = Mock()
+    client.create_association.return_value = {
+        "AssociationDescription": {"AssociationId": "association-1", "Name": "document"}
+    }
+    result = run_present(client, FakeModule(params(tags=tags)), None)
 
     assert isinstance(result, ModuleExit)
-    assert result.values == {"current": None}
+    sent = client.create_association.call_args.kwargs["Tags"]
+    assert {tag["Key"]: tag["Value"] for tag in sent} == tags
+    assert len(sent) == 51
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

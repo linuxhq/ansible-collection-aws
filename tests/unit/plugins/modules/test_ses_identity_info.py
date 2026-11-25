@@ -1,16 +1,14 @@
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
 from ansible_collections.linuxhq.aws.plugins.modules import ses_identity_info as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
     assert_documents_shape,
+    assert_module_contract,
     documented_returns,
 )
 
@@ -37,18 +35,9 @@ def run(module, ses, sesv2, names=None):
 
 
 def test_module_contract():
-    captured = {}
+    captured = assert_module_contract(plugin)
 
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
-
-    assert captured["supports_check_mode"]
     assert captured["mutually_exclusive"] == [["identity_type", "name"]]
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 def test_named_identity_skips_listing_and_returns_dkim_and_verification_token():

@@ -37,7 +37,7 @@ options:
   scope:
     description:
       - The scope of the IP sets to gather.
-      - Use C(cloudfront) for global IP sets and C(regional) for regional IP sets.
+      - Use V(cloudfront) for global IP sets and V(regional) for regional IP sets.
       - AWS WAFv2 accepts V(cloudfront) only in the C(us-east-1) region.
     choices:
       - cloudfront

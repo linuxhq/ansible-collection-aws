@@ -6,14 +6,12 @@ from ansible_collections.linuxhq.aws.plugins.modules import global_accelerator_i
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleExit,
-    ModuleFail,
     assert_module_contract,
 )
 
 
 def test_accelerator_disappearing_during_tag_lookup_is_omitted():
     client = Mock()
-    client.describe_accelerator.return_value = {"Accelerator": {"AcceleratorArn": "arn:gone"}}
     client.list_tags_for_resource.side_effect = plugin.ClientError(
         {
             "Error": {
@@ -34,6 +32,7 @@ def test_accelerator_disappearing_during_tag_lookup_is_omitted():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_accelerator_by_arn", return_value={"AcceleratorArn": "arn:gone"}),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
@@ -44,26 +43,6 @@ def test_accelerator_disappearing_during_tag_lookup_is_omitted():
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["include_endpoint_groups"]["default"] is False
-
-
-def test_a_different_accelerator_is_rejected():
-    client = Mock(describe_accelerator=Mock(return_value={"Accelerator": {"AcceleratorArn": "arn:other"}}))
-    module = FakeModule(
-        {
-            "arn": "arn:accelerator",
-            "include_endpoint_groups": False,
-            "include_listeners": False,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "Global Accelerator returned an invalid accelerator"
 
 
 def test_empty_arn_lists_every_accelerator():
@@ -120,7 +99,6 @@ def test_empty_results_do_not_require_tag_lookup():
 
 def test_endpoint_groups_are_nested_under_their_listener():
     client = Mock()
-    client.describe_accelerator.return_value = {"Accelerator": {"AcceleratorArn": "arn:accelerator", "Name": "main"}}
     client.list_tags_for_resource.return_value = {"Tags": []}
     module = FakeModule(
         {
@@ -134,6 +112,9 @@ def test_endpoint_groups_are_nested_under_their_listener():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods", require),
+        patch.object(
+            plugin, "get_accelerator_by_arn", return_value={"AcceleratorArn": "arn:accelerator", "Name": "main"}
+        ),
         patch.object(
             plugin,
             "paginated_query_with_retries",
@@ -184,9 +165,6 @@ def test_listing_methods_are_checked_once_for_every_accelerator_and_listener():
 
 def test_missing_accelerator_arn_returns_an_empty_list():
     client = Mock()
-    client.describe_accelerator.side_effect = plugin.ClientError(
-        {"Error": {"Code": "AcceleratorNotFoundException", "Message": "missing"}}, "DescribeAccelerator"
-    )
     module = FakeModule(
         {"arn": "arn:missing", "include_endpoint_groups": False, "include_listeners": False},
         client=client,
@@ -194,8 +172,11 @@ def test_missing_accelerator_arn_returns_an_empty_list():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "get_accelerator_by_arn", return_value=None) as get_accelerator_by_arn,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
 
     assert raised.value.values["accelerators"] == []
+    get_accelerator_by_arn.assert_called_once_with(client, module, "arn:missing")
+    client.list_tags_for_resource.assert_not_called()

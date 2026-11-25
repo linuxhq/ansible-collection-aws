@@ -500,15 +500,11 @@ def test_immutable_changes_preserve_rule(check_mode, field, current):
     with (
         lookup,
         patch.object(route53_resolver_utils, "query_list", return_value=[]),
-        patch.object(plugin, "delete_resolver_rule") as delete,
-        patch.object(plugin, "create_resolver_rule") as create,
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
 
     assert raised.value.values["msg"].startswith(f"{field} cannot be changed")
-    delete.assert_not_called()
-    create.assert_not_called()
     assert not client.mock_calls
 
 
@@ -603,18 +599,18 @@ def test_update_mismatch_preserves_rule(wait):
     client = Mock(update_resolver_rule=Mock(return_value={"ResolverRule": current}))
     with (
         patch.object(plugin, "get_resolver_rule_by_name", return_value=current),
-        patch.object(plugin, "get_resolver_rule", return_value=current),
         patch.object(plugin, "wait_for_resolver_rule_status", return_value=current),
-        patch.object(plugin, "delete_resolver_rule") as delete,
-        patch.object(plugin, "create_resolver_rule") as create,
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(client, module)
 
-    assert "has not been deleted" in raised.value.values["msg"]
-    client.update_resolver_rule.assert_called_once()
-    delete.assert_not_called()
-    create.assert_not_called()
+    assert raised.value.values["msg"] == (
+        "AWS Route53 Resolver rule main does not match the requested configuration after updating; AWS did not apply "
+        "the change or another writer changed it. Inspect the current configuration before retrying."
+    )
+    assert raised.value.values["changed"] is True
+    # The update is the only write; the rule is never deleted or recreated.
+    assert [call[0] for call in client.method_calls] == ["update_resolver_rule"]
 
 
 def rule_params(**overrides):

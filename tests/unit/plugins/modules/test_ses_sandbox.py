@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -6,11 +5,10 @@ from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.modules import ses_sandbox as plugin
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
-    HEADER,
     FakeModule,
     ModuleExit,
     ModuleFail,
-    ModuleInitialized,
+    assert_module_contract,
 )
 
 DETAILS = {
@@ -49,21 +47,12 @@ def run(module, *accounts):
 
 
 def test_module_contract():
-    captured = {}
-
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleInitialized
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleInitialized):
-        plugin.main()
+    captured = assert_module_contract(plugin)
 
     spec = captured["argument_spec"]
-    assert captured["supports_check_mode"]
     assert "required_together" not in captured
     assert "default" not in spec["contact_language"]
     assert "default" not in spec["mail_type"]
-    assert Path(plugin.__file__).read_text().splitlines()[:3] == HEADER
 
 
 def test_account_details_are_deduplicated_and_sorted():
@@ -298,6 +287,7 @@ def test_check_mode_preserves_observed_production_access():
     assert result.values["changed"] is True
     assert result.values["account"]["production_access_enabled"] is False
     assert result.values["account"]["details"]["website_url"] == "https://example.com"
+    assert "use_case_description" not in result.values["account"]["details"]
     client.put_account_details.assert_not_called()
 
 
@@ -324,11 +314,3 @@ def test_check_mode_keeps_stored_use_case_description_and_review_status():
     assert details["use_case_description"] == '"Old use case"'
     assert details["review_details"] == {"case_id": "1", "status": "DENIED"}
     client.put_account_details.assert_not_called()
-
-
-def test_check_mode_does_not_invent_use_case_description():
-    client = Mock()
-    account = {"details": {}, "production_access_enabled": False}
-    result, _require, _get = run(FakeModule(params(), client=client, check_mode=True), account)
-
-    assert "use_case_description" not in result.values["account"]["details"]
