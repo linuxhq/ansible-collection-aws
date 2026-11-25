@@ -10,7 +10,6 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.iam_oidc import (
     get_provider,
     get_provider_by_arn,
     get_provider_by_url,
-    list_provider_summaries,
     provider_url,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import FakeModule
@@ -151,22 +150,6 @@ def test_provider_lookup_finds_nothing_when_the_exact_provider_disappears():
 
     assert result is None
     assert [call.args[2] for call in get.call_args_list] == ["arn:aws:iam::1:oidc-provider/sts.windows.net/t/"]
-
-
-def test_list_provider_summaries_returns_the_listed_summaries():
-    client = Mock()
-    module = FakeModule({})
-    providers = [{"Arn": "arn:aws:iam::1:oidc-provider/example.com"}]
-    with patch.object(iam_oidc, "query_list", return_value=providers) as query_list:
-        assert list_provider_summaries(client, module) == providers
-
-    query_list.assert_called_once_with(
-        module,
-        client,
-        "list_open_id_connect_providers",
-        "OpenIDConnectProviderList",
-        "Unable to list AWS IAM OIDC providers",
-    )
 
 
 def test_get_provider_requires_get_method_before_describing():

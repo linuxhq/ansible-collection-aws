@@ -441,8 +441,8 @@ def single_named_pool(module, pools):
     if len(pools) > 1:
         module.fail_json(
             msg=(
-                f"Multiple Pinpoint SMS Voice V2 pools matched name "
-                f"{module.params['name']}: " + ", ".join(sorted(pool["PoolId"] for pool in pools))
+                f"Multiple Pinpoint SMS Voice V2 pools matched name {module.params['name']}: "
+                + ", ".join(sorted(pool["PoolId"] for pool in pools))
             )
         )
 

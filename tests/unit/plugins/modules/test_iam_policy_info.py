@@ -16,11 +16,6 @@ def test_module_contract():
     assert options["argument_spec"]["path_prefix"]["type"] == "str"
 
 
-def test_explicit_entity_name_skips_listing():
-    module = SimpleNamespace(params={"group_name": "admins", "path_prefix": "/", "role_name": None, "user_name": None})
-    assert plugin.entity_names(None, module, "Group") == ["admins"]
-
-
 def test_explicit_names_do_not_require_entity_list_operations():
     client = Mock()
     module = FakeModule(

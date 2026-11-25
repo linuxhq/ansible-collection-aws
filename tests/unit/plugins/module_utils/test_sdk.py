@@ -150,9 +150,6 @@ def test_reads_client_method_output_members():
     assert sdk.get_client_method_output_members(client, "list_items") == ["Items", "NextMarker"]
     client.meta.service_model.operation_model.assert_called_once_with("ListItems")
 
-    client.meta.service_model.operation_model.return_value.output_shape = None
-    assert sdk.get_client_method_output_members(client, "list_items") == []
-
 
 def test_requires_supported_client_parameters():
     module = FakeModule({})

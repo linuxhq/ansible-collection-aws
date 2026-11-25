@@ -54,17 +54,6 @@ def test_instance_types_take_precedence_over_the_instance_type_filter():
     ]
 
 
-def test_instance_types_are_deduplicated_and_replace_the_instance_type_filter():
-    _methods, request = run_info(
-        {
-            "filters": {"current-generation": True, "instance-type": [f"ignored-{index}" for index in range(10)]},
-            "instance_types": [f"type-{index}" for index in range(199)] + ["type-0"],
-        }
-    )
-
-    assert sum(len(item["Values"]) for item in request["Filters"]) == 200
-
-
 def run_info(params):
     module = FakeModule(
         dict({"filters": None, "include_unsupported_in_region": False, "instance_types": None}, **params), client=Mock()

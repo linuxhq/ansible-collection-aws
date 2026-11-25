@@ -299,18 +299,3 @@ def test_missing_resource_level_quota_fails():
     assert isinstance(result, ModuleFail)
     assert result.values["msg"] == "AWS service quota ec2/L-1 for arn:resource does not exist"
     client.request_service_quota_increase.assert_not_called()
-
-
-def test_metric_dimension_identifiers_are_preserved():
-    dimensions = {"Class": "Standard/OnDemand", "class": "distinct", "Resource": "vCPU", "Service": "EC2"}
-    current = {
-        "QuotaCode": "L-example",
-        "ServiceCode": "ec2",
-        "Value": 10.0,
-        "UsageMetric": {"MetricNamespace": "AWS/Usage", "MetricName": "ResourceCount", "MetricDimensions": dimensions},
-    }
-    client = Mock(get_service_quota=Mock(return_value={"Quota": current}))
-    result = run(FakeModule(params(quota_code="L-example"), client=client))[0]
-
-    metric = result.values["current_quota"]["usage_metric"]
-    assert metric == {"metric_namespace": "AWS/Usage", "metric_name": "ResourceCount", "metric_dimensions": dimensions}

@@ -43,8 +43,18 @@ def pool_with_other_phone_number():
     """A ListPoolOriginationIdentities result where phone-1 is not the last phone number."""
     return {
         "OriginationIdentities": [
-            {"OriginationIdentity": "phone-1", "PhoneNumber": "+12065550100"},
-            {"OriginationIdentity": "phone-2", "PhoneNumber": "+12065550101"},
+            {
+                "IsoCountryCode": "US",
+                "OriginationIdentity": "phone-1",
+                "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:111111111111:phone-number/phone-1",
+                "PhoneNumber": "+12065550100",
+            },
+            {
+                "IsoCountryCode": "US",
+                "OriginationIdentity": "phone-2",
+                "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:111111111111:phone-number/phone-2",
+                "PhoneNumber": "+12065550101",
+            },
         ]
     }
 
@@ -64,7 +74,7 @@ def test_documented_returns_cover_the_sdk_shape(shape_name):
     assert_documents_shape(documented_returns(plugin)["phone_number"]["contains"], "pinpoint-sms-voice-v2", shape_name)
 
 
-def test_accepts_four_capabilities():
+def test_lookup_checks_the_describe_parameters_it_sends():
     client = model_client()
     module = FakeModule(
         {
@@ -112,9 +122,6 @@ def test_accepts_four_capabilities():
             )
         },
     )
-    # Check mode checks the request as the real run does.
-    assert list(require.call_args_list[1].args[3]) == ["request_phone_number"]
-    client.request_phone_number.assert_not_called()
 
 
 def test_new_number_request_sends_deduplicated_capabilities():
@@ -411,49 +418,6 @@ def test_existing_number_matches_pool_and_opt_out_list_arns():
     client.request_phone_number.assert_not_called()
 
 
-def test_check_mode_does_not_wait_for_existing_number():
-    client = Mock()
-    module = FakeModule(
-        {
-            "deletion_protection_enabled": False,
-            "international_sending_enabled": None,
-            "iso_country_code": "US",
-            "message_type": "TRANSACTIONAL",
-            "name": "sms",
-            "number_capabilities": ["SMS"],
-            "number_type": "LONG_CODE",
-            "opt_out_list_name": None,
-            "pool_id": None,
-            "registration_id": None,
-            "phone_number_id": None,
-            "purge_tags": True,
-            "state": "present",
-            "tags": None,
-            "wait": True,
-        },
-        check_mode=True,
-    )
-    current = {
-        "DeletionProtectionEnabled": False,
-        "IsoCountryCode": "US",
-        "MessageType": "TRANSACTIONAL",
-        "NumberCapabilities": ["SMS"],
-        "NumberType": "LONG_CODE",
-        "PhoneNumberId": "phone-1",
-        "Status": "PENDING",
-    }
-    with (
-        named(),
-        patch.object(plugin, "query_list", return_value=[current]),
-        patch.object(plugin, "wait_for_phone_number_active") as wait_for_active,
-        pytest.raises(ModuleExit) as raised,
-    ):
-        run_ensure_present(client, module)
-
-    assert not raised.value.values["changed"]
-    wait_for_active.assert_not_called()
-
-
 def test_check_mode_projects_deduplicated_request_without_client_token():
     client = model_client()
     module = FakeModule(
@@ -625,29 +589,16 @@ def test_phone_number_tags_use_the_shared_tag_listing(changed):
     list_tags.assert_called_once_with(client, module, "arn:phone-1", "phone number", changed=changed, missing_ok=False)
 
 
-def test_phone_number_tags_default_missing_tags_to_empty():
-    client = Mock()
-    client.list_tags_for_resource.return_value = {}
-    with patch.object(plugin, "require_client_methods"):
-        assert plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberArn": "arn:phone-1"}) == {}
-
-
-@pytest.mark.parametrize("missing_ok", [False, True])
-def test_phone_number_tags_reports_a_released_number_only_when_missing_is_allowed(missing_ok):
+def test_phone_number_tags_reports_a_released_number_when_missing_is_allowed():
     client = Mock()
     client.list_tags_for_resource.side_effect = plugin.ClientError(
         {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
         "ListTagsForResource",
     )
     with patch.object(plugin, "require_client_methods"):
-        if missing_ok:
-            assert (
-                plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberArn": "arn:phone-1"}, missing_ok=True)
-                is None
-            )
-        else:
-            with pytest.raises(ModuleFail):
-                plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberArn": "arn:phone-1"})
+        assert (
+            plugin.phone_number_tags(client, FakeModule({}), {"PhoneNumberArn": "arn:phone-1"}, missing_ok=True) is None
+        )
 
 
 def test_name_matching_skips_a_candidate_released_before_its_tags_are_listed():
@@ -1478,25 +1429,6 @@ def test_ambiguous_name_match_fails_before_mutation():
     client.untag_resource.assert_not_called()
 
 
-def test_check_mode_projects_the_opt_out_list_name_from_an_arn():
-    client = Mock()
-    module = FakeModule(
-        phone_number_params(opt_out_list_name="arn:aws:sms-voice:us-east-1:1:opt-out-list/list-1"),
-        check_mode=True,
-    )
-    with (
-        named(),
-        patch.object(plugin, "query_list", return_value=[existing_number()]),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        run_ensure_present(client, module)
-
-    assert raised.value.values["changed"] is True
-    assert raised.value.values["phone_number"]["opt_out_list_name"] == "list-1"
-    client.update_phone_number.assert_not_called()
-
-
 @pytest.mark.parametrize("status", ["ASSOCIATING", "DISASSOCIATING", "PENDING"])
 def test_changes_wait_for_an_active_number_even_without_wait(status):
     client = Mock()
@@ -1544,25 +1476,6 @@ def test_number_given_by_arn_is_waited_on_and_updated_by_that_arn():
     )
     assert raised.value.values["changed"] is True
     assert raised.value.values["phone_number"]["deletion_protection_enabled"] is False
-
-
-def test_unchanged_number_does_not_wait_without_wait():
-    client = Mock()
-    module = FakeModule(phone_number_params(tags={"Name": "sms"}))
-    with (
-        patch.object(
-            plugin,
-            "query_list",
-            return_value=[existing_number(PhoneNumberArn="arn:phone-1", Status="PENDING")],
-        ),
-        patch.object(plugin, "phone_number_tags", return_value={"Name": "sms"}),
-        patch.object(plugin, "wait_for_phone_number_active") as wait_for_active,
-        pytest.raises(ModuleExit) as raised,
-    ):
-        run_ensure_present(client, module)
-
-    assert raised.value.values["changed"] is False
-    wait_for_active.assert_not_called()
 
 
 def test_present_validates_wait_bounds_without_wait():

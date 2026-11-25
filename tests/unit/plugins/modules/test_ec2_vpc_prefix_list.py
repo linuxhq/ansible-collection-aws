@@ -1486,25 +1486,12 @@ def test_ready_wait_fails_immediately_when_the_prefix_list_is_deleting():
     assert raised.value.values["changed"] is True
 
 
-def test_create_failed_prefix_list_is_not_modified():
-    client = Mock()
-    module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}]))
-    with (
-        patch.object(plugin, "get_current", return_value=(prefix_list(State="create-failed"), [])),
-        patch.object(plugin, "modify_prefix_list") as modify,
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module, OWNER)
-
-    assert "failed to create" in raised.value.values["msg"]
-    modify.assert_not_called()
-
-
 def test_create_failed_prefix_list_failure_includes_the_state_message():
     module = FakeModule(present_params([{"cidr": "10.0.0.0/8"}]))
     current = prefix_list(State="create-failed", StateMessage="Unable to create the prefix list.")
     with (
         patch.object(plugin, "get_current", return_value=(current, [])),
+        patch.object(plugin, "modify_prefix_list") as modify,
         pytest.raises(ModuleFail) as raised,
     ):
         plugin.ensure_present(Mock(), module, OWNER)
@@ -1513,6 +1500,7 @@ def test_create_failed_prefix_list_failure_includes_the_state_message():
         "EC2 VPC managed prefix list pl-1 failed to create (Unable to create the prefix list.). "
         "Remove it with state=absent before creating it again."
     )
+    modify.assert_not_called()
 
 
 def test_lookup_ignores_prefix_lists_owned_by_other_accounts():
@@ -1563,7 +1551,7 @@ def test_wait_failure_includes_the_state_message(waiter_name, state):
         plugin.wait_for_prefix_list_state(Mock(), module, "pl-1", waiter_name, changed=True)
 
     assert raised.value.values["msg"] == (
-        f"Unable to wait for EC2 VPC managed prefix list pl-1 to become {target_state} " f"({FAILED_RESIZE_MESSAGE})"
+        f"Unable to wait for EC2 VPC managed prefix list pl-1 to become {target_state} ({FAILED_RESIZE_MESSAGE})"
     )
     assert raised.value.values["changed"] is True
 

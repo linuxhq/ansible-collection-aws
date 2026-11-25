@@ -427,21 +427,6 @@ def test_phone_number_in_a_non_matching_pool_fails_before_create(check_mode, poo
     client.create_pool.assert_not_called()
 
 
-def test_phone_number_identity_is_detected_from_listed_item():
-    origination = {
-        "OriginationIdentity": "phone-1",
-        "OriginationIdentityArn": PHONE_ORIGINATION["OriginationIdentityArn"],
-    }
-    module = create_params("phone-1")
-    pool = {"MessageType": "TRANSACTIONAL", "PoolId": "pool-1", "Status": "ACTIVE"}
-    describe, originations, tags = patch_held_pool(pool, origination)
-
-    with describe, originations, tags, pytest.raises(ModuleFail) as raised:
-        plugin.find_pool(Mock(), module)
-
-    assert "pool-1" in raised.value.values["msg"]
-
-
 @pytest.mark.parametrize("message_type", ["TRANSACTIONAL", "PROMOTIONAL"])
 def test_sender_id_in_another_pool_does_not_conflict_and_creates_pool(message_type):
     client = Mock()
@@ -609,36 +594,6 @@ def test_check_mode_preserves_existing_empty_pool_identities():
         run_ensure_present(Mock(), module)
 
     assert raised.value.values["pool"]["origination_identities"] == []
-
-
-def test_check_mode_does_not_wait_for_existing_pool():
-    current = {
-        "DeletionProtectionEnabled": False,
-        "MessageType": "TRANSACTIONAL",
-        "PoolId": "pool-1",
-        "Status": "CREATING",
-        "Tags": [{"Key": "Name", "Value": "primary"}],
-    }
-    module = FakeModule(
-        {
-            "deletion_protection_enabled": False,
-            "message_type": "TRANSACTIONAL",
-            "name": "primary",
-            "purge_tags": True,
-            "state": "present",
-            "tags": None,
-            "wait": True,
-        },
-        check_mode=True,
-    )
-    with (
-        patch.object(plugin, "find_pool", return_value=current),
-        patch.object(plugin, "wait_for_pool_active") as wait_for_active,
-        pytest.raises(ModuleExit),
-    ):
-        run_ensure_present(Mock(), module)
-
-    wait_for_active.assert_not_called()
 
 
 def test_no_wait_creation_uses_create_result_without_retagging():

@@ -422,12 +422,6 @@ def create_resolver_rule(client, module, request, deadline=None):
                 changed=True, msg=f"AWS Route53 Resolver did not return the created rule {request['Name']}"
             )
 
-        return rule
-
-    rule = dict(rule)
-    for field, value in request.items():
-        rule.setdefault(field, value)
-
     return rule
 
 

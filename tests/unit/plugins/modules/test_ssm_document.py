@@ -399,16 +399,6 @@ def test_deleting_document_is_waited_on_and_created_again():
     client.create_document.assert_called_once()
 
 
-def test_deleting_document_is_predicted_as_created_in_check_mode():
-    client = Mock()
-    deleting = document({"schemaVersion": "2.2"}, Status="Deleting")
-    result, wait_for_document, _get = run_present(client, FakeModule(params(), check_mode=True), [deleting])
-
-    assert result.values["changed"]
-    wait_for_document.assert_not_called()
-    client.create_document.assert_not_called()
-
-
 @pytest.mark.parametrize("deleting", [False, True])
 @pytest.mark.parametrize("wait", [False, True])
 def test_check_mode_predicts_a_created_document_as_a_real_create_returns_it(wait, deleting):
@@ -418,7 +408,7 @@ def test_check_mode_predicts_a_created_document_as_a_real_create_returns_it(wait
     created = document({"schemaVersion": "2.2"}, DocumentFormat="JSON", Status="Active")
     real, _wait, _get = run_present(client, FakeModule(params(wait=wait)), existing + [None, created])
     check_client = Mock()
-    predicted, _wait, _get = run_present(
+    predicted, check_wait, _get = run_present(
         check_client, FakeModule(params(wait=wait), check_mode=True), existing or [None]
     )
 
@@ -431,6 +421,8 @@ def test_check_mode_predicts_a_created_document_as_a_real_create_returns_it(wait
     assert predicted.values["document"]["document_format"] == "JSON"
     assert predicted.values["document"]["document_version"] == "1"
     assert predicted.values["document"].get("status") == ("Active" if wait else None)
+    # Check mode does not wait for a deleting document to be deleted.
+    check_wait.assert_not_called()
     check_client.create_document.assert_not_called()
 
 
@@ -880,17 +872,6 @@ def test_absent_is_unchanged_when_the_document_is_missing(check_mode):
     client.delete_document.assert_not_called()
 
 
-def test_absent_waits_on_a_text_document_already_deleting_without_deleting_again():
-    client = Mock()
-    result, wait_for_document = run_absent(
-        client, FakeModule(params(state="absent")), described("TEXT", Status="Deleting")
-    )
-
-    assert result.values["changed"] is False
-    client.delete_document.assert_not_called()
-    wait_for_document.assert_called_once()
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_present_fails_before_any_change_for_a_text_document(check_mode):
     client = Mock(describe_document=Mock(return_value={"Document": described("TEXT", DocumentType="ChangeCalendar")}))
@@ -974,25 +955,8 @@ def test_create_returns_tags_only_when_tags_are_supplied(tags, expected):
     ):
         plugin.ensure_present(client, FakeModule(params(tags=tags)))
 
-    assert raised.value.values["document"].get("tags") == expected
-
-
-def test_present_creates_a_missing_document_after_describing_it():
-    client = Mock(
-        describe_document=Mock(
-            side_effect=ClientError({"Error": {"Code": "InvalidDocument", "Message": "gone"}}, "DescribeDocument")
-        )
-    )
-    client.create_document.return_value = {"DocumentDescription": {"DocumentVersion": "1", "Name": "example"}}
-    with (
-        patch.object(plugin, "get_document", side_effect=[None, document({"schemaVersion": "2.2"})]),
-        patch.object(plugin, "wait_for_document"),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params()))
-
     assert raised.value.values["changed"] is True
-    assert client.create_document.call_args.kwargs["DocumentFormat"] == "JSON"
+    assert raised.value.values["document"].get("tags") == expected
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

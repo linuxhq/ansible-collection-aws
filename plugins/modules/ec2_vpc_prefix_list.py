@@ -1014,10 +1014,7 @@ def main():
 
             if cidr.version != int(module.params["address_family"][-1]):
                 module.fail_json(
-                    msg=(
-                        f"entries[].cidr must match address_family "
-                        f"{module.params['address_family']}: {entry['cidr']}"
-                    )
+                    msg=f"entries[].cidr must match address_family {module.params['address_family']}: {entry['cidr']}"
                 )
 
             entry["cidr"] = str(cidr)

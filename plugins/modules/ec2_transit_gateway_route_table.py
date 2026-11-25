@@ -34,6 +34,9 @@ options:
       - When O(state=present), this must not be made only of whitespace,
         because EC2 stores some such C(Name) tags as an empty value and cannot
         filter on the others.
+      - When O(state=absent) and O(wait=true), this also finds route tables
+        with this name that are C(deleting), if no other route table has this
+        name, and the module waits for each of them to be deleted.
     type: str
   purge_routes:
     description:
@@ -395,7 +398,12 @@ def get_route_table_by_id(client, module, transit_gateway_route_table_id, change
     return route_tables[0] if route_tables else None
 
 
-def find_route_table(client, module):
+def find_route_tables(client, module, include_deleting=False):
+    """Return the route table found by ID, or the route tables found by name.
+
+    include_deleting also finds deleting route tables by name, since they keep their name until they are deleted;
+    they are returned only when no other route table matches.
+    """
     transit_gateway_route_table_id = module.params["transit_gateway_route_table_id"]
     transit_gateway_id = module.params["transit_gateway_id"]
     name = module.params["name"]
@@ -411,11 +419,11 @@ def find_route_table(client, module):
                 transit_gateway_route_table_id=transit_gateway_route_table_id,
             )
 
-        return route_table
+        return [route_table] if route_table else []
 
     # main() requires name and transit_gateway_id when transit_gateway_route_table_id is omitted.
     filters = {
-        "state": ["available", "pending"],
+        "state": ["available", "pending", "deleting"] if include_deleting else ["available", "pending"],
         "transit-gateway-id": transit_gateway_id,
         "tag:Name": escape_filter_value(name),
     }
@@ -431,8 +439,12 @@ def find_route_table(client, module):
 
     # The filter value is escaped; still keep only the exact name.
     route_tables = [route_table for route_table in route_tables if current_tags(route_table).get("Name") == name]
+    # A replacement with the same name is the match, not a route table that is still deleting.
+    active = [route_table for route_table in route_tables if route_table.get("State") != "deleting"]
+    if active:
+        route_tables = active
 
-    if len(route_tables) > 1:
+    if len(active) > 1:
         transit_gateway_route_table_ids = [route_table_id(route_table) for route_table in route_tables]
 
         module.fail_json(
@@ -440,6 +452,11 @@ def find_route_table(client, module):
             transit_gateway_route_table_ids=transit_gateway_route_table_ids,
         )
 
+    return route_tables
+
+
+def find_route_table(client, module):
+    route_tables = find_route_tables(client, module)
     return route_tables[0] if route_tables else None
 
 
@@ -1085,21 +1102,25 @@ def ensure_absent(client, module):
     # Every wait in one run shares wait_timeout.
     deadline = wait_deadline(module)
     wait = module.params["wait"] and not module.check_mode
-    route_table = find_route_table(client, module)
+    # Only a wait uses a deleting route table found by name: EC2 can keep listing one by name after it is deleted.
+    route_tables = find_route_tables(client, module, include_deleting=module.params["wait"])
+    route_table = route_tables[0] if route_tables else None
 
     if route_table is None or route_table.get("State") in ROUTE_TABLE_TERMINAL_STATES:
         exit_module(module, False, route_table)
 
     if route_table.get("State") == "deleting":
         if wait:
-            route_table = wait_for_route_table(
-                client,
-                module,
-                route_table_id(route_table),
-                {"deleted"},
-                absent_is_success=True,
-                deadline=deadline,
-            )
+            # Every match is deleting; wait for each by ID.
+            for deleting in route_tables:
+                route_table = wait_for_route_table(
+                    client,
+                    module,
+                    route_table_id(deleting),
+                    {"deleted"},
+                    absent_is_success=True,
+                    deadline=deadline,
+                )
         elif module.check_mode and module.params["wait"]:
             # EC2 stops returning a deleted route table, so a real run's wait finds no table.
             route_table = None

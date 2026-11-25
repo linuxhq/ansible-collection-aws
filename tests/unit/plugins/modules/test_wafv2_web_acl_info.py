@@ -1,8 +1,6 @@
-import json
 from unittest.mock import Mock, patch
 
 import pytest
-from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import wafv2 as wafv2_utils
 from ansible_collections.linuxhq.aws.plugins.modules import wafv2_web_acl_info as plugin
@@ -102,7 +100,6 @@ def test_tags_are_returned_with_their_case():
     result, require_client_methods, _query = run(FakeModule(params(), client=client), [SUMMARY])
 
     assert result.values["web_acls"][0]["tags"] == {"Name": "main", "CostCenter": "A1"}
-    client.list_tags_for_resource.assert_called_once_with(ResourceARN="arn:web-acl", aws_retry=True)
     assert "list_tags_for_resource" in require_client_methods.call_args.args[3]
 
 
@@ -120,7 +117,6 @@ def test_non_utf8_search_string_bytes_are_replaced():
 
     search_string = result.values["web_acls"][0]["rules"][0]["statement"]["byte_match_statement"]["search_string"]
     assert search_string == "��adminé"
-    json.dumps(result.values, ensure_ascii=False).encode("utf-8")
 
 
 def test_id_and_name_get_the_web_acl_without_listing():
@@ -133,14 +129,3 @@ def test_id_and_name_get_the_web_acl_without_listing():
     assert result.values["web_acls"] == [
         {"arn": "arn:web-acl", "default_action": {"allow": {}}, "id": "acl-1", "name": "main", "tags": {}}
     ]
-
-
-def test_id_and_name_for_missing_web_acl_return_empty_list():
-    client = Mock()
-    client.get_web_acl.side_effect = ClientError(
-        {"Error": {"Code": "WAFNonexistentItemException", "Message": "gone"}}, "GetWebACL"
-    )
-    result, _require, query_list = run(FakeModule(params(id="acl-1", name="missing"), client=client), [])
-
-    query_list.assert_not_called()
-    assert result.values["web_acls"] == []

@@ -68,7 +68,7 @@ def test_absent_tolerates_route_table_disappearing_during_delete(wait):
     module = FakeModule({"state": "absent", "wait": wait})
     current = {"State": "available", "TransitGatewayRouteTableId": "tgw-rtb-1"}
     with (
-        patch.object(plugin, "find_route_table", return_value=current),
+        patch.object(plugin, "find_route_tables", return_value=[current]),
         patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "wait_for_route_table") as wait_for_route_table,
         pytest.raises(ModuleExit) as raised,
@@ -611,7 +611,7 @@ def test_absent_waits_for_pending_table_when_final_wait_is_disabled():
     }
     available = dict(pending, State="available")
     with (
-        patch.object(plugin, "find_route_table", return_value=pending),
+        patch.object(plugin, "find_route_tables", return_value=[pending]),
         patch.object(plugin, "wait_for_route_table", return_value=available) as wait_for_route_table,
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit),
@@ -1078,7 +1078,7 @@ def run_absent(found, wait, check_mode):
         client=client,
     )
     with (
-        patch.object(plugin, "find_route_table", return_value=found),
+        patch.object(plugin, "find_route_tables", return_value=[found]),
         patch.object(plugin, "get_route_table_by_id", return_value=None) as describe,
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
@@ -1619,6 +1619,85 @@ def test_absent_route_table_wait_still_treats_absence_as_success():
         patch.object(plugin.time, "sleep"),
     ):
         assert plugin.wait_for_route_table(Mock(), module, "tgw-rtb-1", {"deleted"}, absent_is_success=True) is None
+
+
+def listed_by_state(route_tables):
+    """Fake query_list that applies the state filter, as DescribeTransitGatewayRouteTables does."""
+
+    def query(*args, **kwargs):
+        states = next(item["Values"] for item in kwargs["Filters"] if item["Name"] == "state")
+        return [route_table for route_table in route_tables if route_table["State"] in states]
+
+    return query
+
+
+def named_table(table_id, state):
+    return {"State": state, "Tags": [{"Key": "Name", "Value": "main"}], "TransitGatewayRouteTableId": table_id}
+
+
+@pytest.mark.parametrize(
+    "listed, found, present",
+    [
+        ([named_table("tgw-rtb-old", "deleting")], ["tgw-rtb-old"], None),
+        # A replacement with the same name is the match, not the table that is still deleting.
+        (
+            [named_table("tgw-rtb-old", "deleting"), named_table("tgw-rtb-new", "available")],
+            ["tgw-rtb-new"],
+            "tgw-rtb-new",
+        ),
+        (
+            [named_table("tgw-rtb-old", "deleting"), named_table("tgw-rtb-older", "deleting")],
+            ["tgw-rtb-old", "tgw-rtb-older"],
+            None,
+        ),
+    ],
+)
+def test_absent_name_lookup_also_finds_deleting_route_tables(listed, found, present):
+    module = FakeModule({"transit_gateway_route_table_id": None, "transit_gateway_id": "tgw-1", "name": "main"})
+    with patch.object(plugin, "query_list", side_effect=listed_by_state(listed)):
+        tables = plugin.find_route_tables(Mock(), module, include_deleting=True)
+        # state=present never matches a deleting route table by name.
+        assert plugin.route_table_id(plugin.find_route_table(Mock(), module)) == present
+
+    assert [plugin.route_table_id(table) for table in tables] == found
+
+
+@pytest.mark.parametrize("wait", [True, False])
+@pytest.mark.parametrize("table_ids", [["tgw-rtb-old"], ["tgw-rtb-old", "tgw-rtb-older"]])
+def test_absent_by_name_waits_by_id_for_deleting_route_tables(table_ids, wait):
+    # Live, EC2 kept listing a deleted route table by tag:Name as deleting after describing it by ID
+    # returned InvalidRouteTableID.NotFound, so each wait describes the table by ID, and without a wait
+    # such a listing is not returned.
+    module = FakeModule(
+        {
+            "name": "main",
+            "state": "absent",
+            "transit_gateway_id": "tgw-1",
+            "transit_gateway_route_table_id": None,
+            "wait": wait,
+            "wait_delay": 1,
+        }
+    )
+    client = Mock()
+    described = []
+
+    def describe(client, module, table_id, changed=False):
+        described.append(table_id)
+        # Each table is still deleting on its first describe, then gone.
+        return named_table(table_id, "deleting") if described.count(table_id) == 1 else None
+
+    listed = [named_table(table_id, "deleting") for table_id in table_ids]
+    with (
+        patch.object(plugin, "query_list", side_effect=listed_by_state(listed)),
+        patch.object(plugin, "get_route_table_by_id", side_effect=describe),
+        patch.object(plugin.time, "sleep"),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.ensure_absent(client, module)
+
+    assert raised.value.values == {"changed": False, "state": "absent"}
+    assert described == ([table_id for table_id in table_ids for describe in ("deleting", "gone")] if wait else [])
+    client.delete_transit_gateway_route_table.assert_not_called()
 
 
 def test_untagged_route_table_result_omits_tags_as_documented():

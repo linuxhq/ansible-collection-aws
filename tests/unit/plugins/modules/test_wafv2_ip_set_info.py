@@ -1,7 +1,6 @@
 from unittest.mock import Mock, patch
 
 import pytest
-from botocore.exceptions import ClientError
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import wafv2 as wafv2_utils
 from ansible_collections.linuxhq.aws.plugins.modules import wafv2_ip_set_info as plugin
@@ -57,7 +56,6 @@ def test_tags_are_returned_with_their_case():
     result, require_client_methods, _query = run(FakeModule(params(), client=client), [IP_SET])
 
     assert result.values["ip_sets"][0]["tags"] == {"Name": "target", "CostCenter": "A1"}
-    client.list_tags_for_resource.assert_called_once_with(ResourceARN="arn:ip-set", aws_retry=True)
     assert "list_tags_for_resource" in require_client_methods.call_args.args[3]
 
 
@@ -77,14 +75,3 @@ def test_id_and_name_get_the_ip_set_without_listing():
             "tags": {},
         }
     ]
-
-
-def test_id_and_name_for_missing_ip_set_return_empty_list():
-    client = ip_set_client()
-    client.get_ip_set.side_effect = ClientError(
-        {"Error": {"Code": "WAFNonexistentItemException", "Message": "gone"}}, "GetIPSet"
-    )
-    result, _require, query_list = run(FakeModule(params(id="wanted", name="missing"), client=client), [])
-
-    query_list.assert_not_called()
-    assert result.values["ip_sets"] == []

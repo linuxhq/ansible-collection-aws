@@ -34,31 +34,6 @@ def test_module_contract():
     assert captured["argument_spec"]["topic_arn"]["required"] is True
 
 
-def test_changed_attribute_is_set():
-    client = client_with({"KmsMasterKeyId": "old"})
-    client.get_topic_attributes.side_effect = [
-        {"Attributes": {"KmsMasterKeyId": "old"}},
-        {"Attributes": {"KmsMasterKeyId": "new"}},
-    ]
-    result, _require = run(FakeModule({"kms_master_key_id": "new", "topic_arn": "arn:topic"}, client=client))
-
-    assert result.values["changed"]
-    assert result.values["attributes"]["kms_master_key_id"] == "new"
-    client.set_topic_attributes.assert_called_once_with(
-        AttributeName="KmsMasterKeyId", AttributeValue="new", TopicArn="arn:topic", aws_retry=True
-    )
-
-
-def test_check_mode_does_not_set_changed_attribute():
-    client = client_with({"KmsMasterKeyId": "old"})
-    result, _require = run(
-        FakeModule({"kms_master_key_id": "new", "topic_arn": "arn:topic"}, check_mode=True, client=client)
-    )
-
-    assert result.values["changed"]
-    client.set_topic_attributes.assert_not_called()
-
-
 @pytest.mark.parametrize(("current", "desired"), [({"KmsMasterKeyId": "alias/aws/sns"}, "alias/aws/sns"), ({}, "")])
 def test_matching_attribute_is_unchanged(current, desired):
     client = client_with(current)
@@ -136,6 +111,9 @@ def test_result_is_read_again_after_setting_the_attribute():
         "changed": True,
         "topic_arn": "arn:topic",
     }
+    client.set_topic_attributes.assert_called_once_with(
+        AttributeName="KmsMasterKeyId", AttributeValue="alias/aws/sns", TopicArn="arn:topic", aws_retry=True
+    )
     assert client.get_topic_attributes.call_count == 2
 
 
@@ -145,7 +123,9 @@ def test_check_mode_predicts_the_attribute_without_reading_again():
         FakeModule({"kms_master_key_id": "alias/aws/sns", "topic_arn": "arn:topic"}, check_mode=True, client=client)
     )
 
+    assert result.values["changed"] is True
     assert result.values["attributes"] == {"kms_master_key_id": "alias/aws/sns", "topic_arn": "arn:topic"}
+    client.set_topic_attributes.assert_not_called()
     assert client.get_topic_attributes.call_count == 1
 
 

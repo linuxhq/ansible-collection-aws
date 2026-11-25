@@ -374,6 +374,8 @@ options:
         O(state=absent).
       - Accelerator, listener, and endpoint group changes are applied first
         and share a single deployment wait.
+      - With O(wait=true), the module also waits for an existing accelerator that is still deploying,
+        even when nothing changes.
       - Even when O(wait=false), the module waits for an accelerator that is still deploying before
         changing it or managing its listeners, for a new accelerator to deploy before creating its
         listeners, between dependent listener changes, after deleting a listener's endpoint groups
@@ -2242,9 +2244,6 @@ def ensure_present(client, module, deadline=None):
         }
     )
 
-    if ip_addresses is not None:
-        desired["ip_addresses"] = sorted(ip_addresses)
-
     accelerator = get_accelerator(client, module)
     if accelerator is None and module.params["arn"] is not None:
         module.fail_json(msg=f"AWS Global Accelerator {module.params['arn']} does not exist")
@@ -2278,13 +2277,8 @@ def ensure_present(client, module, deadline=None):
         }
 
         if ip_addresses is not None:
-            current["ip_addresses"] = sorted(
-                address
-                for ip_set in accelerator.get("IpSets", [])
-                for address in ip_set["IpAddresses"]
-                if address in ip_addresses
-            )
-            if current["ip_addresses"] != desired["ip_addresses"]:
+            assigned = {address for ip_set in accelerator.get("IpSets", []) for address in ip_set["IpAddresses"]}
+            if not set(ip_addresses) <= assigned:
                 module.fail_json(
                     msg=(
                         "ip_addresses cannot be changed for existing AWS Global Accelerator "
