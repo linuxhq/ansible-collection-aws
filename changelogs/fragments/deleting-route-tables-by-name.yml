@@ -1,0 +1,25 @@
+---
+bugfixes:
+  - ec2_transit_gateway_route_table - with ``state=absent``, a ``name`` lookup now also finds route tables that are
+    still ``deleting``, preferring any other route table with the name, and with ``wait=true`` waits by ID until each is
+    deleted. Before, the module returned ``changed=false`` at once while EC2 still reported the route table as
+    ``deleting``.
+  - ssm_association - when several associations match ``name`` and a supplied ``association_name``, the failure now
+    names the association name instead of suggesting to set ``association_name``.
+minor_changes:
+  - account_region - name the service as ``Account`` in SDK compatibility failures, like the other account modules.
+  - ec2_pricing_info - name ``service_code`` in the failure message when AWS Price List products cannot be read.
+  - global_accelerator - converge when ``ip_addresses`` repeats an address that an existing accelerator already has,
+    instead of failing as if the addresses had changed.
+trivial:
+  - ec2_vpc_prefix_list, pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate - join split message
+    strings.
+  - global_accelerator - document that ``wait=true`` also waits for an existing accelerator that is still deploying.
+  - route53_resolver - reuse the planned address changes in check mode instead of computing them again.
+  - route53_resolver_rule - return the unwaited ``CreateResolverRule`` response as AWS sends it, which already contains
+    every request field.
+  - service_quota - document that ``requested_quota.desired_value`` and ``requested_quota.status`` are returned only
+    when AWS returns them.
+  - ssm_association - drop a fallback that was never used when comparing an existing association.
+  - Remove an unreachable output shape check from the shared list helper, and remove duplicate unit tests or merge them
+    into the tests that cover the same behavior.

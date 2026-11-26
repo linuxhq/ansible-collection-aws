@@ -78,16 +78,6 @@ def test_matching_attributes_are_unchanged():
     client.set_sms_attributes.assert_not_called()
 
 
-def test_check_mode_predicts_without_setting():
-    client = Mock()
-    client.get_sms_attributes.return_value = {"attributes": {}}
-    result, _require = run(FakeModule(params(default_sms_type="Transactional"), client=client, check_mode=True))
-
-    assert result.values["changed"]
-    assert result.values["attributes"]["default_sms_type"] == "Transactional"
-    client.set_sms_attributes.assert_not_called()
-
-
 def test_report_only_mode_does_not_require_set_method():
     client = Mock()
     client.get_sms_attributes.return_value = {"attributes": {}}

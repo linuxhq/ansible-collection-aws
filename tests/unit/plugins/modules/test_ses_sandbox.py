@@ -217,14 +217,17 @@ def test_supplied_contacts_replace_existing_addresses():
 def test_denied_request_with_new_details_is_resubmitted():
     client = Mock()
     details = dict(DETAILS, review_details={"status": "DENIED"})
+    module = FakeModule(params(website_url="https://example.org"), client=client)
     result, _require, _get = run(
-        FakeModule(params(website_url="https://example.org"), client=client),
+        module,
         {"details": details, "production_access_enabled": False},
         {"details": details, "production_access_enabled": False},
     )
 
     assert result.values["changed"]
     assert client.put_account_details.call_args.kwargs["WebsiteURL"] == "https://example.org"
+    # The DENIED warning is only for a request that would not be resubmitted.
+    module.warn.assert_not_called()
 
 
 def test_use_case_description_does_not_trigger_a_request():

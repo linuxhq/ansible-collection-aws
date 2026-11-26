@@ -97,8 +97,6 @@ def test_absent_does_not_validate_unused_present_options():
     module = FakeModule(
         {
             "arn": None,
-            "idempotency_token": "t" * 256,
-            "ip_addresses": ["192.0.2.1"] * 3,
             "listeners": [{"port_ranges": []}],
             "name": "example",
             "state": "absent",
@@ -107,7 +105,6 @@ def test_absent_does_not_validate_unused_present_options():
     )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
         patch.object(plugin, "require_positive_wait_bounds"),
         patch.object(plugin, "ensure_absent") as ensure_absent,
     ):
@@ -118,7 +115,8 @@ def test_absent_does_not_validate_unused_present_options():
 
 @pytest.mark.parametrize("arn", [None, "arn:accelerator"])
 def test_absent_with_a_long_name_converges(arn):
-    # A name longer than CreateAccelerator accepts identifies no accelerator, so it is already absent.
+    # AWS validates the name, so one longer than the 64 characters CreateAccelerator accepts is looked up like any
+    # other; it matches no accelerator, so it is already absent.
     client = Mock()
     client.describe_accelerator.side_effect = ClientError(
         {"Error": {"Code": "AcceleratorNotFoundException", "Message": "gone"}}, "DescribeAccelerator"
@@ -126,8 +124,6 @@ def test_absent_with_a_long_name_converges(arn):
     module = FakeModule(
         {
             "arn": arn,
-            "idempotency_token": None,
-            "ip_addresses": None,
             "listeners": None,
             "name": "n" * 65,
             "state": "absent",
@@ -3460,7 +3456,8 @@ def test_check_mode_update_predicts_the_status_a_real_run_returns(wait, status):
 
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("family", ["IPV4", "DUAL_STACK"])
-@pytest.mark.parametrize("addresses", [["192.0.2.1"], ["192.0.2.1", "192.0.2.2"]])
+# A repeated address names one assigned address, so it converges too.
+@pytest.mark.parametrize("addresses", [["192.0.2.1"], ["192.0.2.1", "192.0.2.2"], ["192.0.2.1", "192.0.2.1"]])
 def test_requested_addresses_ignore_additional_assigned_addresses(check_mode, family, addresses):
     module = FakeModule(
         {

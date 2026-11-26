@@ -757,7 +757,7 @@ def ensure_present(client, module, deadline=None):
         if desired_type == "DUALSTACK" and current["resolver_endpoint_type"] != "DUALSTACK":
             listed_ip_addresses = ip_addresses_with_requested_ipv6(endpoint, desired["ip_addresses"])
 
-        ordered_ip_address_changes(module, listed_ip_addresses, desired["ip_addresses"])
+        ip_changes = ordered_ip_address_changes(module, listed_ip_addresses, desired["ip_addresses"])
 
     if changed and module.check_mode:
         # Removing failed addresses is an address change too; without a wait it returns the requested addresses.
@@ -806,12 +806,7 @@ def ensure_present(client, module, deadline=None):
             # Without a wait, address changes return the last change's response: UPDATING, counting an added address
             # at once and a removed one until it is gone. The response after removing a failed address is unproven.
             if not module.params["wait"] and not keep_ip_addresses:
-                listed_ip_addresses = endpoint.get("IpAddresses") or []
-                if projected_desired.get("resolver_endpoint_type") == "DUALSTACK":
-                    listed_ip_addresses = ip_addresses_with_requested_ipv6(endpoint, desired["ip_addresses"])
-
-                changes = ordered_ip_address_changes(module, listed_ip_addresses, desired["ip_addresses"])
-                last_operation, last_ip_address = changes[-1] if changes else (None, None)
+                last_operation, last_ip_address = ip_changes[-1] if ip_changes else (None, None)
                 if last_operation == "add" or (
                     last_operation == "remove" and ip_address_status(last_ip_address) not in FAILED_IP_ADDRESS_STATUSES
                 ):

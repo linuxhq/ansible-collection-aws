@@ -294,10 +294,8 @@ def ensure_present(client, module):
             module.fail_json_aws(
                 e,
                 msg=(
-                    "Unable to associate origination identity "
-                    f"{module.params['origination_identity']} with "
-                    "Pinpoint SMS Voice V2 pool "
-                    f"{module.params['pool_id']}"
+                    f"Unable to associate origination identity {module.params['origination_identity']} with "
+                    f"Pinpoint SMS Voice V2 pool {module.params['pool_id']}"
                 ),
             )
 

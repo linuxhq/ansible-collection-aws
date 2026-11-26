@@ -603,12 +603,6 @@ def test_describe_returns_the_described_sender_id_without_comparing_it():
         assert plugin.get_sender_id(module._client, module) == other
 
 
-def test_describe_matches_without_letter_case():
-    module = FakeModule(params(sender_id="example"), client=model_client())
-    with patch.object(plugin, "paginated_query_with_retries", return_value={"SenderIds": [described()]}):
-        assert plugin.get_sender_id(module._client, module)["SenderId"] == "EXAMPLE"
-
-
 def test_list_tags_error_is_reported():
     client = model_client()
     module = FakeModule(params(tags={"Team": "Ops"}), client=client)

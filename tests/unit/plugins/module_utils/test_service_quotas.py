@@ -123,20 +123,15 @@ def test_get_quota_returns_none_when_a_context_quota_is_missing():
     assert get_quota(client, FakeModule({}), "ec2", "L-1", "arn:context") is None
 
 
-@pytest.mark.parametrize(
-    ("fallback", "message"),
-    [
-        ({"Value": 5.0, "QuotaContext": {"ContextScope": "ACCOUNT"}}, "mismatched quota context"),
-    ],
-)
-def test_get_quota_rejects_an_invalid_context_fallback(fallback, message):
+def test_get_quota_rejects_an_invalid_context_fallback():
     client = Mock()
+    fallback = {"Value": 5.0, "QuotaContext": {"ContextScope": "ACCOUNT"}}
     client.get_service_quota.side_effect = [error("NoSuchResourceException", "GetServiceQuota"), {"Quota": fallback}]
 
     with pytest.raises(ModuleFail) as raised:
         get_quota(client, FakeModule({}), "ec2", "L-1", "arn:context")
 
-    assert message in raised.value.values["msg"]
+    assert "mismatched quota context" in raised.value.values["msg"]
 
 
 def test_get_quota_reports_context_fallback_failures():

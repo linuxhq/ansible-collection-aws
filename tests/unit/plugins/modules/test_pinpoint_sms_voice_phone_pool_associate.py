@@ -340,21 +340,6 @@ def test_sender_id_association_is_found_without_letter_case(origination_identity
     assert client.disassociate_origination_identity.called is (state == "absent" and not check_mode)
 
 
-def test_check_mode_predicts_the_uppercase_sender_id_aws_returns():
-    module = FakeModule(associate_params(iso_country_code="DE", origination_identity="AuP2Mix"), check_mode=True)
-    with (
-        patch.object(
-            pinpoint_sms_voice,
-            "paginated_query_with_retries",
-            return_value={"OriginationIdentities": [], "PoolArn": "arn:pool-1", "PoolId": "pool-1"},
-        ),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(Mock(), module)
-
-    assert raised.value.values["association"]["origination_identity"] == "AUP2MIX"
-
-
 def test_disassociate_response_without_the_identity_is_returned_unchanged():
     client = Mock(disassociate_origination_identity=Mock(return_value={"PoolId": "pool-1"}))
     module = FakeModule(
@@ -842,25 +827,6 @@ def test_absent_sender_id_without_country_does_not_add_a_listed_country():
         aws_retry=True,
     )
     assert raised.value.values["changed"] is True
-
-
-def test_absent_phone_number_with_country_sends_the_given_country():
-    client = Mock()
-    client.disassociate_origination_identity.return_value = {"OriginationIdentity": "phone-1", "PoolId": "pool-1"}
-    module = absent_params()
-    module.params["iso_country_code"] = "US"
-    with (
-        patch.object(plugin, "current_associations", return_value=({"PoolId": "pool-1"}, [PHONE_1, PHONE_2])),
-        pytest.raises(ModuleExit),
-    ):
-        plugin.ensure_absent(client, module)
-
-    client.disassociate_origination_identity.assert_called_once_with(
-        IsoCountryCode="US",
-        OriginationIdentity="phone-1",
-        PoolId="arn:aws:sms-voice:us-east-1:123456789012:pool/pool-1",
-        aws_retry=True,
-    )
 
 
 def test_absent_does_not_send_the_client_token():

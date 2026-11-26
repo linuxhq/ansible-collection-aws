@@ -661,7 +661,7 @@ def ensure_present(client, module, current):
             association["Tags"] = ansible_dict_to_boto3_tag_list(tags)
 
     else:
-        changed = (current_comparable or {}) != desired_comparable
+        changed = current_comparable != desired_comparable
         resource_changed = changed
         # AWS supports these fields only with cron schedules.
         clears_cron_only_parameters = schedule_expression is not None and not schedule_expression.startswith("cron(")
@@ -868,13 +868,19 @@ def main():
     ]
 
     if len(matches) > 1:
-        association_ids = sorted(association["AssociationId"] for association in matches)
-        module.fail_json(
-            msg=(
-                f"Multiple AWS Systems Manager associations exist for document {name}: "
-                f"{', '.join(association_ids)}; set association_name to select one"
+        association_ids = ", ".join(sorted(association["AssociationId"] for association in matches))
+        if association_name is None:
+            msg = (
+                f"Multiple AWS Systems Manager associations exist for document {name}: {association_ids}; "
+                "set association_name to select one"
             )
-        )
+        else:
+            msg = (
+                f"Multiple AWS Systems Manager associations named {association_name} exist for document {name}: "
+                f"{association_ids}"
+            )
+
+        module.fail_json(msg=msg)
 
     current = matches[0] if matches else None
 

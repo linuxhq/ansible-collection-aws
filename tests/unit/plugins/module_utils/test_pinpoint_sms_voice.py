@@ -142,7 +142,11 @@ def test_phone_number_reference_matches_only_phone_number_ids_and_arns(originati
 
 PHONE_ITEM = {"OriginationIdentity": "phone-1", "OriginationIdentityArn": PHONE_ARN, "PhoneNumber": "+12065550100"}
 SENDER_ITEM = {"OriginationIdentity": "sender-1", "OriginationIdentityArn": SENDER_ARN}
-OTHER_SENDER_ITEM = {"OriginationIdentity": "sender-2"}
+OTHER_SENDER_ITEM = {
+    "IsoCountryCode": "US",
+    "OriginationIdentity": "sender-2",
+    "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-2/US",
+}
 
 
 @pytest.mark.parametrize(

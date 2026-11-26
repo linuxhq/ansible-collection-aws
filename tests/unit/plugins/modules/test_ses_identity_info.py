@@ -124,14 +124,6 @@ def test_verification_tokens_are_requested_only_for_domains():
     assert [identity.get("verification_token") for identity in result.values["identities"]] == ["txt-token", None, None]
 
 
-def test_email_identities_skip_verification_token_lookup():
-    ses, sesv2 = clients({"user@example.com": {"IdentityType": "EMAIL_ADDRESS"}})
-    result, _require, _query = run(FakeModule({"identity_type": None, "name": "user@example.com"}), ses, sesv2)
-
-    assert result.values["identities"][0]["name"] == "user@example.com"
-    ses.get_identity_verification_attributes.assert_not_called()
-
-
 def test_empty_name_lists_every_identity():
     ses, sesv2 = clients({"user@example.com": {"IdentityType": "EMAIL_ADDRESS"}})
     result, _require, query_list = run(

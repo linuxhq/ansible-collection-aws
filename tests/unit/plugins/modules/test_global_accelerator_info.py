@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 
@@ -60,7 +60,7 @@ def test_empty_arn_lists_every_accelerator():
     assert raised.value.values["accelerators"] == []
 
 
-def test_empty_results_defer_listener_methods():
+def test_empty_results_require_only_the_accelerator_listing():
     module = FakeModule(
         {"arn": None, "include_endpoint_groups": True, "include_listeners": False},
         client=Mock(),
@@ -74,27 +74,10 @@ def test_empty_results_defer_listener_methods():
     ):
         plugin.main()
 
-    assert require.call_count == 1
-    assert "list_listeners" not in require.call_args.args[3]
-    assert "list_endpoint_groups" not in require.call_args.args[3]
-
-
-def test_empty_results_do_not_require_tag_lookup():
-    module = FakeModule(
-        {"arn": None, "include_endpoint_groups": False, "include_listeners": False},
-        client=Mock(),
-    )
-    require = Mock()
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods", require),
-        patch.object(plugin, "query_list", return_value=[]),
-        pytest.raises(ModuleExit),
-    ):
-        plugin.main()
-
-    assert require.call_count == 1
-    assert "list_tags_for_resource" not in require.call_args.args[3]
+    # Listener, endpoint group, and tag methods are checked only when an accelerator is found.
+    assert require.call_args_list == [
+        call(module, module.client(), "Global Accelerator", {"list_accelerators": ("MaxResults", "NextToken")})
+    ]
 
 
 def test_endpoint_groups_are_nested_under_their_listener():

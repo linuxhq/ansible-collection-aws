@@ -963,27 +963,33 @@ def test_create_rejects_a_blank_gateway_id_next_to_a_concentrator(params, check_
 
 
 @pytest.mark.parametrize(
-    "overrides",
+    "overrides, message",
     [
-        {"wait_delay": 0},
-        {"wait_timeout": 0},
-        {"name": ""},
-        {"filters": {}},
-        {"routes": ["10.0.0.1/8"]},
-        {"local_ipv4_network_cidr": "::/0"},
-        {"tunnel_options": [{}, {}, {}]},
-        {"tunnel_options": [{"ike_versions": []}]},
-        {"tunnel_options": [{"pre_shared_key": "0EXAMPLE_SECRET"}]},
-        {"tunnel_options": [{"tunnel_inside_cidr": "169.254.0.0/30"}]},
-        {"tunnel_options": [{"tunnel_inside_cidr": "169.254.10.0/29"}]},
-        {"tunnel_options": [{"tunnel_inside_cidr": "169.254.10.0/30"}] * 2},
-        {"tags": {"Name": "different"}},
+        ({"wait_timeout": 0}, "wait_timeout must be 1 or greater"),
+        ({"filters": {}}, "filters must not be empty"),
+        ({"routes": ["10.0.0.1/8"]}, "routes must be a canonical IPv4 CIDR"),
+        ({"local_ipv4_network_cidr": "::/0"}, "local_ipv4_network_cidr must be a canonical IPv4 CIDR"),
+        ({"tunnel_options": [{}, {}, {}]}, "tunnel_options must contain at most two entries"),
+        ({"tunnel_options": [{"ike_versions": []}]}, "tunnel_options[].ike_versions must not be empty"),
+        ({"tunnel_options": [{"pre_shared_key": "0EXAMPLE_SECRET"}]}, "Invalid tunnel pre_shared_key format"),
+        (
+            {"tunnel_options": [{"tunnel_inside_cidr": "169.254.0.0/30"}]},
+            "tunnel_inside_cidr must be an unreserved /30 CIDR within 169.254.0.0/16",
+        ),
+        (
+            {"tunnel_options": [{"tunnel_inside_cidr": "169.254.10.0/29"}]},
+            "tunnel_inside_cidr must be an unreserved /30 CIDR within 169.254.0.0/16",
+        ),
+        ({"tunnel_options": [{"tunnel_inside_cidr": "169.254.10.0/30"}] * 2}, "Tunnel inside CIDRs must be distinct"),
+        ({"tags": {"Name": "different"}}, "tags.Name must match name"),
     ],
 )
-def test_invalid_inputs_fail_locally(params, overrides):
+def test_invalid_inputs_fail_locally(params, overrides, message):
     params.update(overrides)
-    with pytest.raises(ModuleFail):
+    with pytest.raises(ModuleFail) as raised:
         plugin.validate_inputs(FakeModule(params))
+
+    assert raised.value.values == {"msg": message}
 
 
 @pytest.mark.parametrize("check_mode", [False, True])

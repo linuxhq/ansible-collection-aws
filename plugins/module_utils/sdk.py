@@ -15,8 +15,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
 
 def get_client_method_output_members(client, method_name):
     operation_name = client.meta.method_to_api_mapping.get(method_name)
-    output_shape = client.meta.service_model.operation_model(operation_name).output_shape
-    return list(output_shape.members) if output_shape else []
+    return list(client.meta.service_model.operation_model(operation_name).output_shape.members)
 
 
 def query_list(module, client, method_name, result_key, error_msg, changed=False, **kwargs):

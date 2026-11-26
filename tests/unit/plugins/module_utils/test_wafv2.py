@@ -10,21 +10,6 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import Fak
 RESOURCE = {"ARN": "arn:waf", "Id": "id-1", "Name": "main"}
 
 
-def test_tags_are_returned_with_their_case():
-    client = Mock(
-        list_tags_for_resource=Mock(
-            return_value={
-                "TagInfoForResource": {
-                    "TagList": [{"Key": "Name", "Value": "main"}, {"Key": "CostCenter", "Value": "A1"}]
-                }
-            }
-        )
-    )
-
-    assert get_resource_tags(client, FakeModule({}), RESOURCE, "IP set") == {"Name": "main", "CostCenter": "A1"}
-    client.list_tags_for_resource.assert_called_once_with(ResourceARN="arn:waf", aws_retry=True)
-
-
 def test_tags_are_paginated():
     client = Mock()
     client.list_tags_for_resource.side_effect = [

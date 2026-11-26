@@ -346,17 +346,30 @@ def test_association_name_ignores_associations_with_another_name():
     assert result.values["current"] is None
 
 
-def test_multiple_associations_suggest_association_name():
+@pytest.mark.parametrize(
+    "association_name, msg",
+    [
+        (
+            None,
+            (
+                "Multiple AWS Systems Manager associations exist for document document: a-1, a-2; "
+                "set association_name to select one"
+            ),
+        ),
+        # Live: CreateAssociation accepts a second association with the same Name and AssociationName.
+        ("weekly", "Multiple AWS Systems Manager associations named weekly exist for document document: a-1, a-2"),
+    ],
+)
+def test_multiple_associations_suggest_association_name_only_when_unset(association_name, msg):
     associations = [
-        {"AssociationId": "a-1", "Name": "document"},
         {"AssociationId": "a-2", "Name": "document", "AssociationName": "weekly"},
+        {"AssociationId": "a-1", "Name": "document", "AssociationName": "weekly"},
     ]
-    result, _require = run_main(FakeModule(params(state="absent"), client=Mock()), associations)
-
-    assert result.values["msg"] == (
-        "Multiple AWS Systems Manager associations exist for document document: a-1, a-2; "
-        "set association_name to select one"
+    result, _require = run_main(
+        FakeModule(params(association_name=association_name, state="absent"), client=Mock()), associations
     )
+
+    assert result.values["msg"] == msg
 
 
 def test_association_name_requires_sdk_support_on_create():

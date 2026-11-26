@@ -295,7 +295,7 @@ def main():
             **request,
         )
     except (BotoCoreError, ClientError) as e:
-        module.fail_json_aws(e, msg="Unable to get AWS Price List products")
+        module.fail_json_aws(e, msg=f"Unable to get AWS Price List products for service {service_code}")
 
     products = [
         boto3_resource_to_ansible_dict(

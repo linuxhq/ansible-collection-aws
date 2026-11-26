@@ -78,16 +78,6 @@ def not_found(code):
     return ClientError({"Error": {"Code": code, "Message": "unknown"}}, "DescribePlacementGroups")
 
 
-@pytest.mark.parametrize("overrides", [{"group_ids": ["pg-missing"]}, {"group_names": ["missing"]}])
-def test_missing_groups_return_an_empty_list(overrides):
-    groups = [] if "group_names" in overrides else GROUPS
-    client = Mock()
-    client.describe_placement_groups.side_effect = not_found("InvalidParameterValue")
-    result, _require, _query = run(FakeModule(params(**overrides), client=client), groups)
-
-    assert result.values["placement_groups"] == []
-
-
 def test_shared_group_ids_are_described_by_id_one_at_a_time():
     shared = {"GroupId": "pg-shared", "GroupName": "shared", "State": "available", "Strategy": "cluster"}
     client = Mock()

@@ -252,7 +252,7 @@ def ensure_present(client, module):
         require_client_methods(
             module,
             client,
-            "AWS Account",
+            "Account",
             {"enable_region": tuple(region_request(module))},
         )
         try:
@@ -307,7 +307,7 @@ def ensure_absent(client, module):
         require_client_methods(
             module,
             client,
-            "AWS Account",
+            "Account",
             {"disable_region": tuple(region_request(module))},
         )
         try:
@@ -367,7 +367,7 @@ def main():
     require_client_methods(
         module,
         client,
-        "AWS Account",
+        "Account",
         {"get_region_opt_status": tuple(request)},
     )
 
