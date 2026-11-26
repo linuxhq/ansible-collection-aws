@@ -56,39 +56,24 @@ def test_sdk_validation_starts_with_lookup_only():
 
 
 def test_sdk_validation_checks_nested_vpc_parameters():
-    shape = Mock()
-    shape.input_shape.members = {"resourcesVpcConfig": Mock(members={"subnetIds": Mock()})}
-    client = Mock()
-    client.meta.service_model.operation_model.return_value = shape
-    module = Mock()
+    client = eks_client()
+    module = FakeModule({})
     plugin.require_nested_request_parameters(
-        module,
-        client,
-        "UpdateClusterConfig",
-        {"resourcesVpcConfig": {"endpointPublicAccess": False}},
+        module, client, "UpdateClusterConfig", {"resourcesVpcConfig": {"endpointPublicAccess": False}}
     )
+    with pytest.raises(ModuleFail) as raised:
+        plugin.require_nested_request_parameters(
+            module, client, "UpdateClusterConfig", {"resourcesVpcConfig": {"unknown": False}}
+        )
 
-    assert any(
-        "resourcesVpcConfig parameter endpointPublicAccess" in call.kwargs["msg"]
-        for call in module.fail_json.call_args_list
-    )
+    assert raised.value.values == {
+        "msg": "Installed botocore does not support EKS UpdateClusterConfig resourcesVpcConfig parameter unknown"
+    }
 
 
 def test_tag_limits_are_rejected_before_client_creation():
-    module = FakeModule(
-        {
-            "encryption_config": None,
-            "state": "present",
-            "tags": {str(index): "" for index in range(51)},
-        }
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "tags must contain at most 50 entries"
+    params = {"encryption_config": None, "state": "present", "tags": {str(index): "" for index in range(51)}}
+    utils.assert_module_rejects(plugin, params, "tags must contain at most 50 entries")
 
 
 def test_absent_does_not_validate_unused_create_options():
@@ -115,14 +100,8 @@ def test_absent_does_not_validate_unused_create_options():
 
 
 def test_multiple_encryption_configs_are_rejected():
-    module = FakeModule({"encryption_config": [{}, {}], "state": "present"})
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["msg"] == "encryption_config must contain at most one entry"
+    params = {"encryption_config": [{}, {}], "state": "present"}
+    utils.assert_module_rejects(plugin, params, "encryption_config must contain at most one entry")
 
 
 def test_log_type_choices_match_the_eks_log_types():
@@ -401,8 +380,13 @@ def test_absent_reports_unchanged_when_the_cluster_disappears_before_listing_upd
 
 def test_module_contract():
     options = assert_module_contract(plugin)
-    assert options["argument_spec"]["wait_timeout"]["default"] == 1200
-    assert options["argument_spec"]["tags"]["aliases"] == ["resource_tags"]
+    spec = options["argument_spec"]
+    assert spec["wait_timeout"]["default"] == 1200
+    assert spec["tags"]["aliases"] == ["resource_tags"]
+    assert "default" not in spec["access_config"]
+    assert "default" not in spec["access_config"]["options"]["authentication_mode"]
+    assert "default" not in spec["upgrade_policy"]
+    assert "default" not in spec["upgrade_policy"]["options"]["support_type"]
 
 
 def test_waited_update_rejects_disappearing_cluster():
@@ -668,33 +652,6 @@ def test_check_mode_purge_keeps_aws_reserved_tags():
     assert current["tags"] == {"aws:cloudformation:stack-name": "stack", "drop": "yes", "managed": "old"}
 
 
-def test_additive_tags_reject_a_result_above_the_provider_limit():
-    client = Mock()
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {
-            "name": "example",
-            "purge_tags": False,
-            "tags": {"new": "tag"},
-            "wait": False,
-        }
-    )
-    current = {
-        "arn": "arn:cluster",
-        "name": "example",
-        "status": "ACTIVE",
-        "tags": {str(index): "" for index in range(50)},
-    }
-    with (
-        patch.object(plugin, "describe_cluster", return_value=current),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, FakeModule(params))
-
-    assert raised.value.values["msg"] == "The resulting cluster tags must contain at most 50 entries"
-    client.tag_resource.assert_not_called()
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_tag_limit_ignores_aws_reserved_tags(check_mode):
     client = Mock()
@@ -733,7 +690,8 @@ def test_tag_limit_ignores_aws_reserved_tags(check_mode):
         client.tag_resource.assert_called_once_with(resourceArn="arn:cluster", tags={"new": "tag"}, aws_retry=True)
 
 
-def test_tag_limit_still_rejects_more_than_fifty_user_tags_beside_aws_tags():
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_tag_limit_still_rejects_more_than_fifty_user_tags_beside_aws_tags(check_mode):
     client = Mock()
     params = dict.fromkeys(plugin.CREATE_FIELDS)
     params.update(
@@ -754,7 +712,7 @@ def test_tag_limit_still_rejects_more_than_fifty_user_tags_beside_aws_tags():
         patch.object(plugin, "describe_cluster", return_value=current),
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.ensure_present(client, FakeModule(params, check_mode=True))
+        plugin.ensure_present(client, FakeModule(params, check_mode=check_mode))
 
     assert raised.value.values["msg"] == "The resulting cluster tags must contain at most 50 entries"
     client.tag_resource.assert_not_called()
@@ -881,11 +839,12 @@ def test_failed_update_stops_waiting_with_update_details():
         patch.object(plugin, "require_client_methods") as require,
         pytest.raises(ModuleFail) as raised,
     ):
-        plugin.wait_for_update(client, module, "update-1")
+        plugin.wait_for_update(client, module, "update-1", changed=True)
 
     # ensure_present checks describe_update support before the first update.
     require.assert_not_called()
     assert raised.value.values["update"]["status"] == "Failed"
+    assert raised.value.values["changed"] is True
 
 
 def test_cluster_waiter_uses_requested_delay():
@@ -899,20 +858,6 @@ def test_cluster_waiter_uses_requested_delay():
         name="example",
         WaiterConfig={"Delay": 7, "MaxAttempts": 3},
     )
-
-
-@pytest.mark.parametrize(
-    ("waiter_name", "state"),
-    [("cluster_active", "active"), ("cluster_deleted", "deleted")],
-)
-def test_cluster_waiter_failure_names_the_target_state(waiter_name, state):
-    waiter = Mock()
-    waiter.wait.side_effect = WaiterError(waiter_name, "terminal failure state", {})
-    module = FakeModule({"name": "example", "wait_delay": 5, "wait_timeout": 10})
-    with pytest.raises(ModuleFail) as raised:
-        plugin.wait_for_cluster(Mock(get_waiter=Mock(return_value=waiter)), module, waiter_name)
-
-    assert raised.value.values["msg"] == f"Unable to wait for AWS EKS cluster example to become {state}"
 
 
 def eks_params(**overrides):
@@ -1030,10 +975,9 @@ def test_eks_creation_preserves_distinct_tag_keys():
 
 
 @pytest.mark.parametrize("status", ["CREATING", "UPDATING"])
-@pytest.mark.parametrize("tags", [None, {"Environment": "test"}])
-def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status, tags):
+def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status):
     params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(name="example", tags=tags, version=None, wait=True, purge_tags=True, wait_timeout=1200, wait_delay=15)
+    params.update(name="example", tags=None, version=None, wait=True, purge_tags=True, wait_timeout=1200, wait_delay=15)
     module = FakeModule(params, check_mode=True)
     client = Mock()
     current = {"name": "example", "arn": "arn:aws:eks:us-east-1:123456789012:cluster/example", "status": status}
@@ -1047,13 +991,10 @@ def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status, 
         plugin.ensure_present(client, module)
 
     waiter.assert_not_called()
-    assert result.value.values["changed"] is (tags is not None)
+    assert result.value.values["changed"] is False
     # With wait=true the real run waits for the cluster to become ACTIVE.
     assert result.value.values["cluster"]["status"] == "ACTIVE"
     assert current["status"] == status
-    if tags is not None:
-        assert result.value.values["cluster"]["tags"] == tags
-
     client.update_cluster_config.assert_not_called()
     client.tag_resource.assert_not_called()
 
@@ -1296,23 +1237,6 @@ def test_partial_logging_result_preserves_unmanaged_log_types(check_mode):
     assert current["logging"]["clusterLogging"] == [{"types": ["api", "audit"], "enabled": True}]
 
 
-def test_access_and_upgrade_settings_have_no_module_defaults():
-    captured = {}
-
-    def initialize(**kwargs):
-        captured.update(kwargs)
-        raise ModuleExit({})
-
-    with patch.object(plugin, "AnsibleAWSModule", initialize), pytest.raises(ModuleExit):
-        plugin.main()
-
-    spec = captured["argument_spec"]
-    assert "default" not in spec["access_config"]
-    assert "default" not in spec["access_config"]["options"]["authentication_mode"]
-    assert "default" not in spec["upgrade_policy"]
-    assert "default" not in spec["upgrade_policy"]["options"]["support_type"]
-
-
 def test_omitted_access_and_upgrade_settings_leave_the_cluster_unchanged():
     current = {
         "name": "example",
@@ -1391,22 +1315,14 @@ def test_matching_remote_networks_are_unchanged():
 
 
 def test_remote_networks_accept_at_most_one_entry():
-    module = FakeModule(
-        eks_params(
-            encryption_config=None,
-            remote_network_config={"remote_pod_networks": [{"cidrs": ["10.80.0.0/16"]}, {"cidrs": ["10.81.0.0/16"]}]},
-            state="present",
-            wait_delay=15,
-            wait_timeout=60,
-        )
+    params = eks_params(
+        encryption_config=None,
+        remote_network_config={"remote_pod_networks": [{"cidrs": ["10.80.0.0/16"]}, {"cidrs": ["10.81.0.0/16"]}]},
+        state="present",
     )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleFail) as result,
-    ):
-        plugin.main()
-
-    assert result.value.values["msg"] == "remote_network_config.remote_pod_networks must contain at most one entry"
+    utils.assert_module_rejects(
+        plugin, params, "remote_network_config.remote_pod_networks must contain at most one entry"
+    )
 
 
 def test_delete_waits_for_in_progress_cluster_updates_first():
@@ -2008,20 +1924,6 @@ def test_auto_mode_node_pool_change_sends_every_capability_together():
     )
 
 
-def test_auto_mode_request_fills_omitted_enabled_flags_from_the_cluster():
-    current = {
-        "computeConfig": {"enabled": True, "nodePools": ["system"], "nodeRoleArn": "arn:node"},
-        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": True}},
-        "storageConfig": {"blockStorage": {"enabled": True}},
-    }
-
-    assert plugin.auto_mode_request(current, {"computeConfig": {"nodePools": ["general-purpose"]}}) == {
-        "computeConfig": {"enabled": True, "nodePools": ["general-purpose"], "nodeRoleArn": "arn:node"},
-        "kubernetesNetworkConfig": {"elasticLoadBalancing": {"enabled": True}},
-        "storageConfig": {"blockStorage": {"enabled": True}},
-    }
-
-
 @pytest.mark.parametrize(
     ("compute_config", "expected"),
     [
@@ -2040,21 +1942,6 @@ def test_auto_mode_request_keeps_supplied_compute_settings(compute_config, expec
     }
 
     assert plugin.auto_mode_request(current, {"computeConfig": compute_config})["computeConfig"] == expected
-
-
-def test_auto_mode_request_never_sends_create_only_network_settings():
-    request = plugin.auto_mode_request(
-        {"kubernetesNetworkConfig": {"ipFamily": "ipv4", "serviceIpv4Cidr": "10.100.0.0/16"}},
-        {
-            "kubernetesNetworkConfig": {
-                "elasticLoadBalancing": {"enabled": False},
-                "ipFamily": "ipv4",
-                "serviceIpv4Cidr": "10.100.0.0/16",
-            }
-        },
-    )
-
-    assert request == {"kubernetesNetworkConfig": {"elasticLoadBalancing": {"enabled": False}}}
 
 
 @pytest.mark.parametrize("status", ["CREATING", "UPDATING"])
@@ -2115,21 +2002,6 @@ def test_absent_reports_absent_when_a_waited_cluster_disappears(status):
     assert raised.value.values["changed"] is False
     assert raised.value.values["cluster"] == {}
     assert raised.value.values["state"] == "absent"
-
-
-def test_tagging_uses_the_described_cluster_arn():
-    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "tags": {}}
-    client = Mock()
-    module = FakeModule(eks_params(tags={"Name": "example"}))
-    with (
-        patch.object(plugin, "describe_cluster", return_value=current),
-        patch.object(plugin, "require_client_methods"),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    client.tag_resource.assert_called_once_with(resourceArn="arn:example", tags={"Name": "example"}, aws_retry=True)
-    assert raised.value.values["changed"] is True
 
 
 def test_absent_still_fails_when_a_waited_cluster_is_still_in_transition():
@@ -2306,33 +2178,13 @@ def test_sdk_requirements_are_checked_before_the_first_update():
     client.update_cluster_config.assert_not_called()
 
 
-def test_update_wait_support_is_checked_before_the_first_update():
-    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "deletionProtection": False}
-    client = Mock()
-    module = FakeModule(eks_params(deletion_protection=True, wait=True))
-
-    def require(module, client, service, methods, changed=False):
-        if "describe_update" in methods:
-            module.fail_json(changed=changed, msg="unsupported")
-
-    with (
-        patch.object(plugin, "describe_cluster", return_value=current),
-        patch.object(plugin, "require_client_methods", side_effect=require),
-        patch.object(plugin, "require_nested_request_parameters"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert raised.value.values["changed"] is False
-    client.update_cluster_config.assert_not_called()
-
-
 @pytest.mark.parametrize(
     "overrides",
     [
         {"deletion_protection": True, "version": "1.31"},
         {"deletion_protection": True, "resources_vpc_config": {"endpoint_public_access": False}},
         {"version": "1.31", "wait": True},
+        {"deletion_protection": True, "wait": True},
     ],
 )
 def test_update_wait_support_is_checked_before_any_waited_update(overrides):
@@ -2362,15 +2214,6 @@ def test_update_wait_support_is_checked_before_any_waited_update(overrides):
     assert raised.value.values["changed"] is False
     client.update_cluster_config.assert_not_called()
     client.update_cluster_version.assert_not_called()
-
-
-def test_failed_update_wait_reports_changed():
-    client = Mock(describe_update=Mock(return_value={"update": {"id": "update-1", "status": "Failed"}}))
-    module = FakeModule({"name": "example", "wait_delay": 1, "wait_timeout": 10})
-    with patch.object(plugin, "require_client_methods"), pytest.raises(ModuleFail) as raised:
-        plugin.wait_for_update(client, module, "update-1", changed=True)
-
-    assert raised.value.values["changed"] is True
 
 
 def test_cluster_updates_describe_history_once_and_poll_only_in_progress_updates():
@@ -2722,24 +2565,6 @@ def test_auto_mode_change_with_omitted_enablement_uses_the_clusters_matching_val
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_disabled_zonal_shift_matches_a_cluster_that_never_set_it(check_mode):
-    # EKS returns zonalShiftConfig as null, which botocore drops, until zonal shift is configured.
-    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "deletionProtection": False}
-    client = Mock()
-    module = FakeModule(eks_params(zonal_shift_config={"enabled": False}), check_mode=check_mode)
-    with (
-        patch.object(plugin, "describe_cluster", return_value=current),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "require_nested_request_parameters"),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert client.mock_calls == []
-    assert raised.value.values["changed"] is False
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
 def test_enabling_zonal_shift_on_a_cluster_that_never_set_it_sends_an_update(check_mode):
     current = {"name": "example", "arn": "arn:example", "status": "ACTIVE", "deletionProtection": False}
     client = Mock()
@@ -2761,29 +2586,6 @@ def test_enabling_zonal_shift_on_a_cluster_that_never_set_it_sends_an_update(che
         client.update_cluster_config.assert_called_once_with(
             name="example", zonalShiftConfig={"enabled": True}, aws_retry=True
         )
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
-def test_disabled_compute_config_without_node_pools_matches_a_standard_cluster(check_mode):
-    # EKS returns computeConfig as null, which botocore drops, on a cluster that never enabled Auto Mode.
-    current = {
-        "name": "example",
-        "arn": "arn:example",
-        "status": "ACTIVE",
-        "kubernetesNetworkConfig": {"ipFamily": "ipv4", "elasticLoadBalancing": {"enabled": False}},
-    }
-    client = Mock()
-    module = FakeModule(eks_params(compute_config={"enabled": False, "node_pools": []}), check_mode=check_mode)
-    with (
-        patch.object(plugin, "describe_cluster", return_value=current),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "require_nested_request_parameters"),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert client.mock_calls == []
-    assert raised.value.values["changed"] is False
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -2951,27 +2753,6 @@ def test_compute_config_node_pools_on_a_standard_cluster_send_an_update(check_mo
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-def test_empty_remote_network_config_matches_a_cluster_without_remote_networks(check_mode):
-    # EKS omits remoteNetworkConfig on a cluster created without hybrid nodes.
-    current = {"name": "example", "arn": "arn:example", "status": "ACTIVE"}
-    client = Mock()
-    module = FakeModule(
-        eks_params(remote_network_config={"remote_node_networks": [], "remote_pod_networks": []}),
-        check_mode=check_mode,
-    )
-    with (
-        patch.object(plugin, "describe_cluster", return_value=current),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "require_nested_request_parameters"),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(client, module)
-
-    assert client.mock_calls == []
-    assert raised.value.values["changed"] is False
-
-
-@pytest.mark.parametrize("check_mode", [False, True])
 def test_remote_node_networks_on_a_cluster_without_remote_networks_send_the_whole_config(check_mode):
     current = {"name": "example", "arn": "arn:example", "status": "ACTIVE"}
     client = Mock()
@@ -3074,25 +2855,6 @@ def test_create_sends_remote_networks_without_empty_lists(remote_network_config,
     assert check["cluster"]["remote_network_config"] == real["cluster"]["remote_network_config"]
     assert check["cluster"]["remote_network_config"] == plugin.boto3_resource_to_ansible_dict(
         expected, force_tags=False
-    )
-
-
-def test_empty_remote_network_lists_still_remove_the_remote_networks_of_an_existing_cluster():
-    current = {
-        "name": "example",
-        "arn": "arn:example",
-        "status": "ACTIVE",
-        "remoteNetworkConfig": {"remoteNodeNetworks": [{"cidrs": ["10.80.0.0/16"]}], "remotePodNetworks": []},
-    }
-    params = eks_params(remote_network_config={"remote_node_networks": [], "remote_pod_networks": []})
-
-    client, result = run_present(FakeModule(params), [current])
-
-    assert result["changed"] is True
-    client.update_cluster_config.assert_called_once_with(
-        name="example",
-        remoteNetworkConfig={"remoteNodeNetworks": [], "remotePodNetworks": []},
-        aws_retry=True,
     )
 
 
@@ -3655,19 +3417,6 @@ def test_remote_network_cidrs_that_are_empty_or_blank_fail_before_any_aws_call(c
     module.client.assert_not_called()
 
 
-def test_remote_network_cidrs_reach_aws():
-    config = {"remote_node_networks": NODE_NETWORKS, "remote_pod_networks": POD_NETWORKS}
-    module = FakeModule(eks_params(remote_network_config=config, state="present"))
-    module.client = Mock(side_effect=ModuleInitialized)
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        pytest.raises(ModuleInitialized),
-    ):
-        plugin.main()
-
-    module.client.assert_called_once()
-
-
 def remote_cidrs(network, count):
     return [f"10.{80 if network == 'remote_node_networks' else 81}.{index}.0/24" for index in range(count)]
 
@@ -4100,6 +3849,7 @@ def test_removing_every_remote_network_does_not_describe_the_vpc(check_mode):
     if check_mode:
         client.update_cluster_config.assert_not_called()
     else:
+        client.update_cluster_config.assert_called_once()
         assert client.update_cluster_config.call_args.kwargs["remoteNetworkConfig"] == {
             "remoteNodeNetworks": [],
             "remotePodNetworks": [],

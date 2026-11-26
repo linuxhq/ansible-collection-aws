@@ -49,6 +49,8 @@ options:
       - The Name tag identifying the connection. Required when creating a connection.
       - The name is matched exactly; C(*) and C(?) are not wildcards.
       - Supply one of O(name), O(vpn_connection_id), or O(filters).
+      - When O(state=absent) and every connection with this name is C(deleting),
+        the module waits for each of them to be deleted.
       - Mutually exclusive with O(vpn_connection_id) and O(filters).
     type: str
   outside_ip_address_type:
@@ -974,8 +976,11 @@ def normalize_connection(connection):
     return result
 
 
-def find_connection(client, module, connection_id=None, changed=False):
-    """Describe the connection; changed reports whether it was already modified, for failure results."""
+def find_connections(client, module, connection_id=None, changed=False):
+    """Describe the matching connections; changed reports whether one was already modified, for failure results.
+
+    Several are returned only for state=absent when every exact name match is deleting.
+    """
     connection_id = connection_id or module.params["vpn_connection_id"]
     filters = module.params["filters"]
 
@@ -1019,10 +1024,18 @@ def find_connection(client, module, connection_id=None, changed=False):
         active = [match for match in matches if match.get("State") != "deleting"]
         if active:
             matches = active
+        elif module.params["state"] == "absent":
+            # Every match is deleting; deletion waits for each of them.
+            return matches
 
     if len(matches) > 1:
         module.fail_json(changed=changed, msg="Multiple VPN connections matched; select a unique name, ID, or filters")
 
+    return matches
+
+
+def find_connection(client, module, connection_id=None, changed=False):
+    matches = find_connections(client, module, connection_id, changed=changed)
     return matches[0] if matches else None
 
 
@@ -1880,13 +1893,19 @@ def reconcile_routes(client, module, connection_id, additions, removals, changed
         wait_for_route_available(client, module, connection_id, route, changed=True)
 
 
-def ensure_absent(client, module, connection):
-    if connection is None:
+def is_attached(connection):
+    return bool(connection.get("TransitGatewayId") or connection.get("VpnConcentratorId"))
+
+
+def ensure_absent(client, module, connections):
+    """Delete the connection and wait; several connections are all deleting, and each is waited for."""
+    if not connections:
         module.exit_json(changed=False, vpn_connection={})
 
+    connection = connections[0]
     changed = connection["State"] != "deleting"
     # A transit gateway refuses deletion until EC2 releases the attachment of a deleted connection.
-    attached = bool(connection.get("TransitGatewayId") or connection.get("VpnConcentratorId"))
+    attached = any(is_attached(item) for item in connections)
     methods = {}
     if changed:
         methods["delete_vpn_connection"] = ("VpnConnectionId",)
@@ -1914,9 +1933,10 @@ def ensure_absent(client, module, connection):
         except (BotoCoreError, ClientError) as e:
             module.fail_json_aws(e, msg=f"Unable to delete VPN connection {connection_id}")
 
-    wait_for_connection_deleted(client, module, connection_id, changed=changed)
-    if attached:
-        wait_for_attachment_deleted(client, module, connection_id, changed=changed)
+    for item in connections:
+        wait_for_connection_deleted(client, module, item["VpnConnectionId"], changed=changed)
+        if is_attached(item):
+            wait_for_attachment_deleted(client, module, item["VpnConnectionId"], changed=changed)
 
     module.exit_json(changed=changed, vpn_connection={})
 
@@ -2019,12 +2039,12 @@ def main():
 
     # A previous modification can still be settling when the connection waiter succeeds.
     client = module.client("ec2", retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["IncorrectState"]))
-    connection = find_connection(client, module)
+    connections = find_connections(client, module)
 
     if module.params["state"] == "present":
-        ensure_present(client, module, connection)
+        ensure_present(client, module, connections[0] if connections else None)
     else:
-        ensure_absent(client, module, connection)
+        ensure_absent(client, module, connections)
 
 
 if __name__ == "__main__":

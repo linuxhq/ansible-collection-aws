@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - ec2_vpc_vpn - with ``state=absent``, when every VPN connection with ``name`` is still ``deleting``, the module now
+    waits for each of them to be deleted and returns ``changed=false``. Before, it failed with ``Multiple VPN
+    connections matched`` when two or more such connections were deleting.
+trivial:
+  - pinpoint_sms_voice_sender_id - drop fallbacks for message types that AWS always returns.
+  - Merge duplicate eks_cluster unit tests into the tests that cover the same behavior.

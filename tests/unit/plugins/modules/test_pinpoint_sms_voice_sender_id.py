@@ -503,12 +503,6 @@ def test_release_returns_message_types_in_the_release_response_case(check_mode):
     assert result.values["sender_id"]["message_types"] == ["TRANSACTIONAL"]
 
 
-def test_predict_write_message_types_keeps_a_sender_id_without_message_types():
-    sender_id = {"SenderId": "EXAMPLE"}
-
-    assert plugin.predict_write_message_types(sender_id) is sender_id
-
-
 def test_title_case_message_type_mismatch_fails():
     module = FakeModule(params(message_types=["PROMOTIONAL"]), client=model_client())
     result, _require, _paginate = run(module, describe=described(MessageTypes=["Transactional"]))
