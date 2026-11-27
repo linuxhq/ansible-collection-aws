@@ -4,12 +4,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 from botocore.exceptions import ClientError
-from botocore.session import get_session
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import sdk
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleFail,
+    model_client,
 )
 
 
@@ -158,13 +158,6 @@ def test_requires_supported_client_parameters():
         sdk.require_client_methods(module, Mock(), "Example", {"get_item": ("Name",)})
 
 
-def model_client(service="ssm"):
-    """Return a real botocore client, whose missing operations raise OperationNotFoundError; no request is sent."""
-    return get_session().create_client(
-        service, region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
-    )
-
-
 @pytest.mark.parametrize("changed", [False, True])
 def test_unsupported_client_methods_report_earlier_changes(changed):
     module = FakeModule({})
@@ -179,6 +172,6 @@ def test_unsupported_client_methods_report_earlier_changes(changed):
 
     # A real botocore client raises OperationNotFoundError for a missing operation; no request is sent.
     with pytest.raises(ModuleFail) as raised:
-        sdk.require_client_methods(module, model_client(), "Example", {"missing": ()}, changed=changed)
+        sdk.require_client_methods(module, model_client("ssm"), "Example", {"missing": ()}, changed=changed)
 
     assert raised.value.values == {"changed": changed, "msg": "Installed botocore does not support Example missing"}

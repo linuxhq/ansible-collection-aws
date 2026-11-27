@@ -619,7 +619,7 @@ def ensure_present(client, module, deadline=None):
                     desired=desired,
                 )
 
-        rule = dict(rule, Tags=rule.get("Tags", current_tags))
+        rule = dict(rule, Tags=current_tags)
         if tags is not None:
             reconcile_arn_tags(
                 module,

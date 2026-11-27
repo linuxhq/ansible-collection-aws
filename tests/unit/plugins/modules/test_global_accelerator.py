@@ -135,7 +135,7 @@ def test_absent_with_a_long_name_converges(arn):
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
         patch.object(global_accelerator_utils, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "list_accelerators", return_value=[]),
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
@@ -826,15 +826,24 @@ def test_listener_reconciliation_reuses_protocol_listener_for_update():
     assert deletes == []
 
 
-def test_listener_reconciliation_keeps_unlisted_listeners_without_purge():
-    current = [review_listener("arn:listener", 443, 443)]
-    module = FakeModule({"listeners": [review_desired(8080, 8080)], "purge_listeners": False})
+@pytest.mark.parametrize(
+    ("current_ports", "desired_ports"),
+    [
+        # An unlisted listener is kept.
+        ((443, 443), (8080, 8080)),
+        # An overlapping listener is never reused.
+        ((80, 80), (80, 81)),
+    ],
+)
+def test_listener_reconciliation_without_purge_keeps_listeners_and_creates_entries(current_ports, desired_ports):
+    current = [review_listener("arn:listener", *current_ports)]
+    module = FakeModule({"listeners": [review_desired(*desired_ports)], "purge_listeners": False})
 
     matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
 
     assert matched == [(current[0], None)]
     assert updates == []
-    assert creates == [review_desired(8080, 8080)]
+    assert creates == [review_desired(*desired_ports)]
     assert deletes == []
 
 
@@ -1136,18 +1145,6 @@ def test_a_rerun_after_a_failed_listener_write_ends_like_an_uninterrupted_run(ra
                 unstable.append((ranges_by_arn, entries, fail_at))
 
     assert unstable == []
-
-
-def test_listener_reconciliation_without_purge_never_reuses_an_overlapping_listener():
-    current = [review_listener("arn:listener", 80, 80)]
-    module = FakeModule({"listeners": [review_desired(80, 81)], "purge_listeners": False})
-
-    matched, updates, creates, deletes = plugin.reconcile_listeners(module, current)
-
-    assert matched == [(current[0], None)]
-    assert updates == []
-    assert creates == [review_desired(80, 81)]
-    assert deletes == []
 
 
 def updated_listener_response(**request):

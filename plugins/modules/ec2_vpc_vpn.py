@@ -1495,6 +1495,15 @@ def desired_tags(module, current):
     return tags_to_set, tag_keys_to_unset
 
 
+def live_routes(connection):
+    """Return the destinations of the connection's static routes that are not being deleted."""
+    return {
+        route["DestinationCidrBlock"]
+        for route in connection.get("Routes", [])
+        if route.get("State") not in ("deleting", "deleted")
+    }
+
+
 def validate_configuration(module, connection=None, changed=False):
     # A VPN concentrator attaches the connection to its transit gateway; live, EC2 then omits TransitGatewayId.
     if connection is not None:
@@ -1520,11 +1529,7 @@ def validate_configuration(module, connection=None, changed=False):
     if gateway and module.params["routes"] is not None:
         routes = set(module.params["routes"])
         if connection is not None and not module.params["purge_routes"]:
-            routes |= {
-                route["DestinationCidrBlock"]
-                for route in connection.get("Routes", [])
-                if route.get("State") not in ("deleting", "deleted")
-            }
+            routes |= live_routes(connection)
 
         if len(routes) > MAX_STATIC_ROUTES:
             name = connection["VpnConnectionId"] if connection is not None else module.params["name"]
@@ -1684,11 +1689,7 @@ def ensure_present(client, module, connection):
     # Live: EC2 rejects these keys, after any option or tunnel change of the same run.
     require_no_reserved_tag_keys(module, tags_to_set)
 
-    current_routes = {
-        route["DestinationCidrBlock"]
-        for route in connection.get("Routes", [])
-        if route.get("State") not in ("deleting", "deleted")
-    }
+    current_routes = live_routes(connection)
     deleting_routes = {
         route["DestinationCidrBlock"] for route in connection.get("Routes", []) if route.get("State") == "deleting"
     }

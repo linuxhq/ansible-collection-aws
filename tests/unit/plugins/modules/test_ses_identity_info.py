@@ -94,7 +94,7 @@ def test_verification_tokens_are_requested_in_batches_of_one_hundred():
     names = [f"d{index}.com" for index in range(150)]
     ses, sesv2 = clients({name: {"IdentityType": "DOMAIN"} for name in names})
     module = FakeModule({"identity_type": "Domain", "name": None})
-    _result, require_client_methods, _query = run(module, ses, sesv2, names)
+    _result, require_client_methods, query_list = run(module, ses, sesv2, names)
 
     assert [len(call.kwargs["Identities"]) for call in ses.get_identity_verification_attributes.call_args_list] == [
         100,
@@ -106,8 +106,11 @@ def test_verification_tokens_are_requested_in_batches_of_one_hundred():
         "SES",
         {
             "get_identity_verification_attributes": ("Identities",),
-            "list_identities": ("IdentityType", "MaxItems", "NextToken"),
+            "list_identities": ("NextToken", "IdentityType"),
         },
+    )
+    query_list.assert_called_once_with(
+        module, ses, "list_identities", "Identities", "Unable to list AWS SES identities", IdentityType="Domain"
     )
 
 
@@ -126,11 +129,19 @@ def test_verification_tokens_are_requested_only_for_domains():
 
 def test_empty_name_lists_every_identity():
     ses, sesv2 = clients({"user@example.com": {"IdentityType": "EMAIL_ADDRESS"}})
-    result, _require, query_list = run(
-        FakeModule({"identity_type": None, "name": ""}), ses, sesv2, ["user@example.com"]
-    )
+    module = FakeModule({"identity_type": None, "name": ""})
+    result, require_client_methods, query_list = run(module, ses, sesv2, ["user@example.com"])
 
-    query_list.assert_called_once()
+    # Without identity_type, ListIdentities is neither sent nor gated on IdentityType.
+    require_client_methods.assert_any_call(
+        module,
+        ses,
+        "SES",
+        {"get_identity_verification_attributes": ("Identities",), "list_identities": ("NextToken",)},
+    )
+    query_list.assert_called_once_with(
+        module, ses, "list_identities", "Identities", "Unable to list AWS SES identities"
+    )
     assert [identity["name"] for identity in result.values["identities"]] == ["user@example.com"]
 
 

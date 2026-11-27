@@ -21,6 +21,8 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_module_contract,
     assert_module_rejects,
     documented_returns,
+    model_client,
+    model_mock_client,
 )
 
 
@@ -369,6 +371,16 @@ def test_endpoint_list_limits_are_rejected():
             ),
             "ip_addresses[].ipv6 must be a valid IPv6 address",
         ),
+        (
+            dict(
+                base,
+                ip_addresses=[
+                    {"ip": "not-an-ip", "subnet_id": "subnet-1"},
+                    {"subnet_id": "subnet-2"},
+                ],
+            ),
+            "ip_addresses[].ip must be a valid IPv4 address",
+        ),
     ]
     for params, message in cases:
         assert_module_rejects(plugin, params, message)
@@ -639,7 +651,7 @@ def test_check_mode_predicts_aws_defaults_for_a_new_endpoint():
         patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(model_client(), module)
+        plugin.ensure_present(model_mock_client("route53resolver"), module)
 
     endpoint = raised.value.values["resolver_endpoint"]
     assert endpoint["protocols"] == ["Do53"]
@@ -1564,7 +1576,8 @@ def test_delete_rejected_by_aws_names_the_likely_dependency():
     )
 
 
-def test_update_reuses_tags_read_at_the_start():
+@pytest.mark.parametrize("tags", [None, {"Name": "main"}])
+def test_update_reuses_tags_read_at_the_start(tags):
     client = Mock()
     # UpdateResolverEndpoint responses do not include tags.
     updated = existing_endpoint(Protocols=["Do53", "DoH"])
@@ -1578,7 +1591,7 @@ def test_update_reuses_tags_read_at_the_start():
         patch.object(plugin, "reconcile_resolver_endpoint_ip_addresses", side_effect=lambda *args, **kwargs: args[2]),
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(client, FakeModule(endpoint_params(protocols=["Do53", "DoH"], tags={"Name": "main"})))
+        plugin.ensure_present(client, FakeModule(endpoint_params(protocols=["Do53", "DoH"], tags=tags)))
 
     assert with_tags.call_count == 1
     assert result.value.values["resolver_endpoint"]["tags"] == {"Name": "main"}
@@ -1866,12 +1879,7 @@ def test_delete_wait_failure_reports_changed():
 
 
 def stubbed_resolver_client():
-    raw_client = get_session().create_client(
-        "route53resolver",
-        region_name="us-east-1",
-        aws_access_key_id="EXAMPLE",
-        aws_secret_access_key="EXAMPLE",
-    )
+    raw_client = model_client("route53resolver")
     return raw_client, RetryingBotoClientWrapper(raw_client, plugin.AWSRetry.jittered_backoff(delay=0))
 
 
@@ -2242,7 +2250,7 @@ def test_create_without_tags_returns_tags_only_when_waiting(check_mode, wait):
         patch.object(route53_resolver_utils, "query_list", return_value=[]),
         pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_present(model_client(), module)
+        plugin.ensure_present(model_mock_client("route53resolver"), module)
 
     assert raised.value.values["changed"] is True
     assert create.call_count == (0 if check_mode else 1)
@@ -2251,11 +2259,6 @@ def test_create_without_tags_returns_tags_only_when_waiting(check_mode, wait):
         assert endpoint["tags"] == {}
     else:
         assert "tags" not in endpoint
-
-
-def model_client():
-    """Return a mock client with the real botocore route53resolver model, for predictions that read it."""
-    return Mock(meta=get_session().create_client("route53resolver", region_name="us-east-1").meta)
 
 
 # Live CreateResolverEndpoint and GetResolverEndpoint responses return these settings for a new endpoint.
@@ -2295,10 +2298,12 @@ def created_endpoint_settings(client, check_mode, **params):
 @pytest.mark.parametrize("wait", [False, True])
 @pytest.mark.parametrize("direction", ["INBOUND", "INBOUND_DELEGATION", "OUTBOUND"])
 def test_check_mode_create_predicts_the_settings_a_real_run_returns(direction, wait):
-    predicted = created_endpoint_settings(model_client(), True, direction=direction, wait=wait)
+    predicted = created_endpoint_settings(model_mock_client("route53resolver"), True, direction=direction, wait=wait)
 
     assert predicted
-    assert predicted == created_endpoint_settings(model_client(), False, direction=direction, wait=wait)
+    assert predicted == created_endpoint_settings(
+        model_mock_client("route53resolver"), False, direction=direction, wait=wait
+    )
 
 
 def test_check_mode_create_predicts_only_settings_the_installed_model_returns():
@@ -2478,7 +2483,7 @@ def test_check_mode_create_predicts_the_status_and_address_count_a_real_run_retu
 
     results = {}
     for check_mode in (False, True):
-        client = model_client()
+        client = model_mock_client("route53resolver")
         client.create_resolver_endpoint.return_value = {"ResolverEndpoint": created}
         with (
             patch.object(plugin, "get_resolver_endpoint_by_name", return_value=None),
@@ -2824,18 +2829,3 @@ def test_reused_address_on_an_endpoint_with_two_addresses_fails_before_any_write
 )
 def test_require_ip_versions_accepts_matching_versions(entry):
     plugin.require_ip_versions(FakeModule({}), entry)
-
-
-@pytest.mark.parametrize(
-    "entry, message",
-    [
-        ({"ip": "2001:db8::1"}, "ip_addresses[].ip must be a valid IPv4 address"),
-        ({"ipv6": "192.0.2.1"}, "ip_addresses[].ipv6 must be a valid IPv6 address"),
-        ({"ip": "not-an-ip"}, "ip_addresses[].ip must be a valid IPv4 address"),
-    ],
-)
-def test_require_ip_versions_rejects_wrong_versions(entry, message):
-    with pytest.raises(ModuleFail) as raised:
-        plugin.require_ip_versions(FakeModule({}), entry)
-
-    assert raised.value.values["msg"] == message

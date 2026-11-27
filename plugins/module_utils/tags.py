@@ -36,6 +36,11 @@ EC2_BLANK_CHARACTERS = (
 EC2_BLANK_TAG_VALUE_CHARACTERS = " \t\n\r"
 
 
+def _reserved_tag_key(key):
+    """Return whether key has the aws: prefix AWS reserves; those tags do not count against the per-resource limit."""
+    return key.lower().startswith("aws:")
+
+
 def require_valid_tags(module, tags, max_tags=None, restricted_characters=False, ec2=False):
     """Fail unless tags are non-null, unique as strings, at most max_tags when set, and within the AWS lengths.
 
@@ -60,8 +65,7 @@ def require_valid_tags(module, tags, max_tags=None, restricted_characters=False,
 
     tags.clear()
     tags.update(normalized)
-    # AWS reserves the aws: prefix, and those tags do not count against the per-resource limit.
-    if max_tags is not None and sum(not key.lower().startswith("aws:") for key in tags) > max_tags:
+    if max_tags is not None and sum(not _reserved_tag_key(key) for key in tags) > max_tags:
         module.fail_json(msg=f"tags must contain at most {max_tags} entries")
 
     if any(not 1 <= len(key) <= 128 or len(value) > 256 for key, value in tags.items()):
@@ -85,8 +89,7 @@ def require_valid_tags(module, tags, max_tags=None, restricted_characters=False,
 def require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, max_tags, description):
     """Fail before any write when applying the tag deltas to current_tags would exceed max_tags."""
     final_tags = updated_tags(current_tags, tags_to_set, tag_keys_to_unset)
-    # AWS reserves the aws: prefix, and those tags do not count against the per-resource limit.
-    if sum(not key.lower().startswith("aws:") for key in final_tags) > max_tags:
+    if sum(not _reserved_tag_key(key) for key in final_tags) > max_tags:
         module.fail_json(msg=f"The resulting {description} tags must contain at most {max_tags} entries")
 
 
@@ -97,7 +100,7 @@ def require_no_reserved_tag_keys(module, tags_to_set):
     Notifications Contacts reject the prefix in any letter case and accept aws: values. Probe a service the same way
     before guarding it.
     """
-    if any(key.lower().startswith("aws:") for key in tags_to_set):
+    if any(_reserved_tag_key(key) for key in tags_to_set):
         module.fail_json(msg="tag keys beginning with aws: are reserved and cannot be set")
 
 

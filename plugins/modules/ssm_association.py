@@ -468,8 +468,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     SSM_ASSOCIATION_RESOURCE_TYPE,
-    association_overview,
     list_ssm_tags,
+    normalize_association,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.tags import (
     apply_tag_deltas,
@@ -751,13 +751,7 @@ def ensure_present(client, module, current):
         "changed": changed,
         "name": name,
         "state": "present",
-        "association": boto3_resource_to_ansible_dict(
-            association,
-            ignore_list=["TargetMaps", "Parameters"],
-            transform_tags=True,
-            force_tags=False,
-            nested_transforms={"Overview": association_overview},
-        ),
+        "association": normalize_association(association),
     }
 
     association_id = association.get("AssociationId")
@@ -828,7 +822,7 @@ def main():
         retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["TooManyUpdates"]),
     )
     methods = {
-        "list_associations": ("AssociationFilterList", "MaxResults", "NextToken"),
+        "list_associations": ("AssociationFilterList",),
     }
     if state == "present":
         methods["describe_association"] = ("AssociationId",)

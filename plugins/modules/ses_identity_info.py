@@ -259,7 +259,9 @@ def main():
     ses_client = module.client("ses", retry_decorator=AWSRetry.jittered_backoff())
     ses_methods = {"get_identity_verification_attributes": ("Identities",)}
     if not name:
-        ses_methods["list_identities"] = ("IdentityType", "MaxItems", "NextToken")
+        ses_methods["list_identities"] = ("NextToken",)
+        if identity_type:
+            ses_methods["list_identities"] += ("IdentityType",)
 
     require_client_methods(module, ses_client, "SES", ses_methods)
 

@@ -381,7 +381,13 @@ def test_tags_with_characters_aws_accepts_reach_aws():
     # Notifications Contacts TagResource accepts these (live).
     tags = {"Team": "a b_.:/=+-@é1", "日本": "٣²", "Sp": "a\u00a0b"}
     module = FakeModule(
-        {"email_address": "ops@example.com", "name": "Operations", "purge_tags": True, "state": "present", "tags": tags}
+        {
+            "email_address": "ops@example.com",
+            "name": "Operations",
+            "purge_tags": True,
+            "state": "present",
+            "tags": dict(tags),
+        }
     )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),

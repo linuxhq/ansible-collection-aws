@@ -345,7 +345,7 @@ def ensure_present(client, module, current):
         require_no_reserved_tag_keys(module, tags_to_set)
         require_resulting_tag_limit(module, current_tags, tags_to_set, tag_keys_to_unset, 200, f"{SERVICE} sender ID")
 
-    update = deletion_protection_enabled is not None and current.get("DeletionProtectionEnabled") != (
+    update = deletion_protection_enabled is not None and current["DeletionProtectionEnabled"] != (
         deletion_protection_enabled
     )
     tags_changed = bool(tags_to_set or tag_keys_to_unset)
@@ -383,7 +383,7 @@ def ensure_absent(client, module, current):
     if current is None:
         exit_result(module, False, None)
 
-    if current.get("DeletionProtectionEnabled"):
+    if current["DeletionProtectionEnabled"]:
         module.fail_json(
             msg=(
                 f"Unable to release {describe_name(module)} because deletion protection is enabled; "

@@ -331,7 +331,7 @@ def describe_pools(client, module, changed=False, **request):
         response = paginated_query_with_retries(
             client,
             "describe_pools",
-            **scrub_none_parameters(request),
+            **request,
         )
     except is_boto3_error_code("ResourceNotFoundException"):
         return []
@@ -381,7 +381,7 @@ def pool_with_details(client, module, pool, changed=False):
 def get_pool_by_id(client, module, pool_id, changed=False):
     pool = describe_pool(client, module, pool_id, changed=changed)
     # A pool being deleted cannot be managed, so it is treated as missing like in the origination identity search.
-    if pool is None or pool.get("Status") == "DELETING":
+    if pool is None or pool["Status"] == "DELETING":
         return None
 
     return pool_with_details(client, module, pool, changed=changed)
@@ -453,7 +453,7 @@ def find_pool_by_name(client, module):
     """Return the pool whose Name tag equals name, as DescribePools returns it."""
     matches = []
     for pool in describe_pools(client, module, Owner="SELF"):
-        if pool.get("Status") == "DELETING":
+        if pool["Status"] == "DELETING":
             continue
 
         # Another actor can delete a pool between DescribePools and ListTagsForResource; a deleted pool is skipped.
@@ -480,9 +480,9 @@ def find_pool(client, module, listed=None):
     # reported as a conflict instead of predicting a CreatePool request that AWS rejects.
     for pool in describe_pools(client, module, Owner="SELF"):
         if listed is not None:
-            listed.add(pool.get("PoolId"))
+            listed.add(pool["PoolId"])
 
-        if pool.get("Status") == "DELETING":
+        if pool["Status"] == "DELETING":
             continue
 
         # Another actor can delete a pool between DescribePools and these reads; a deleted pool is skipped.
@@ -492,20 +492,20 @@ def find_pool(client, module, listed=None):
 
         holding = [
             origination
-            for origination in pool.get("OriginationIdentities", [])
+            for origination in pool["OriginationIdentities"]
             if identity_matches(origination, (origination_identity,))
         ]
         if not holding:
             continue
 
-        if pool.get("MessageType") == module.params["message_type"] and any(
-            iso_country_code is None or origination.get("IsoCountryCode") == iso_country_code for origination in holding
+        if pool["MessageType"] == module.params["message_type"] and any(
+            iso_country_code is None or origination["IsoCountryCode"] == iso_country_code for origination in holding
         ):
             pool = pool_with_tags(client, module, pool, missing_ok=True)
             if pool is None:
                 continue
 
-            if boto3_tag_list_to_ansible_dict(pool.get("Tags", [])).get("Name") == module.params["name"]:
+            if boto3_tag_list_to_ansible_dict(pool["Tags"]).get("Name") == module.params["name"]:
                 matches.append(pool)
                 continue
 
@@ -516,7 +516,7 @@ def find_pool(client, module, listed=None):
         module.fail_json(
             msg=(
                 f"Phone number {origination_identity} already belongs to Pinpoint SMS Voice V2 pool "
-                f"{conflicts[0].get('PoolId')}, whose Name tag, message type, or country does not match; "
+                f"{conflicts[0]['PoolId']}, whose Name tag, message type, or country does not match; "
                 "a phone number can belong to only one pool, so set pool_id to manage that pool or "
                 "disassociate the phone number from it first"
             )
@@ -553,7 +553,7 @@ def require_no_notify_configurations(client, module, pool):
     if "describe_notify_configurations" not in client.meta.method_to_api_mapping:
         return
 
-    pool_id = pool.get("PoolId")
+    pool_id = pool["PoolId"]
     try:
         response = paginated_query_with_retries(
             client,
@@ -588,14 +588,14 @@ def ensure_absent(client, module):
         if current is not None:
             pool_id = current["PoolId"]
 
-    if current is not None and current.get("Status") == "DELETING":
+    if current is not None and current["Status"] == "DELETING":
         current = None
 
     changed = current is not None
     response = current
 
     if changed and module.check_mode:
-        if current.get("DeletionProtectionEnabled"):
+        if current["DeletionProtectionEnabled"]:
             require_no_notify_configurations(client, module, current)
 
         # A real run returns the DeletePool response, which reports DELETING and does not model DeletionProtectionEnabled.
@@ -605,13 +605,13 @@ def ensure_absent(client, module):
     if changed and not module.check_mode:
         # Failures after deletion protection is disabled report changed=True.
         mutated = False
-        if current.get("Status") != "ACTIVE":
+        if current["Status"] != "ACTIVE":
             current = wait_for_pool_active(client, module, pool_id)
             # Deleted elsewhere during the wait; this run changed nothing.
-            if not current or current.get("Status") == "DELETING":
+            if not current or current["Status"] == "DELETING":
                 exit_result(module, False, None)
 
-        if current.get("DeletionProtectionEnabled"):
+        if current["DeletionProtectionEnabled"]:
             # Only a protected pool is written before DeletePool; an unprotected one fails there unchanged.
             require_no_notify_configurations(client, module, current)
             try:
@@ -661,7 +661,7 @@ def pool_changes(module, current, tags):
     if (
         current is not None
         and deletion_protection_enabled is not None
-        and current.get("DeletionProtectionEnabled") != deletion_protection_enabled
+        and current["DeletionProtectionEnabled"] != deletion_protection_enabled
     ):
         update_request["DeletionProtectionEnabled"] = deletion_protection_enabled
 
@@ -714,10 +714,8 @@ def ensure_present(client, module, tags):
             "1.42.80", reason="to create a Pinpoint SMS Voice V2 pool without iso_country_code"
         )
 
-    if current is not None and current.get("MessageType") != message_type:
-        module.fail_json(
-            msg=f"Cannot modify message_type for existing Pinpoint SMS Voice V2 pool {current.get('PoolId')}"
-        )
+    if current is not None and current["MessageType"] != message_type:
+        module.fail_json(msg=f"Cannot modify message_type for existing Pinpoint SMS Voice V2 pool {current['PoolId']}")
 
     # With wait, the changes are calculated, and their tags checked, from the settled pool.
     if wait and not module.check_mode and current is not None and current.get("Status") != "ACTIVE":

@@ -708,6 +708,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import (
     get_accelerator_by_arn,
     list_accelerator_tags,
+    list_accelerators,
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -801,22 +802,7 @@ def get_accelerator(client, module):
         return get_accelerator_by_arn(client, module, module.params["arn"])
 
     name = module.params["name"]
-
-    require_client_methods(
-        module,
-        client,
-        "Global Accelerator",
-        {"list_accelerators": ("MaxResults", "NextToken")},
-    )
-    accelerators = query_list(
-        module,
-        client,
-        "list_accelerators",
-        "Accelerators",
-        "Unable to list AWS Global Accelerator accelerators",
-    )
-
-    matches = [accelerator for accelerator in accelerators if accelerator["Name"] == name]
+    matches = [accelerator for accelerator in list_accelerators(client, module) if accelerator["Name"] == name]
 
     if len(matches) > 1:
         module.fail_json(
@@ -2630,7 +2616,7 @@ def main():
             module.fail_json(msg="listeners must contain at most 42 endpoint groups in total")
 
         # Every listener's ports, of either protocol, and the port override endpoint ports seen so far, by region.
-        all_port_ranges = [port_range for listener in listeners for port_range in listener["port_ranges"] or []]
+        all_port_ranges = [port_range for listener in listeners for port_range in listener["port_ranges"]]
         region_endpoint_ports = {}
         for listener in listeners:
             if not listener["port_ranges"]:

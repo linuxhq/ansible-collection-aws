@@ -285,6 +285,37 @@ def test_failed_command_is_not_hidden_by_successful_invocations():
     assert raised.value.values["status"] == "Failed"
 
 
+@pytest.mark.parametrize("status", ["Cancelled", "Failed", "TimedOut"])
+def test_unsuccessful_command_without_invocations_fails(status):
+    client = Mock(send_command=Mock(return_value={"Command": {"CommandId": "command-1"}}))
+    module = FakeModule(send_params(wait=True), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "require_positive_wait_bounds"),
+        patch_time(0, 1),
+        patch.object(
+            sdk,
+            "paginated_query_with_retries",
+            side_effect=[
+                {"Commands": [{"CommandId": "command-1", "Status": status, "TargetCount": 0}]},
+                {"CommandInvocations": []},
+            ],
+        ),
+        pytest.raises(ModuleFail) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values == {
+        "changed": True,
+        "msg": "AWS Systems Manager command command-1 did not complete successfully",
+        "command": {"command_id": "command-1", "status": status, "target_count": 0},
+        "command_id": "command-1",
+        "command_invocations": [],
+        "status": status,
+    }
+
+
 def test_check_mode_checks_client_capabilities_without_sending():
     client = Mock()
     module = FakeModule(send_params(), check_mode=True, client=client)

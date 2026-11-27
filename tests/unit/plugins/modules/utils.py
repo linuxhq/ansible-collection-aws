@@ -2,7 +2,7 @@
 
 from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 import yaml
@@ -90,6 +90,18 @@ def assert_module_rejects(plugin, params, message):
         plugin.main()
 
     assert raised.value.values["msg"] == message
+
+
+def model_client(service):
+    """Return a real botocore client; its dummy credentials skip the credential lookup, and no request is sent."""
+    return get_session().create_client(
+        service, region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
+    )
+
+
+def model_mock_client(service):
+    """Return a mock client with the real botocore metadata, for code that reads the model of a mocked client."""
+    return Mock(meta=model_client(service).meta)
 
 
 def documented_returns(plugin):

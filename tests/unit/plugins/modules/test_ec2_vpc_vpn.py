@@ -169,6 +169,30 @@ def test_unmatched_selector_reports_lookup_failure(params, selector, value, chec
     client.create_vpn_connection.assert_not_called()
 
 
+@pytest.mark.parametrize("state", ["present", "absent"])
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_missing_connection_id_is_not_found(params, state, check_mode):
+    params.update(name=None, state=state, vpn_connection_id="vpn-missing")
+    client = Mock()
+    client.describe_vpn_connections.side_effect = ClientError(
+        {"Error": {"Code": "InvalidVpnConnectionID.NotFound", "Message": "EXAMPLE"}}, "DescribeVpnConnections"
+    )
+    module = FakeModule(params, check_mode=check_mode)
+    connections = plugin.find_connections(client, module)
+    assert connections == []
+    if state == "present":
+        with pytest.raises(ModuleFail, match="No VPN connection matched vpn_connection_id"):
+            plugin.ensure_present(client, module, None)
+    else:
+        with pytest.raises(ModuleExit) as result:
+            plugin.ensure_absent(client, module, connections)
+
+        assert result.value.values == {"changed": False, "vpn_connection": {}}
+
+    client.create_vpn_connection.assert_not_called()
+    client.delete_vpn_connection.assert_not_called()
+
+
 @pytest.mark.parametrize("current", [None, [], [{}, {}], [{"OutsideIpAddress": "203.0.113.1"}, {}]])
 @pytest.mark.parametrize(
     "desired",

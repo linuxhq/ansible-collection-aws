@@ -477,9 +477,7 @@ def main():
         history_request["QuotaRequestedAtLevel"] = "RESOURCE"
 
     methods = quota_methods(context_id)
-    methods["list_requested_service_quota_change_history_by_quota"] = ("MaxResults", "NextToken", "Status") + tuple(
-        history_request
-    )
+    methods["list_requested_service_quota_change_history_by_quota"] = ("NextToken", "Status") + tuple(history_request)
 
     if not module.check_mode:
         methods["request_service_quota_increase"] = ("DesiredValue",) + tuple(quota_request)

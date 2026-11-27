@@ -342,10 +342,16 @@ def run_present(client, module, flow_logs):
     return result.value.values
 
 
-def run_main_present(client, tags, flow_logs, check_mode=False):
-    """Run main() with tags as the task gives them, before main() adds O(name) as their Name tag."""
-    params = present_params(name="main", purge_tags=True)
+def task_params(tags, **overrides):
+    """Return parameters with tags as the task gives them, before main() adds O(name) as their Name tag."""
+    params = present_params(**overrides)
     params["tags"] = tags
+    return params
+
+
+def run_main_present(client, tags, flow_logs, check_mode=False):
+    """Run main() with tags as the task gives them."""
+    params = task_params(tags, name="main", purge_tags=True)
     return run_main(client, FakeModule(params, check_mode=check_mode, client=client), flow_logs)
 
 
@@ -1418,17 +1424,18 @@ def test_absent_with_name_deletes_only_the_flow_log_with_that_name(check_mode):
         client.delete_flow_logs.assert_called_once_with(FlowLogIds=["fl-named-old"], aws_retry=True)
 
 
-@pytest.mark.parametrize("state", ["present", "absent"])
-def test_a_name_key_in_tags_that_differs_from_name_does_not_fail(state):
-    module = FakeModule(present_params(name="main", state=state, tags={"Name": "other"}), client=Mock())
+def test_a_name_key_in_tags_that_differs_from_name_does_not_fail_when_absent():
+    # test_name_overrides_the_name_tag_and_omitted_tags_purge_nothing covers state=present.
+    module = FakeModule(task_params({"Name": "other"}, name="main", state="absent"), client=Mock())
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, f"ensure_{state}") as ensure,
+        patch.object(plugin, "ensure_absent") as ensure_absent,
     ):
         plugin.main()
 
-    ensure.assert_called_once_with(module.client(), module)
+    ensure_absent.assert_called_once_with(module.client(), module)
+    assert module.params["tags"] == {"Name": "other"}
 
 
 @pytest.mark.parametrize("state", ["present", "absent"])
@@ -1448,7 +1455,7 @@ def test_blank_name_fails_before_aws(name, state):
 
 def test_name_tag_counts_toward_the_tag_limit():
     tags = {f"key{index}": "" for index in range(50)}
-    module = FakeModule(present_params(name="main", tags=tags), client=Mock())
+    module = FakeModule(task_params(tags, name="main"), client=Mock())
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "get_flow_logs") as get_flow_logs,
@@ -2095,7 +2102,7 @@ def test_reserved_tag_keys_fail_before_creating_or_tagging_flow_logs(key, check_
 
 def test_tags_are_validated_once_with_name_replacing_their_name_key():
     # name replaces the Name value of tags, so only the merged tags are validated.
-    module = FakeModule(present_params(name="main", tags={"Name": "v" * 257}), client=Mock())
+    module = FakeModule(task_params({"Name": "v" * 257}, name="main"), client=Mock())
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
@@ -2109,7 +2116,7 @@ def test_tags_are_validated_once_with_name_replacing_their_name_key():
 
 
 def test_tags_are_normalized_for_the_rest_of_the_run():
-    module = FakeModule(present_params(tags={1: 2}), client=Mock())
+    module = FakeModule(task_params({1: 2}), client=Mock())
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),

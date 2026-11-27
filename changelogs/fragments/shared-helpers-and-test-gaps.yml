@@ -1,0 +1,28 @@
+---
+minor_changes:
+  - pinpoint_sms_voice_phone_number - name the O(phone_number_id) in the failure when that phone number is not found
+    or does not match the requested attributes.
+  - ses_identity_info - check ``ListIdentities`` support only for the parameters the module sends, so botocore
+    support for ``MaxItems`` is no longer required, and ``IdentityType`` is required only with O(identity_type).
+  - service_quota - check ``ListRequestedServiceQuotaChangeHistoryByQuota`` support without requiring
+    ``MaxResults``, which the module never sends.
+  - ssm_association - check ``ListAssociations`` support without requiring ``MaxResults`` and ``NextToken``, as
+    ssm_association_info does.
+trivial:
+  - ec2_transit_gateway_route_table - compare a route only with C(deleting); route lookups already drop
+    C(deleted) routes.
+  - ec2_vpc_vpn - share the set of static routes that are not being deleted between validation and reconciliation.
+  - global_accelerator, global_accelerator_info - share the accelerator listing in module_utils, and drop a fallback
+    for O(listeners[].port_ranges), which ansible-core never leaves unset.
+  - route53_resolver, route53_resolver_rule - return the tags read before an update directly; update and wait
+    responses carry no tags.
+  - pinpoint_sms_voice_phone_number, pinpoint_sms_voice_phone_pool, pinpoint_sms_voice_phone_pool_associate,
+    pinpoint_sms_voice_sender_id - read fields the SMS Voice V2 model always returns directly, and build the
+    disassociation request from the phone number's country only when the number is in a pool.
+  - ses_sandbox - drop a copy of the account that ``GetAccount`` already returns as a new dictionary.
+  - ssm_association, ssm_association_info - share the association result conversion in module_utils.
+  - ssm_instance_info - document that every instance returns ``instance_id``.
+  - tags module_utils - share the reserved ``aws:`` tag key test.
+  - Make unit tests that compared a value with itself, or bypassed the code under test, compare against independent
+    expectations; merge duplicate tests; add tests for untested paths; and share the offline botocore client
+    helpers.

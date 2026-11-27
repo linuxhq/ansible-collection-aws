@@ -827,7 +827,8 @@ def test_duplicate_target_ips_are_rejected():
     assert result.value.values["msg"] == "target_ips entries must be unique"
 
 
-def test_update_reuses_tags_read_at_the_start():
+@pytest.mark.parametrize("tags", [None, {"Name": "main"}])
+def test_update_reuses_tags_read_at_the_start(tags):
     client = Mock()
     updated = existing_rule(ResolverEndpointId="rslvr-out-2")
     updated.pop("Tags")
@@ -838,9 +839,7 @@ def test_update_reuses_tags_read_at_the_start():
         patch.object(plugin, "resolver_resource_with_tags") as with_tags,
         pytest.raises(ModuleExit) as result,
     ):
-        plugin.ensure_present(
-            client, FakeModule(rule_params(resolver_endpoint_id="rslvr-out-2", tags={"Name": "main"}))
-        )
+        plugin.ensure_present(client, FakeModule(rule_params(resolver_endpoint_id="rslvr-out-2", tags=tags)))
 
     with_tags.assert_not_called()
     assert result.value.values["resolver_rule"]["tags"] == {"Name": "main"}

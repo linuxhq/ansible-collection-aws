@@ -41,7 +41,7 @@ def test_caller_filters_are_not_mutated():
 def test_filter_value_batches_without_values_return_the_filters_unchanged():
     filters = {"state": ["available"]}
 
-    assert filter_value_batches(FakeModule({}), filters, "group-name", [], "group_names") == [filters]
+    assert filter_value_batches(FakeModule({}), filters, "group-name", [], "group_names") == [{"state": ["available"]}]
 
 
 def test_filter_value_batches_count_values_across_other_filters():

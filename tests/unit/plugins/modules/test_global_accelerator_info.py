@@ -1,4 +1,4 @@
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -50,12 +50,12 @@ def test_empty_arn_lists_every_accelerator():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "query_list", return_value=[]) as query_list,
+        patch.object(plugin, "list_accelerators", return_value=[]) as list_accelerators,
         pytest.raises(ModuleExit) as raised,
     ):
         plugin.main()
 
-    assert query_list.call_args.args[2] == "list_accelerators"
+    list_accelerators.assert_called_once_with(module.client(), module)
     module.client().describe_accelerator.assert_not_called()
     assert raised.value.values["accelerators"] == []
 
@@ -69,15 +69,13 @@ def test_empty_results_require_only_the_accelerator_listing():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods", require),
-        patch.object(plugin, "query_list", return_value=[]),
+        patch.object(plugin, "list_accelerators", return_value=[]),
         pytest.raises(ModuleExit),
     ):
         plugin.main()
 
     # Listener, endpoint group, and tag methods are checked only when an accelerator is found.
-    assert require.call_args_list == [
-        call(module, module.client(), "Global Accelerator", {"list_accelerators": ("MaxResults", "NextToken")})
-    ]
+    require.assert_not_called()
 
 
 def test_endpoint_groups_are_nested_under_their_listener():
@@ -128,7 +126,7 @@ def test_listing_methods_are_checked_once_for_every_accelerator_and_listener():
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods", require),
-        patch.object(plugin, "query_list", return_value=accelerators),
+        patch.object(plugin, "list_accelerators", return_value=accelerators),
         patch.object(
             plugin,
             "paginated_query_with_retries",

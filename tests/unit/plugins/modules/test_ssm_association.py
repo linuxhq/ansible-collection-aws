@@ -105,6 +105,44 @@ def test_module_contract():
     assert captured["argument_spec"]["association_name"] == {"type": "str"}
 
 
+@pytest.mark.parametrize("state", ["present", "absent"])
+def test_association_listing_is_checked_only_for_the_parameters_sent(state):
+    _result, require_client_methods = run_main(FakeModule(params(state=state), client=Mock()), [])
+
+    assert require_client_methods.call_args.args[3]["list_associations"] == ("AssociationFilterList",)
+
+
+def test_association_deleted_after_the_listing_is_created_again():
+    module = FakeModule(params(), client=Mock())
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "query_list", return_value=[current_association()]),
+        patch.object(plugin, "describe_association", return_value=None) as describe_association,
+        patch.object(plugin, "ensure_present") as ensure_present,
+    ):
+        plugin.main()
+
+    describe_association.assert_called_once_with(module.client(), module, "association-1")
+    ensure_present.assert_called_once_with(module.client(), module, None)
+
+
+def test_absent_check_mode_predicts_the_delete():
+    client = Mock()
+    with pytest.raises(ModuleExit) as raised:
+        plugin.ensure_absent(
+            client, FakeModule(params(state="absent"), check_mode=True), {"AssociationId": "association-1"}
+        )
+
+    assert raised.value.values == {
+        "association_id": "association-1",
+        "changed": True,
+        "name": "document",
+        "state": "absent",
+    }
+    client.delete_association.assert_not_called()
+
+
 def test_documented_returns_cover_the_sdk_shape():
     # The association is returned from CreateAssociation and DescribeAssociation with every member AWS sends.
     assert_documents_shape(documented_returns(plugin)["association"]["contains"], "ssm", "AssociationDescription")

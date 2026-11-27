@@ -11,19 +11,10 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_documents_shape,
     assert_module_contract,
     documented_returns,
+    model_mock_client,
 )
 
 ARN = "arn:aws:sms-voice:us-east-1:123456789012:sender-id/EXAMPLE/DE"
-
-
-def model_client():
-    """Return a mock client with the real botocore model, for check-mode predictions that read it.
-
-    The model is loaded without creating a client, so no credential lookup runs.
-    """
-    client = Mock()
-    client.meta.service_model = get_session().get_service_model("pinpoint-sms-voice-v2")
-    return client
 
 
 def params(**overrides):
@@ -134,7 +125,7 @@ def test_invalid_input_fails_before_any_aws_call(overrides, message, check_mode)
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_create_with_a_reserved_tag_key_fails_before_any_write(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(tags={"aws:team": "x", "Team": "Ops"}), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=None)
 
@@ -146,7 +137,7 @@ def test_create_with_a_reserved_tag_key_fails_before_any_write(check_mode):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_stored_reserved_tag_with_the_requested_value_is_accepted(check_mode):
     # pinpoint_sms_voice_phone_number and pinpoint_sms_voice_phone_pool check only the tags they would write.
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     stored = [{"Key": "aws:cloudformation:stack-name", "Value": "s1"}, {"Key": "Team", "Value": "Ops"}]
     module = FakeModule(
         params(tags={"aws:cloudformation:stack-name": "s1", "Team": "Ops"}), check_mode=check_mode, client=client
@@ -163,7 +154,7 @@ def test_stored_reserved_tag_with_the_requested_value_is_accepted(check_mode):
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("value", ["s2", None], ids=["changed", "added"])
 def test_reserved_tag_to_write_fails_before_update_sender_id(check_mode, value):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     stored = [{"Key": "Team", "Value": "Ops"}]
     if value is None:
         value = "s1"
@@ -185,7 +176,7 @@ def test_reserved_tag_to_write_fails_before_update_sender_id(check_mode, value):
 
 
 def test_absent_ignores_present_only_inputs():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(message_types=[], state="absent", tags={"aws:x": "y"}), client=client)
     result, _require, _paginate = run(module, describe=None)
 
@@ -195,7 +186,7 @@ def test_absent_ignores_present_only_inputs():
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_create(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.request_sender_id.return_value = dict(
         described(DeletionProtectionEnabled=True, Tags=[{"Key": "Team", "Value": "Ops"}]),
         ResponseMetadata={},
@@ -233,7 +224,7 @@ def test_create(check_mode):
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_create_omits_unset_options(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.request_sender_id.return_value = described(MessageTypes=["PROMOTIONAL", "TRANSACTIONAL"])
     module = FakeModule(params(message_types=None, tags={}), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=None)
@@ -249,7 +240,7 @@ def test_create_omits_unset_options(check_mode):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_create_returns_the_sender_id_in_upper_case(check_mode):
     # Live: RequestSenderId returns a sender ID requested as P12m9f305 as P12M9F305.
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.request_sender_id.return_value = described()
     module = FakeModule(params(sender_id="Example"), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=None)
@@ -261,7 +252,7 @@ def test_create_returns_the_sender_id_in_upper_case(check_mode):
 
 def test_create_passes_aws_errors_through():
     # Countries that require registration are rejected by AWS, which the module reports.
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.request_sender_id.side_effect = client_error("ValidationException", "RequestSenderId")
     module = FakeModule(params(iso_country_code="US"), client=client)
     result, _require, _paginate = run(module, describe=None)
@@ -273,7 +264,7 @@ def test_create_passes_aws_errors_through():
 @pytest.mark.parametrize("check_mode", [False, True])
 @pytest.mark.parametrize("message_types", [["TRANSACTIONAL"], None])
 def test_existing_sender_id_is_unchanged(check_mode, message_types):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(
         params(deletion_protection_enabled=False, message_types=message_types, tags={"Team": "Ops"}),
         check_mode=check_mode,
@@ -291,7 +282,7 @@ def test_existing_sender_id_is_unchanged(check_mode, message_types):
 
 
 def test_existing_sender_id_ignores_omitted_options():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(deletion_protection_enabled=None, message_types=None, tags=None), client=client)
     result, _require, _paginate = run(
         module, describe=described(DeletionProtectionEnabled=True), tags=[{"Key": "Keep", "Value": "me"}]
@@ -306,7 +297,7 @@ def test_existing_sender_id_ignores_omitted_options():
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_deletion_protection_change(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.update_sender_id.return_value = dict(described(DeletionProtectionEnabled=True), ResponseMetadata={})
     module = FakeModule(params(deletion_protection_enabled=True), check_mode=check_mode, client=client)
     result, require, _paginate = run(module, describe=described(MessagingLimits={"RateLimits": {"SMS": 1}}))
@@ -333,7 +324,7 @@ def test_deletion_protection_change(check_mode):
 
 
 def test_deletion_protection_update_error_reports_no_change():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.update_sender_id.side_effect = client_error("AccessDeniedException", "UpdateSenderId")
     module = FakeModule(params(deletion_protection_enabled=True), client=client)
     result, _require, _paginate = run(module, describe=described())
@@ -348,7 +339,7 @@ def test_deletion_protection_update_error_reports_no_change():
     [(True, {"Team": "Dev", "New": "1"}, ["Old"]), (False, {"Team": "Dev", "New": "1", "Old": "x"}, [])],
 )
 def test_tag_changes(check_mode, purge_tags, expected, unset):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(
         params(purge_tags=purge_tags, tags={"Team": "Dev", "New": "1"}), check_mode=check_mode, client=client
     )
@@ -378,7 +369,7 @@ def test_tag_changes(check_mode, purge_tags, expected, unset):
 
 
 def test_empty_tags_purge_existing_tags():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(tags={}), client=client)
     result, _require, _paginate = run(module, describe=described(), tags=[{"Key": "Old", "Value": "x"}])
 
@@ -388,7 +379,7 @@ def test_empty_tags_purge_existing_tags():
 
 
 def test_tag_error_after_update_reports_change():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.update_sender_id.return_value = described(DeletionProtectionEnabled=True)
     client.tag_resource.side_effect = client_error("AccessDeniedException", "TagResource")
     module = FakeModule(params(deletion_protection_enabled=True, tags={"Team": "Dev"}), client=client)
@@ -399,7 +390,7 @@ def test_tag_error_after_update_reports_change():
 
 
 def test_tag_limit_counts_existing_tags():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(purge_tags=False, tags={"New": "1"}), client=client)
     existing = [{"Key": f"k{index}", "Value": "v"} for index in range(200)]
     result, _require, _paginate = run(module, describe=described(), tags=existing)
@@ -426,7 +417,7 @@ def test_tag_limit_counts_existing_tags():
     ],
 )
 def test_message_type_mismatch_fails_without_changes(check_mode, existing, requested, message):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(
         params(deletion_protection_enabled=True, message_types=requested, tags={"New": "1"}),
         check_mode=check_mode,
@@ -446,7 +437,7 @@ def test_message_type_mismatch_fails_without_changes(check_mode, existing, reque
 
 
 def test_message_type_order_and_repeats_are_ignored():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(message_types=["TRANSACTIONAL", "PROMOTIONAL", "TRANSACTIONAL"]), client=client)
     result, _require, _paginate = run(module, describe=described(MessageTypes=["PROMOTIONAL", "TRANSACTIONAL"]))
 
@@ -456,7 +447,7 @@ def test_message_type_order_and_repeats_are_ignored():
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_message_types_described_in_title_case_match(check_mode):
     # Live: DescribeSenderIds returns Transactional for a sender ID requested with TRANSACTIONAL.
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=described(MessageTypes=["Transactional"]))
 
@@ -468,7 +459,7 @@ def test_message_types_described_in_title_case_match(check_mode):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_update_returns_message_types_in_the_update_response_case(check_mode):
     # Live: UpdateSenderId returns TRANSACTIONAL for a sender ID DescribeSenderIds reports as Transactional.
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.update_sender_id.return_value = dict(described(DeletionProtectionEnabled=True), ResponseMetadata={})
     module = FakeModule(params(deletion_protection_enabled=True), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=described(MessageTypes=["Transactional"]))
@@ -481,7 +472,7 @@ def test_update_returns_message_types_in_the_update_response_case(check_mode):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_tag_only_change_keeps_described_message_types(check_mode):
     # No UpdateSenderId call is made, so the described values are returned in both modes.
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(tags={"Team": "Ops"}), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=described(MessageTypes=["Transactional"]))
 
@@ -493,7 +484,7 @@ def test_tag_only_change_keeps_described_message_types(check_mode):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_release_returns_message_types_in_the_release_response_case(check_mode):
     # Live: ReleaseSenderId returns TRANSACTIONAL for a sender ID DescribeSenderIds reports as Transactional.
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.release_sender_id.return_value = dict(described(), ResponseMetadata={})
     del client.release_sender_id.return_value["DeletionProtectionEnabled"]
     module = FakeModule(params(state="absent"), check_mode=check_mode, client=client)
@@ -504,7 +495,7 @@ def test_release_returns_message_types_in_the_release_response_case(check_mode):
 
 
 def test_title_case_message_type_mismatch_fails():
-    module = FakeModule(params(message_types=["PROMOTIONAL"]), client=model_client())
+    module = FakeModule(params(message_types=["PROMOTIONAL"]), client=model_mock_client("pinpoint-sms-voice-v2"))
     result, _require, _paginate = run(module, describe=described(MessageTypes=["Transactional"]))
 
     assert isinstance(result, ModuleFail)
@@ -513,7 +504,7 @@ def test_title_case_message_type_mismatch_fails():
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_release(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.release_sender_id.return_value = dict(
         described(),
         ResponseMetadata={},
@@ -535,7 +526,7 @@ def test_release(check_mode):
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_release_of_missing_sender_id_is_no_change(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(state="absent"), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=client_error("ResourceNotFoundException", "DescribeSenderIds"))
 
@@ -544,7 +535,7 @@ def test_release_of_missing_sender_id_is_no_change(check_mode):
 
 
 def test_release_of_sender_id_released_elsewhere_is_no_change():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.release_sender_id.side_effect = client_error("ResourceNotFoundException", "ReleaseSenderId")
     module = FakeModule(params(state="absent"), client=client)
     result, _require, _paginate = run(module, describe=described())
@@ -554,7 +545,7 @@ def test_release_of_sender_id_released_elsewhere_is_no_change():
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_release_of_deletion_protected_sender_id_fails(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(state="absent"), check_mode=check_mode, client=client)
     result, _require, _paginate = run(module, describe=described(DeletionProtectionEnabled=True))
 
@@ -570,7 +561,7 @@ def test_release_of_deletion_protected_sender_id_fails(check_mode):
 
 
 def test_release_error_is_reported():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.release_sender_id.side_effect = client_error(
         "ConflictException", "ReleaseSenderId", reason="SENDER_ID_ASSOCIATED_TO_POOL"
     )
@@ -583,7 +574,7 @@ def test_release_error_is_reported():
 
 @pytest.mark.parametrize("state", ["absent", "present"])
 def test_describe_error_is_reported(state):
-    module = FakeModule(params(state=state), client=model_client())
+    module = FakeModule(params(state=state), client=model_mock_client("pinpoint-sms-voice-v2"))
     result, _require, _paginate = run(module, describe=client_error("AccessDeniedException", "DescribeSenderIds"))
 
     assert isinstance(result, ModuleFail)
@@ -591,14 +582,14 @@ def test_describe_error_is_reported(state):
 
 
 def test_describe_returns_the_described_sender_id_without_comparing_it():
-    module = FakeModule(params(), client=model_client())
+    module = FakeModule(params(), client=model_mock_client("pinpoint-sms-voice-v2"))
     other = described(SenderId="OTHER")
     with patch.object(plugin, "paginated_query_with_retries", return_value={"SenderIds": [other]}):
         assert plugin.get_sender_id(module._client, module) == other
 
 
 def test_list_tags_error_is_reported():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(tags={"Team": "Ops"}), client=client)
     client.list_tags_for_resource.side_effect = client_error("AccessDeniedException", "ListTagsForResource")
     with (
@@ -616,7 +607,7 @@ def test_list_tags_error_is_reported():
 
 
 def test_sdk_methods_are_checked_before_writes():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.list_tags_for_resource.return_value = {"Tags": [{"Key": "Old", "Value": "x"}]}
     client.update_sender_id.return_value = dict(described(DeletionProtectionEnabled=True), ResponseMetadata={})
     module = FakeModule(params(deletion_protection_enabled=True, tags={"New": "1"}), client=client)
@@ -664,7 +655,7 @@ def test_sdk_methods_are_checked_before_writes():
 
 
 def test_unsupported_sdk_fails_before_writes():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(params(deletion_protection_enabled=True), client=client)
     client.list_tags_for_resource.return_value = {"Tags": []}
 

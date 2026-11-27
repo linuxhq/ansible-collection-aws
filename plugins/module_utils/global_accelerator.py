@@ -8,7 +8,24 @@ except ImportError:
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import is_boto3_error_code
 
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import query_list, require_client_methods
+
+
+def list_accelerators(client, module):
+    """Return every accelerator in the account."""
+    require_client_methods(
+        module,
+        client,
+        "Global Accelerator",
+        {"list_accelerators": ("MaxResults", "NextToken")},
+    )
+    return query_list(
+        module,
+        client,
+        "list_accelerators",
+        "Accelerators",
+        "Unable to list AWS Global Accelerator accelerators",
+    )
 
 
 def list_accelerator_tags(client, module, accelerator_arn, missing_ok=False):
