@@ -15,10 +15,9 @@ def test_module_contract():
     assert options["argument_spec"]["instance_types"]["elements"] == "str"
 
 
-def test_instance_type_filter_is_forwarded():
+def run_info(params):
     module = FakeModule(
-        {"filters": None, "include_unsupported_in_region": False, "instance_types": ["t3.micro", "t3.micro"]},
-        client=Mock(),
+        dict({"filters": None, "include_unsupported_in_region": False, "instance_types": None}, **params), client=Mock()
     )
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -28,16 +27,20 @@ def test_instance_type_filter_is_forwarded():
     ):
         plugin.main()
 
-    assert require.call_args.args[3] == {
-        "describe_instance_types": (
-            "Filters",
-            "MaxResults",
-            "NextToken",
-        )
-    }
+    return require.call_args.args[3]["describe_instance_types"], query.call_args.kwargs
+
+
+def test_instance_type_filter_is_forwarded():
+    methods, request = run_info({"instance_types": ["t3.micro", "t3.micro"]})
+
+    assert methods == (
+        "Filters",
+        "MaxResults",
+        "NextToken",
+    )
     # InstanceTypes fails for types not offered in the region; the filter returns no entry.
-    assert "InstanceTypes" not in query.call_args.kwargs
-    assert query.call_args.kwargs["Filters"] == [{"Name": "instance-type", "Values": ["t3.micro"]}]
+    assert "InstanceTypes" not in request
+    assert request["Filters"] == [{"Name": "instance-type", "Values": ["t3.micro"]}]
 
 
 def test_instance_types_take_precedence_over_the_instance_type_filter():
@@ -52,21 +55,6 @@ def test_instance_types_take_precedence_over_the_instance_type_filter():
         {"Name": "current-generation", "Values": ["true"]},
         {"Name": "instance-type", "Values": ["hpc7g.16xlarge"]},
     ]
-
-
-def run_info(params):
-    module = FakeModule(
-        dict({"filters": None, "include_unsupported_in_region": False, "instance_types": None}, **params), client=Mock()
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "query_list", return_value=[]) as query,
-        pytest.raises(ModuleExit),
-    ):
-        plugin.main()
-
-    return require.call_args.args[3]["describe_instance_types"], query.call_args.kwargs
 
 
 def test_list_filter_values_are_sent_as_ec2_strings():

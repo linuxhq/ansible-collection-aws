@@ -645,7 +645,6 @@ def ensure_present(client, module, deadline=None):
         "security_group_ids",
     )
     current = comparable_endpoint(endpoint)
-    created = current is None
     desired_comparable = comparable_endpoint({field: desired[field] for field in comparable_fields})
     # Omitted optional settings keep the AWS default on creation and the current value on update.
     for field in OPTIONAL_ENDPOINT_FIELDS:
@@ -925,10 +924,8 @@ def ensure_present(client, module, deadline=None):
                     desired=desired_comparable,
                 )
 
+        endpoint = dict(endpoint, Tags=endpoint.get("Tags", current_tags))
         if tags is not None:
-            if "Tags" not in endpoint:
-                endpoint = dict(endpoint, Tags=current_tags)
-
             reconcile_arn_tags(
                 module,
                 client,
@@ -944,9 +941,6 @@ def ensure_present(client, module, deadline=None):
     # Check mode fails too: its projection reports OPERATIONAL only for a waited endpoint write.
     if module.params["wait"]:
         fail_if_resolver_endpoint_needs_action(module, endpoint, changed)
-
-    if endpoint is not None and "Tags" not in endpoint and tags is None and not created:
-        endpoint = dict(endpoint, Tags=current_tags)
 
     result_endpoint = boto3_resource_to_ansible_dict(endpoint, transform_tags=True, force_tags=False)
     result = {

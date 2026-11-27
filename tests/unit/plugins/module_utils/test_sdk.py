@@ -143,12 +143,13 @@ def test_query_list_stops_when_response_is_not_truncated():
 
 
 def test_reads_client_method_output_members():
-    client = Mock()
-    client.meta.method_to_api_mapping = {"list_items": "ListItems"}
-    client.meta.service_model.operation_model.return_value.output_shape.members = {"Items": None, "NextMarker": None}
-
-    assert sdk.get_client_method_output_members(client, "list_items") == ["Items", "NextMarker"]
-    client.meta.service_model.operation_model.assert_called_once_with("ListItems")
+    assert sdk.get_client_method_output_members(model_client("route53"), "list_reusable_delegation_sets") == [
+        "DelegationSets",
+        "Marker",
+        "IsTruncated",
+        "NextMarker",
+        "MaxItems",
+    ]
 
 
 def test_requires_supported_client_parameters():
@@ -157,10 +158,10 @@ def test_requires_supported_client_parameters():
         sdk.require_client_methods(module, Mock(), "Example", {"get_item": ("Name",)})
 
 
-def model_client():
+def model_client(service="ssm"):
     """Return a real botocore client, whose missing operations raise OperationNotFoundError; no request is sent."""
     return get_session().create_client(
-        "ssm", region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
+        service, region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
     )
 
 

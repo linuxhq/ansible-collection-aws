@@ -24,21 +24,15 @@ class FakeModule(utils.FakeModule):
         super().__init__(dict({"wait_delay": 15, "wait_timeout": 1200}, **params), **kwargs)
 
 
-def test_sdk_validation_starts_with_lookup_only():
+def eks_params(**overrides):
     params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {
-            "encryption_config": None,
-            "name": "example",
-            "purge_tags": True,
-            "state": "present",
-            "tags": {},
-            "version": None,
-            "wait": False,
-            "wait_delay": 15,
-            "wait_timeout": 1200,
-        }
-    )
+    params.update(name="example", tags=None, purge_tags=True, wait=False)
+    params.update(overrides)
+    return params
+
+
+def test_sdk_validation_starts_with_lookup_only():
+    params = eks_params(state="present", tags={}, wait_delay=15, wait_timeout=1200)
     module = Mock(params=params, client=Mock(return_value=Mock()))
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -77,15 +71,11 @@ def test_tag_limits_are_rejected_before_client_creation():
 
 
 def test_absent_does_not_validate_unused_create_options():
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {
-            "encryption_config": [{}, {}],
-            "resources_vpc_config": {"public_access_cidrs": ["not-a-cidr"]},
-            "state": "absent",
-            "tags": {str(index): "" for index in range(51)},
-            "version": None,
-        }
+    params = eks_params(
+        encryption_config=[{}, {}],
+        resources_vpc_config={"public_access_cidrs": ["not-a-cidr"]},
+        state="absent",
+        tags={str(index): "" for index in range(51)},
     )
     module = FakeModule(params)
     with (
@@ -391,16 +381,7 @@ def test_module_contract():
 
 def test_waited_update_rejects_disappearing_cluster():
     client = Mock(update_cluster_version=Mock(return_value={"update": {"id": "update-1", "status": "InProgress"}}))
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {
-            "name": "example",
-            "purge_tags": True,
-            "tags": None,
-            "version": "1.34",
-            "wait": True,
-        }
-    )
+    params = eks_params(version="1.34", wait=True)
     current = {
         "arn": "arn:cluster",
         "name": "example",
@@ -435,8 +416,7 @@ def test_update_retries_while_another_update_is_in_progress(method, updates, cur
     client = Mock()
     # More rejections than a jittered backoff retries: EKS internal updates can last several minutes.
     getattr(client, method).side_effect = [in_use] * 20 + [{"update": {"id": "update-1", "status": "InProgress"}}]
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update({"name": "example", "purge_tags": True, "tags": None, "version": "1.34", "wait": False})
+    params = eks_params(version="1.34")
     params.update(updates)
     current = {
         "arn": "arn:cluster",
@@ -538,18 +518,8 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
         {"update": {"id": "update-1", "status": "InProgress"}},
         {"update": {"id": "update-2", "status": "InProgress"}},
     ]
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {
-            "name": "example",
-            "purge_tags": True,
-            "resources_vpc_config": {
-                "endpoint_public_access": False,
-                "subnet_ids": ["subnet-new-a", "subnet-new-b"],
-            },
-            "tags": None,
-            "wait": False,
-        }
+    params = eks_params(
+        resources_vpc_config={"endpoint_public_access": False, "subnet_ids": ["subnet-new-a", "subnet-new-b"]}
     )
     module = FakeModule(params)
     current = {
@@ -618,28 +588,14 @@ def test_vpc_endpoint_and_network_changes_use_separate_updates():
 
 
 def test_check_mode_preserves_unmanaged_tags():
-    fields = dict.fromkeys(plugin.CREATE_FIELDS)
-    fields.update(
-        {
-            "name": "example",
-            "purge_tags": False,
-            "tags": {"managed": "new"},
-        }
-    )
+    fields = eks_params(purge_tags=False, tags={"managed": "new"})
     current = {"name": "example", "tags": {"keep": "yes", "managed": "old"}}
 
     assert plugin.check_mode_cluster(FakeModule(fields), current)["tags"] == {"keep": "yes", "managed": "new"}
 
 
 def test_check_mode_purge_keeps_aws_reserved_tags():
-    fields = dict.fromkeys(plugin.CREATE_FIELDS)
-    fields.update(
-        {
-            "name": "example",
-            "purge_tags": True,
-            "tags": {"managed": "new"},
-        }
-    )
+    fields = eks_params(tags={"managed": "new"})
     current = {
         "name": "example",
         "tags": {"aws:cloudformation:stack-name": "stack", "drop": "yes", "managed": "old"},
@@ -655,15 +611,7 @@ def test_check_mode_purge_keeps_aws_reserved_tags():
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_tag_limit_ignores_aws_reserved_tags(check_mode):
     client = Mock()
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {
-            "name": "example",
-            "purge_tags": False,
-            "tags": {"new": "tag"},
-            "wait": False,
-        }
-    )
+    params = eks_params(purge_tags=False, tags={"new": "tag"})
     reserved = {
         "aws:cloudformation:logical-id": "Cluster",
         "AWS:CloudFormation:stack-id": "arn:stack",
@@ -693,15 +641,7 @@ def test_tag_limit_ignores_aws_reserved_tags(check_mode):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_tag_limit_still_rejects_more_than_fifty_user_tags_beside_aws_tags(check_mode):
     client = Mock()
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {
-            "name": "example",
-            "purge_tags": False,
-            "tags": {"new": "tag"},
-            "wait": False,
-        }
-    )
+    params = eks_params(purge_tags=False, tags={"new": "tag"})
     current = {
         "arn": "arn:cluster",
         "name": "example",
@@ -720,16 +660,7 @@ def test_tag_limit_still_rejects_more_than_fifty_user_tags_beside_aws_tags(check
 
 def test_no_wait_change_waits_for_active_cluster_and_rechecks_state():
     client = Mock()
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {
-            "name": "example",
-            "purge_tags": True,
-            "resources_vpc_config": {"endpoint_public_access": False},
-            "tags": None,
-            "wait": False,
-        }
-    )
+    params = eks_params(resources_vpc_config={"endpoint_public_access": False})
     transitioning = {
         "arn": "arn:example",
         "name": "example",
@@ -769,17 +700,7 @@ def test_deleting_cluster_waits_then_recreates():
             }
         )
     )
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {
-            "name": "example",
-            "purge_tags": True,
-            "resources_vpc_config": {"subnet_ids": ["subnet-1", "subnet-2"]},
-            "role_arn": "arn:role",
-            "tags": None,
-            "wait": False,
-        }
-    )
+    params = eks_params(resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]}, role_arn="arn:role")
     module = FakeModule(params)
     with (
         patch.object(
@@ -858,13 +779,6 @@ def test_cluster_waiter_uses_requested_delay():
         name="example",
         WaiterConfig={"Delay": 7, "MaxAttempts": 3},
     )
-
-
-def eks_params(**overrides):
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(name="example", tags=None, purge_tags=True, wait=False)
-    params.update(overrides)
-    return params
 
 
 @pytest.mark.parametrize("enabled", [True, False])
@@ -950,14 +864,11 @@ def test_eks_result_preserves_tag_keys():
 
 def test_eks_creation_preserves_distinct_tag_keys():
     tags = {"cost_center": "finance", "costCenter": "engineering"}
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
+    params = eks_params(
         name="review",
         role_arn="arn:aws:iam::123456789012:role/review",
         resources_vpc_config={"subnet_ids": ["subnet-1", "subnet-2"]},
         tags=tags,
-        wait=False,
-        purge_tags=True,
     )
     client = Mock()
     client.create_cluster.return_value = {
@@ -976,8 +887,7 @@ def test_eks_creation_preserves_distinct_tag_keys():
 
 @pytest.mark.parametrize("status", ["CREATING", "UPDATING"])
 def test_check_mode_predicts_changes_without_waiting_for_active_cluster(status):
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(name="example", tags=None, version=None, wait=True, purge_tags=True, wait_timeout=1200, wait_delay=15)
+    params = eks_params(wait=True)
     module = FakeModule(params, check_mode=True)
     client = Mock()
     current = {"name": "example", "arn": "arn:aws:eks:us-east-1:123456789012:cluster/example", "status": status}
@@ -4292,10 +4202,7 @@ def test_parse_version(version, expected):
 @pytest.mark.parametrize("key", ["aws:owner", "AWS:owner", "Aws:owner"])
 def test_reserved_tag_key_fails_before_any_cluster_write(key, check_mode):
     client = Mock()
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {"deletion_protection": True, "name": "example", "purge_tags": True, "tags": {key: "me"}, "wait": False}
-    )
+    params = eks_params(deletion_protection=True, tags={key: "me"})
     current = {
         "arn": "arn:cluster",
         "deletionProtection": False,
@@ -4317,10 +4224,7 @@ def test_reserved_tag_key_fails_before_any_cluster_write(key, check_mode):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_stored_reserved_tag_key_with_the_same_value_keeps_working(check_mode):
     client = Mock()
-    params = dict.fromkeys(plugin.CREATE_FIELDS)
-    params.update(
-        {"name": "example", "purge_tags": True, "tags": {"aws:owner": "me", "Env": "aws:prod"}, "wait": False}
-    )
+    params = eks_params(tags={"aws:owner": "me", "Env": "aws:prod"})
     current = {
         "arn": "arn:cluster",
         "name": "example",

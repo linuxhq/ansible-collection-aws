@@ -167,7 +167,6 @@ def test_queue_without_owner_reads_tags_without_looking_up_the_caller():
     [
         Mock(side_effect=missing("InvalidClientTokenId", "GetCallerIdentity")),
         Mock(side_effect=EndpointConnectionError(endpoint_url="https://vpce-0123.sqs.us-east-1.vpce.amazonaws.com")),
-        Mock(return_value={}),
     ],
 )
 def test_unknown_caller_reads_tags_as_before(identity):

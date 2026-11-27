@@ -400,6 +400,7 @@ def test_existing_number_matches_pool_and_opt_out_list_arns():
         "NumberCapabilities": ["SMS"],
         "NumberType": "LONG_CODE",
         "OptOutListName": "list-1",
+        "PhoneNumberArn": "arn:phone-1",
         "PhoneNumberId": "phone-1",
         "PoolId": "pool-1",
         "Status": "ACTIVE",
@@ -673,6 +674,7 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
             "get_phone_number",
             return_value={
                 "DeletionProtectionEnabled": True,
+                "PhoneNumberArn": "arn:phone-1",
                 "PhoneNumberId": "phone-1",
                 "PoolId": "pool-1",
                 "Status": "ACTIVE",
@@ -718,7 +720,11 @@ def test_absent_disassociates_with_the_phone_number_country():
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
         patch.object(
-            plugin, "get_phone_number", return_value=existing_number(DeletionProtectionEnabled=False, PoolId="pool-1")
+            plugin,
+            "get_phone_number",
+            return_value=existing_number(
+                DeletionProtectionEnabled=False, PhoneNumberArn="arn:phone-1", PoolId="pool-1"
+            ),
         ),
         patch.object(
             plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
@@ -760,6 +766,7 @@ def test_absent_tolerates_disappearing_prerequisites():
             "get_phone_number",
             return_value={
                 "DeletionProtectionEnabled": True,
+                "PhoneNumberArn": "arn:phone-1",
                 "PhoneNumberId": "phone-1",
                 "PoolId": "pool-1",
                 "Status": "ACTIVE",
@@ -808,7 +815,9 @@ def test_absent_deletion_protection_race_after_disassociation_reports_changed():
     client.update_phone_number.side_effect = not_found("UpdatePhoneNumber")
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
-        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")
+        ),
         patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
@@ -834,7 +843,9 @@ def test_absent_release_race_reports_whether_the_number_was_changed(deletion_pro
         patch.object(
             plugin,
             "get_phone_number",
-            return_value=existing_number(DeletionProtectionEnabled=deletion_protection_enabled, PoolId=pool_id),
+            return_value=existing_number(
+                DeletionProtectionEnabled=deletion_protection_enabled, PhoneNumberArn="arn:phone-1", PoolId=pool_id
+            ),
         ),
         patch.object(
             plugin,
@@ -1065,7 +1076,12 @@ def test_absent_waits_for_disassociation_before_release():
         patch.object(
             plugin,
             "get_phone_number",
-            return_value={"PhoneNumberId": "phone-1", "PoolId": "pool-1", "Status": "ACTIVE"},
+            return_value={
+                "PhoneNumberArn": "arn:phone-1",
+                "PhoneNumberId": "phone-1",
+                "PoolId": "pool-1",
+                "Status": "ACTIVE",
+            },
         ),
         patch.object(plugin, "wait_for_phone_number_active", events.wait),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
@@ -1087,7 +1103,12 @@ def test_absent_stops_when_number_disappears_after_disassociation():
         patch.object(
             plugin,
             "get_phone_number",
-            return_value={"PhoneNumberId": "phone-1", "PoolId": "pool-1", "Status": "ACTIVE"},
+            return_value={
+                "PhoneNumberArn": "arn:phone-1",
+                "PhoneNumberId": "phone-1",
+                "PoolId": "pool-1",
+                "Status": "ACTIVE",
+            },
         ),
         patch.object(plugin, "wait_for_phone_number_active", return_value={}),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
@@ -1112,6 +1133,7 @@ def test_absent_stops_when_wait_observes_external_deletion(waited):
             "get_phone_number",
             return_value={
                 "DeletionProtectionEnabled": True,
+                "PhoneNumberArn": "arn:phone-1",
                 "PhoneNumberId": "phone-1",
                 "PoolId": "pool-1",
                 "Status": "PENDING",
@@ -1139,7 +1161,9 @@ def test_pooled_number_setting_changes_fail_before_mutation(check_mode):
         check_mode=check_mode,
     )
     with (
-        patch.object(plugin, "query_list", return_value=[existing_number(PoolId="pool-1")]),
+        patch.object(
+            plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")]
+        ),
         patch.object(plugin, "phone_number_tags", return_value={"Name": "x"}),
         pytest.raises(ModuleFail) as raised,
     ):
@@ -1157,7 +1181,9 @@ def test_pooled_number_without_setting_changes_is_unchanged():
     module = FakeModule(phone_number_params(deletion_protection_enabled=True))
     with (
         named(),
-        patch.object(plugin, "query_list", return_value=[existing_number(PoolId="pool-1")]),
+        patch.object(
+            plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")]
+        ),
         pytest.raises(ModuleExit) as raised,
     ):
         run_ensure_present(client, module)
@@ -1300,7 +1326,9 @@ def test_release_failure_reports_whether_the_number_was_disassociated(pool_id, c
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
         patch.object(
-            plugin, "get_phone_number", return_value=existing_number(DeletionProtectionEnabled=False, PoolId=pool_id)
+            plugin,
+            "get_phone_number",
+            return_value=existing_number(DeletionProtectionEnabled=False, PhoneNumberArn="arn:phone-1", PoolId=pool_id),
         ),
         patch.object(
             plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
@@ -1324,7 +1352,9 @@ def test_unsupported_release_fails_before_disassociating():
 
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
-        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")
+        ),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods", side_effect=require),
         pytest.raises(ModuleFail) as raised,
@@ -1529,7 +1559,9 @@ def test_absent_fails_without_mutation_for_last_phone_number_in_pool(check_mode)
     client = Mock()
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
     with (
-        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")
+        ),
         patch.object(
             pinpoint_sms_voice,
             "paginated_query_with_retries",
@@ -1556,7 +1588,9 @@ def test_absent_proceeds_when_other_phone_numbers_remain_in_pool(check_mode):
     client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
     with (
-        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")
+        ),
         patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()),
         patch.object(
             pinpoint_sms_voice,
@@ -1580,7 +1614,9 @@ def test_absent_releases_number_beside_sender_id_in_pool(check_mode):
     client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
     with (
-        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")
+        ),
         patch.object(plugin, "wait_for_phone_number_active", return_value=existing_number()),
         patch.object(
             pinpoint_sms_voice,
@@ -1610,7 +1646,11 @@ def test_absent_releases_last_phone_number_of_a_pool_being_deleted(pools_result)
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
         patch.object(
-            plugin, "get_phone_number", return_value=existing_number(DeletionProtectionEnabled=False, PoolId="pool-1")
+            plugin,
+            "get_phone_number",
+            return_value=existing_number(
+                DeletionProtectionEnabled=False, PhoneNumberArn="arn:phone-1", PoolId="pool-1"
+            ),
         ),
         patch.object(
             plugin, "wait_for_phone_number_active", return_value=existing_number(DeletionProtectionEnabled=False)
@@ -1638,7 +1678,9 @@ def test_absent_check_mode_reports_release_of_last_phone_number_of_a_pool_being_
     client = model_client()
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=True)
     with (
-        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")
+        ),
         patch.object(
             pinpoint_sms_voice,
             "paginated_query_with_retries",
@@ -1670,7 +1712,9 @@ def test_absent_maps_last_phone_number_conflict_to_clear_failure():
     )
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
-        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")
+        ),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,
@@ -1690,7 +1734,9 @@ def test_absent_reports_other_disassociate_conflicts_from_aws():
     )
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None})
     with (
-        patch.object(plugin, "get_phone_number", return_value=existing_number(PoolId="pool-1")),
+        patch.object(
+            plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1")
+        ),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleFail) as raised,

@@ -162,9 +162,9 @@ def test_unmatched_selector_reports_lookup_failure(params, selector, value, chec
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": []}
     module = FakeModule(params, check_mode=check_mode)
-    found = plugin.find_connection(client, module)
+    assert plugin.find_connections(client, module) == []
     with pytest.raises(ModuleFail, match=f"No VPN connection matched {selector}"):
-        plugin.ensure_present(client, module, found)
+        plugin.ensure_present(client, module, None)
 
     client.create_vpn_connection.assert_not_called()
 
@@ -1154,7 +1154,7 @@ def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings(params, con
     params.update(name=None, filters={"customer-gateway-configuration": "x", "x-count": [2], "x-flag": [True]})
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
-    plugin.find_connection(client, FakeModule(params))
+    plugin.find_connections(client, FakeModule(params))
 
     client.describe_vpn_connections.assert_called_once_with(
         Filters=[
@@ -1164,19 +1164,6 @@ def test_boolean_and_numeric_filter_list_entries_are_sent_as_strings(params, con
         ],
         aws_retry=True,
     )
-
-
-def test_absent_check_mode_and_already_absent(params, connection):
-    client = Mock()
-    with pytest.raises(ModuleExit) as result:
-        plugin.ensure_absent(client, FakeModule(params, check_mode=True), [connection])
-
-    assert result.value.values["changed"]
-    with pytest.raises(ModuleExit) as result:
-        plugin.ensure_absent(client, FakeModule(params), [])
-
-    assert result.value.values == {"changed": False, "vpn_connection": {}}
-    assert client.mock_calls == []
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1222,7 +1209,7 @@ def test_deleting_connection_is_never_recreated(params, connection):
     connection["State"] = "deleting"
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": [connection]}
-    found = plugin.find_connection(client, FakeModule(params))
+    [found] = plugin.find_connections(client, FakeModule(params))
     with pytest.raises(ModuleFail, match="is deleting"):
         plugin.ensure_present(client, FakeModule(params), found)
 
@@ -1233,14 +1220,14 @@ def test_ambiguous_selection_fails(params, connection):
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": [connection, connection]}
     with pytest.raises(ModuleFail, match="Multiple VPN connections"):
-        plugin.find_connection(client, FakeModule(params))
+        plugin.find_connections(client, FakeModule(params))
 
 
 def test_name_lookup_prefers_a_replacement_over_its_deleting_predecessor(params, connection):
     deleting = dict(connection, VpnConnectionId="vpn-old", State="deleting")
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": [deleting, connection]}
-    assert plugin.find_connection(client, FakeModule(params)) == connection
+    assert plugin.find_connections(client, FakeModule(params)) == [connection]
 
 
 def test_name_lookup_still_fails_on_two_active_matches(params, connection):
@@ -1249,7 +1236,7 @@ def test_name_lookup_still_fails_on_two_active_matches(params, connection):
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": [deleting, connection, other]}
     with pytest.raises(ModuleFail, match="Multiple VPN connections"):
-        plugin.find_connection(client, FakeModule(params))
+        plugin.find_connections(client, FakeModule(params))
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -1297,11 +1284,11 @@ def test_deleted_connections_do_not_require_options(params, connection, with_act
     client.describe_vpn_connections.return_value = {
         "VpnConnections": [{"VpnConnectionId": "vpn-old", "State": "deleted"}] + ([connection] if with_active else [])
     }
-    found = plugin.find_connection(client, FakeModule(params))
-    assert found == (connection if with_active else None)
+    found = plugin.find_connections(client, FakeModule(params))
+    assert found == ([connection] if with_active else [])
     if not with_active:
         with pytest.raises(ModuleExit) as result:
-            plugin.ensure_absent(client, FakeModule(params), [])
+            plugin.ensure_absent(client, FakeModule(params), found)
 
         assert result.value.values == {"changed": False, "vpn_connection": {}}
         client.delete_vpn_connection.assert_not_called()
@@ -1962,13 +1949,13 @@ def test_name_lookup_treats_wildcard_characters_literally(params, connection, na
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": wildcard_matches + [exact]}
     module = FakeModule(params)
-    assert plugin.find_connection(client, module) == exact
+    assert plugin.find_connections(client, module) == [exact]
     client.describe_vpn_connections.assert_called_once_with(
         Filters=[{"Name": "tag:Name", "Values": [escaped]}], aws_retry=True
     )
 
     client.describe_vpn_connections.return_value = {"VpnConnections": wildcard_matches}
-    assert plugin.find_connection(client, module) is None
+    assert plugin.find_connections(client, module) == []
 
 
 def test_long_escaped_name_is_looked_up_by_prefix_and_matched_exactly(params, connection):
@@ -1984,7 +1971,7 @@ def test_long_escaped_name_is_looked_up_by_prefix_and_matched_exactly(params, co
     params.update(name=name)
     client = Mock()
     client.describe_vpn_connections.return_value = {"VpnConnections": [named("vpn-a", "a" * 255), exact]}
-    assert plugin.find_connection(client, FakeModule(params)) == exact
+    assert plugin.find_connections(client, FakeModule(params)) == [exact]
     client.describe_vpn_connections.assert_called_once_with(
         Filters=[{"Name": "tag:Name", "Values": ["a" * 254 + "*"]}], aws_retry=True
     )
@@ -3379,7 +3366,7 @@ def test_name_with_backslash_is_found_by_its_escaped_filter_and_not_recreated(pa
     client = Mock()
     client.describe_vpn_connections.side_effect = describe
     module = FakeModule(params)
-    found = plugin.find_connection(client, module)
+    [found] = plugin.find_connections(client, module)
     assert found["VpnConnectionId"] == "vpn-123"
 
     client.reset_mock()

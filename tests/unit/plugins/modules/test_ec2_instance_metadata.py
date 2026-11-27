@@ -24,69 +24,6 @@ def test_module_contract():
     ]
 
 
-def test_check_mode_projects_clearing_an_account_default():
-    client = Mock()
-    module = FakeModule(
-        {
-            "http_endpoint": None,
-            "http_put_response_hop_limit": -1,
-            "http_tokens": None,
-            "http_tokens_enforced": None,
-            "instance_metadata_tags": None,
-        },
-        check_mode=True,
-        client=client,
-    )
-    current = {
-        "http_put_response_hop_limit": 2,
-        "http_tokens": "required",
-    }
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "get_instance_metadata_defaults", return_value=current),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["changed"]
-    assert raised.value.values["account_level"] == {"http_tokens": "required"}
-    client.modify_instance_metadata_defaults.assert_not_called()
-    assert require.call_count == 1
-    assert require.call_args.args[3] == {"get_instance_metadata_defaults": ()}
-
-
-def test_update_projects_new_defaults_without_a_stale_refresh():
-    client = Mock()
-    client.modify_instance_metadata_defaults.return_value = {"Return": True}
-    module = FakeModule(
-        {
-            "http_endpoint": None,
-            "http_put_response_hop_limit": None,
-            "http_tokens": "required",
-            "http_tokens_enforced": None,
-            "instance_metadata_tags": None,
-        },
-        client=client,
-    )
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods") as require,
-        patch.object(
-            plugin,
-            "get_instance_metadata_defaults",
-            return_value={"http_tokens": "optional"},
-        ) as get_defaults,
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.main()
-
-    assert raised.value.values["account_level"]["http_tokens"] == "required"
-    assert get_defaults.call_count == 1
-    assert require.call_count == 2
-    assert require.call_args.args[3] == {"modify_instance_metadata_defaults": ("HttpTokens",)}
-
-
 def metadata_params(**overrides):
     params = {
         "http_endpoint": None,
@@ -110,6 +47,44 @@ def run_metadata(client, params, current, check_mode=False):
         plugin.main()
 
     return result, require
+
+
+def test_check_mode_projects_clearing_an_account_default():
+    client = Mock()
+    current = {
+        "http_put_response_hop_limit": 2,
+        "http_tokens": "required",
+    }
+    raised, require = run_metadata(client, metadata_params(http_put_response_hop_limit=-1), current, check_mode=True)
+
+    assert raised.type is ModuleExit
+    assert raised.value.values["changed"]
+    assert raised.value.values["account_level"] == {"http_tokens": "required"}
+    client.modify_instance_metadata_defaults.assert_not_called()
+    assert require.call_count == 1
+    assert require.call_args.args[3] == {"get_instance_metadata_defaults": ()}
+
+
+def test_update_projects_new_defaults_without_a_stale_refresh():
+    client = Mock()
+    client.modify_instance_metadata_defaults.return_value = {"Return": True}
+    module = FakeModule(metadata_params(http_tokens="required"), client=client)
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods") as require,
+        patch.object(
+            plugin,
+            "get_instance_metadata_defaults",
+            return_value={"http_tokens": "optional"},
+        ) as get_defaults,
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    assert raised.value.values["account_level"]["http_tokens"] == "required"
+    assert get_defaults.call_count == 1
+    assert require.call_count == 2
+    assert require.call_args.args[3] == {"modify_instance_metadata_defaults": ("HttpTokens",)}
 
 
 def test_http_tokens_enforced_is_updated():

@@ -40,16 +40,6 @@ def test_provider_includes_arn_without_response_metadata():
     client.get_open_id_connect_provider.assert_called_once_with(OpenIDConnectProviderArn="arn:provider", aws_retry=True)
 
 
-def test_provider_treats_missing_lists_as_empty():
-    client = Mock(get_open_id_connect_provider=Mock(return_value={"Url": "example.com/id"}))
-    assert get_provider_by_arn(client, Mock(), "arn:provider") == {
-        "OpenIDConnectProviderArn": "arn:provider",
-        "ClientIDList": [],
-        "ThumbprintList": [],
-        "Url": "example.com/id",
-    }
-
-
 def test_provider_lookup_lists_providers_and_reads_the_exact_match():
     client = Mock()
     module = SimpleNamespace(params={})

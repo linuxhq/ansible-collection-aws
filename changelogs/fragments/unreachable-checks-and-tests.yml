@@ -1,0 +1,22 @@
+---
+bugfixes:
+  - ec2_vpc_prefix_list - no longer fail on an O(entries[].description) over 255 characters made only of
+    whitespace; EC2 stores no such description, so the module already omits it from the request.
+  - ses_credential lookup - report an O(aws_secret_access_key) made only of whitespace as containing whitespace,
+    instead of as empty.
+trivial:
+  - ec2_vpc_vpn - return an empty list instead of ``None`` from the connection lookup when EC2 reports
+    ``InvalidVpnConnectionID.NotFound``, and drop the single-connection wrapper.
+  - iam_oidc_provider, iam_oidc_provider_info - rely on ``GetOpenIDConnectProvider`` always returning
+    ``ClientIDList`` and ``ThumbprintList``.
+  - sqs_queue_info - rely on ``GetCallerIdentity`` always returning ``Account``.
+  - sns_sms_attributes_info - pass O(attributes) as given; SNS accepts a repeated attribute and returns it once.
+  - global_accelerator, global_accelerator_info - drop accelerator and endpoint group identity checks on
+    ``DescribeAccelerator``, ``UpdateAccelerator``, ``CreateEndpointGroup``, and ``UpdateEndpointGroup`` responses,
+    which name the requested resource.
+  - pinpoint_sms_voice_phone_number - rely on ``DescribePhoneNumbers`` always returning ``NumberCapabilities`` and
+    ``PhoneNumberArn``.
+  - route53_resolver - add the listed endpoint tags to an updated endpoint in one place.
+  - ses_sandbox - order the check mode branch before the request branch, as the other SES modules do.
+  - Merge or remove duplicate unit tests, build test parameters with existing helpers, and run SDK model and waiter
+    tests on real offline botocore clients.

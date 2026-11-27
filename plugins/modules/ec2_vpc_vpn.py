@@ -998,7 +998,7 @@ def find_connections(client, module, connection_id=None, changed=False):
         # DescribeVpnConnections has no pagination in the EC2 API.
         response = client.describe_vpn_connections(**request, aws_retry=True)
     except is_boto3_error_code("InvalidVpnConnectionID.NotFound"):
-        return None
+        return []
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(
             e,
@@ -1032,11 +1032,6 @@ def find_connections(client, module, connection_id=None, changed=False):
         module.fail_json(changed=changed, msg="Multiple VPN connections matched; select a unique name, ID, or filters")
 
     return matches
-
-
-def find_connection(client, module, connection_id=None, changed=False):
-    matches = find_connections(client, module, connection_id, changed=changed)
-    return matches[0] if matches else None
 
 
 def wait_for_connection(client, module, connection_id, changed=False):
@@ -1367,7 +1362,7 @@ def validate_network(module, value, name, version):
 def validate_inputs(module):
     require_positive_wait_bounds(module, always=True)
 
-    # An empty name would leave find_connection without filters.
+    # An empty name would leave find_connections without filters.
     if module.params["name"] is not None and not module.params["name"]:
         module.fail_json(msg="name must not be empty")
 
@@ -1643,11 +1638,11 @@ def create_connection(client, module):
 
 
 def read_connection(client, module, connection_id, changed=False):
-    connection = find_connection(client, module, connection_id, changed=changed)
-    if connection is None:
+    connections = find_connections(client, module, connection_id, changed=changed)
+    if not connections:
         module.fail_json(changed=changed, msg=f"VPN connection {connection_id} disappeared while being managed")
 
-    return connection
+    return connections[0]
 
 
 def ensure_present(client, module, connection):

@@ -67,16 +67,15 @@ def stubbed_client(*responses):
 def test_custom_waiter_polls_unmatched_statuses_until_an_acceptor_matches():
     # Botocore keeps polling a response no acceptor matches, so transitional statuses need no retry acceptor.
     client, stubber = stubbed_client({"Status": "Creating"}, {"Status": "Updating"}, {"Status": "Active"})
-    with patch("botocore.waiter.time.sleep"):
-        wait.custom_waiter(client, WAITER_MODEL, "ready").wait(Name="example")
+    wait.custom_waiter(client, WAITER_MODEL, "ready").wait(Name="example", WaiterConfig={"Delay": 0})
 
     stubber.assert_no_pending_responses()
 
 
 def test_custom_waiter_retries_rate_limit_errors_and_stops_on_failure():
     client, stubber = stubbed_client("Throttling", {"Status": "Failed"})
-    with patch("botocore.waiter.time.sleep"), pytest.raises(WaiterError):
-        wait.custom_waiter(client, WAITER_MODEL, "ready").wait(Name="example")
+    with pytest.raises(WaiterError):
+        wait.custom_waiter(client, WAITER_MODEL, "ready").wait(Name="example", WaiterConfig={"Delay": 0})
 
     stubber.assert_no_pending_responses()
 

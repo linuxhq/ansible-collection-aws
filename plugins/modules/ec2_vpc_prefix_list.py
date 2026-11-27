@@ -1000,12 +1000,12 @@ def main():
 
         cidrs = set()
         for entry in entries:
-            if len(entry.get("description") or "") > 255:
-                module.fail_json(msg="entries[].description must contain at most 255 characters")
-
             # EC2 stores no description made only of whitespace, so, like an empty one, it is never sent or compared.
             if not (entry.get("description") or "").strip(EC2_BLANK_CHARACTERS):
                 entry["description"] = None
+
+            if len(entry["description"] or "") > 255:
+                module.fail_json(msg="entries[].description must contain at most 255 characters")
 
             try:
                 cidr = ipaddress.ip_network(entry["cidr"])

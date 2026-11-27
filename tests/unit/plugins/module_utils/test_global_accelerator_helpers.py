@@ -68,15 +68,3 @@ def test_get_accelerator_by_arn_returns_none_for_a_missing_accelerator():
     client = Mock(describe_accelerator=Mock(side_effect=missing))
     with patch.object(global_accelerator_utils, "require_client_methods"):
         assert get_accelerator_by_arn(client, FakeModule({}), ARN) is None
-
-
-@pytest.mark.parametrize("changed", [False, True])
-def test_get_accelerator_by_arn_rejects_a_different_accelerator(changed):
-    client = Mock(describe_accelerator=Mock(return_value={"Accelerator": {"AcceleratorArn": "arn:other"}}))
-    with (
-        patch.object(global_accelerator_utils, "require_client_methods"),
-        pytest.raises(ModuleFail) as raised,
-    ):
-        get_accelerator_by_arn(client, FakeModule({}), ARN, changed=changed)
-
-    assert raised.value.values == {"changed": changed, "msg": "Global Accelerator returned an invalid accelerator"}

@@ -43,10 +43,6 @@ def get_provider_by_arn(client, module, arn, changed=False):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to get AWS IAM OIDC provider {arn}")
 
-    # A provider can have no client IDs or thumbprints, so a missing list is empty.
-    for field in ("ClientIDList", "ThumbprintList"):
-        provider.setdefault(field, [])
-
     provider.pop("ResponseMetadata", None)
     provider["OpenIDConnectProviderArn"] = arn
     return provider

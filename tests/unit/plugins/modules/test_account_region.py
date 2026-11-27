@@ -40,10 +40,11 @@ def test_module_contract():
     assert options["argument_spec"]["wait_timeout"]["default"] == 1800
 
 
-def test_get_region_opt_status_rejects_missing_status():
+@pytest.mark.parametrize("response, status", [({}, "None"), ({"RegionOptStatus": "UNKNOWN"}, "'UNKNOWN'")])
+def test_get_region_opt_status_rejects_missing_or_unknown_status_unchanged(response, status):
     module = FakeModule({"name": "af-south-1"})
     client = Mock()
-    client.get_region_opt_status.return_value = {}
+    client.get_region_opt_status.return_value = response
 
     with pytest.raises(ModuleFail) as raised:
         plugin.get_region_opt_status(client, module)
@@ -53,7 +54,8 @@ def test_get_region_opt_status_rejects_missing_status():
         aws_retry=True,
     )
     assert "af-south-1" in raised.value.values["msg"]
-    assert "unexpected status None" in raised.value.values["msg"]
+    assert f"unexpected status {status}" in raised.value.values["msg"]
+    assert raised.value.values["changed"] is False
 
 
 @pytest.mark.parametrize(
@@ -308,14 +310,3 @@ def test_final_wait_times_out_when_the_opposite_transition_spent_the_budget(stat
     client.get_region_opt_status.assert_called_once()
     assert raised.value.values["changed"] is True
     assert raised.value.values["msg"].startswith("Timed out waiting for AWS account region af-south-1")
-
-
-def test_status_failure_before_mutation_reports_unchanged():
-    module = FakeModule({"name": "af-south-1"})
-    client = Mock()
-    client.get_region_opt_status.return_value = {"RegionOptStatus": "UNKNOWN"}
-
-    with pytest.raises(ModuleFail) as raised:
-        plugin.get_region_opt_status(client, module)
-
-    assert raised.value.values["changed"] is False

@@ -12,6 +12,18 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
+def glue_params(**overrides):
+    params = {
+        "apply_override_for_compute_environment": None,
+        "catalog_id": None,
+        "filters": None,
+        "hide_password": True,
+        "name": None,
+    }
+    params.update(overrides)
+    return params
+
+
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["required_by"] == {"apply_override_for_compute_environment": ["name"]}
@@ -24,16 +36,7 @@ def test_module_contract():
 
 def test_named_connection_only_gates_used_parameters():
     client = Mock(get_connection=Mock(return_value={"Connection": {"Name": "main"}}))
-    module = FakeModule(
-        {
-            "apply_override_for_compute_environment": None,
-            "catalog_id": "catalog",
-            "filters": None,
-            "hide_password": True,
-            "name": "main",
-        },
-        client=client,
-    )
+    module = FakeModule(glue_params(catalog_id="catalog", name="main"), client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods") as require_methods,
@@ -63,16 +66,7 @@ def test_named_connection_only_gates_used_parameters():
 
 def test_connection_list_only_gates_used_parameters():
     client = Mock()
-    module = FakeModule(
-        {
-            "apply_override_for_compute_environment": None,
-            "catalog_id": None,
-            "filters": None,
-            "hide_password": True,
-            "name": None,
-        },
-        client=client,
-    )
+    module = FakeModule(glue_params(), client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "query_list", return_value=[]),
@@ -99,16 +93,7 @@ def test_glue_override_accepted_by_sdk(environment):
         return {"Connection": {"Name": "review"}}
 
     client = Mock(get_connection=Mock(side_effect=get_connection))
-    module = FakeModule(
-        {
-            "name": "review",
-            "filters": None,
-            "catalog_id": None,
-            "hide_password": True,
-            "apply_override_for_compute_environment": environment,
-        },
-        client=client,
-    )
+    module = FakeModule(glue_params(name="review", apply_override_for_compute_environment=environment), client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
@@ -130,16 +115,7 @@ def test_environment_property_keys_are_preserved(name, field, result_key):
     properties = {"JDBC_CONNECTION_URL": "jdbc:example", "customOption": "value", "custom_option": "another"}
     connection = {"Name": "example", "ConnectionProperties": properties, field: properties}
     client = Mock(get_connection=Mock(return_value={"Connection": connection}))
-    module = FakeModule(
-        {
-            "name": name,
-            "catalog_id": None,
-            "filters": None,
-            "hide_password": True,
-            "apply_override_for_compute_environment": None,
-        },
-        client=client,
-    )
+    module = FakeModule(glue_params(name=name), client=client)
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "require_client_methods"),
@@ -151,18 +127,6 @@ def test_environment_property_keys_are_preserved(name, field, result_key):
     returned = result.value.values["connections"][0]
     assert returned["connection_properties"] == properties
     assert returned[result_key] == properties
-
-
-def glue_params(**overrides):
-    params = {
-        "apply_override_for_compute_environment": None,
-        "catalog_id": None,
-        "filters": None,
-        "hide_password": True,
-        "name": None,
-    }
-    params.update(overrides)
-    return params
 
 
 def test_named_missing_connection_returns_an_empty_list():
