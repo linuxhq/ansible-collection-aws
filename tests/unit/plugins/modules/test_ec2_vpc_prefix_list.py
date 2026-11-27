@@ -1143,7 +1143,7 @@ def run_present_main(params, current, described_entries, check_mode=False, clien
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("description", BLANK_TEXT)
+@pytest.mark.parametrize("description", BLANK_TEXT + [" " * 256])
 def test_whitespace_description_matches_an_entry_without_description(description, check_mode):
     # Live: EC2 stores no description for one made only of whitespace, and re-adding the CIDR with it is rejected
     # (InvalidPrefixListModification: an entry with the CIDR and description (null) already exists).

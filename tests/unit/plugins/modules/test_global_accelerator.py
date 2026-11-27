@@ -340,34 +340,32 @@ def test_main_defers_sdk_validation_until_an_api_is_needed():
 
 
 def test_sdk_validation_checks_endpoint_configuration_parameters():
-    request = {
-        "EndpointConfigurations": [
-            {
-                "AttachmentArn": "arn:attachment",
-                "EndpointId": "endpoint-1",
-                "Weight": 128,
-            }
-        ]
-    }
-    shape = Mock()
-    shape.input_shape.members = {
-        "EndpointConfigurations": Mock(member=Mock(members={"EndpointId": Mock(), "Weight": Mock()}))
-    }
-    client = Mock()
-    client.meta.service_model.operation_model.return_value = shape
-    module = Mock()
+    client = Session().create_client(
+        "globalaccelerator",
+        region_name="us-west-2",
+        aws_access_key_id="EXAMPLE",
+        aws_secret_access_key="EXAMPLE",
+    )
+    configuration = {"AttachmentArn": "arn:attachment", "EndpointId": "endpoint-1", "Weight": 128}
+    module = FakeModule({})
     plugin.require_endpoint_configuration_parameters(
-        module,
-        client,
-        "create_endpoint_group",
-        "CreateEndpointGroup",
-        request,
+        module, client, "create_endpoint_group", "CreateEndpointGroup", {"EndpointConfigurations": [configuration]}
     )
+    with pytest.raises(ModuleFail) as raised:
+        plugin.require_endpoint_configuration_parameters(
+            module,
+            client,
+            "create_endpoint_group",
+            "CreateEndpointGroup",
+            {"EndpointConfigurations": [dict(configuration, Unknown=True)]},
+        )
 
-    assert any(
-        "EndpointConfigurations parameter AttachmentArn" in call.kwargs["msg"]
-        for call in module.fail_json.call_args_list
-    )
+    assert raised.value.values == {
+        "msg": (
+            "Installed botocore does not support Global Accelerator create_endpoint_group EndpointConfigurations "
+            "parameter Unknown"
+        )
+    }
 
 
 def test_empty_ip_addresses_leave_assigned_addresses_unchanged():
@@ -613,23 +611,6 @@ def test_check_mode_endpoint_group_create_predicts_the_stored_settings(settings,
     client.create_endpoint_group.assert_not_called()
 
 
-def test_check_mode_listener_create_predicts_its_endpoint_group_health_check_port():
-    listener = {
-        "client_affinity": None,
-        "endpoint_groups": [unset_endpoint_group()],
-        "port_ranges": [{"from_port": 443, "to_port": 443}],
-        "protocol": "TCP",
-    }
-    module = FakeModule(
-        {"listeners": [listener], "purge_endpoint_groups": True, "purge_listeners": True}, check_mode=True
-    )
-
-    changed, listeners = plugin.ensure_listeners(Mock(), module, None)
-
-    assert changed
-    assert listeners[0]["endpoint_groups"][0]["health_check_port"] == 443
-
-
 def test_created_listener_endpoint_groups_are_created_without_listing_them():
     listener = {
         "client_affinity": None,
@@ -664,22 +645,30 @@ MULTIPLE_PORT_RANGES = [{"from_port": 9000, "to_port": 9001}, {"from_port": 7000
 # Live: AWS stores a listener's ranges in the order sent, lists them in that order, and checks health on the first
 # port stored.
 @pytest.mark.parametrize(
-    "port_ranges, current_port_ranges, client_affinity, expected",
+    "port_ranges, current_port_ranges, client_affinity, expected, accelerator_arn",
     [
         # A created or updated listener's ranges are sent sorted.
-        (MULTIPLE_PORT_RANGES, None, None, 7000),
-        (MULTIPLE_PORT_RANGES, [{"from_port": 5000, "to_port": 5000}], None, 7000),
-        (MULTIPLE_PORT_RANGES, plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), "SOURCE_IP", 7000),
-        (MULTIPLE_PORT_RANGES, MULTIPLE_PORT_RANGES, "SOURCE_IP", 7000),
+        (MULTIPLE_PORT_RANGES, None, None, 7000, "arn:accelerator"),
+        (MULTIPLE_PORT_RANGES, [{"from_port": 5000, "to_port": 5000}], None, 7000, "arn:accelerator"),
+        (
+            MULTIPLE_PORT_RANGES,
+            plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES),
+            "SOURCE_IP",
+            7000,
+            "arn:accelerator",
+        ),
+        (MULTIPLE_PORT_RANGES, MULTIPLE_PORT_RANGES, "SOURCE_IP", 7000, "arn:accelerator"),
         # An unchanged listener keeps the order in which AWS lists its ranges.
-        (MULTIPLE_PORT_RANGES, plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), None, 7000),
-        (MULTIPLE_PORT_RANGES, MULTIPLE_PORT_RANGES, None, 9000),
-        (plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), MULTIPLE_PORT_RANGES, None, 9000),
-        ([{"from_port": 443, "to_port": 443}], [{"from_port": 443, "to_port": 443}], None, 443),
+        (MULTIPLE_PORT_RANGES, plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), None, 7000, "arn:accelerator"),
+        (MULTIPLE_PORT_RANGES, MULTIPLE_PORT_RANGES, None, 9000, "arn:accelerator"),
+        (plugin.normalized_port_ranges(MULTIPLE_PORT_RANGES), MULTIPLE_PORT_RANGES, None, 9000, "arn:accelerator"),
+        ([{"from_port": 443, "to_port": 443}], [{"from_port": 443, "to_port": 443}], None, 443, "arn:accelerator"),
+        # The listener of an accelerator that check mode would create.
+        ([{"from_port": 443, "to_port": 443}], None, None, 443, None),
     ],
 )
 def test_check_mode_endpoint_group_create_predicts_the_health_check_port_of_the_first_stored_listener_range(
-    port_ranges, current_port_ranges, client_affinity, expected
+    port_ranges, current_port_ranges, client_affinity, expected, accelerator_arn
 ):
     listener = {
         "client_affinity": client_affinity,
@@ -706,7 +695,7 @@ def test_check_mode_endpoint_group_create_predicts_the_health_check_port_of_the_
         patch.object(plugin, "get_listeners", return_value=current_listeners),
         patch.object(plugin, "get_endpoint_groups", return_value=[]),
     ):
-        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
+        changed, listeners = plugin.ensure_listeners(client, module, accelerator_arn)
 
     assert changed
     assert listeners[0]["endpoint_groups"] == [
@@ -2761,6 +2750,9 @@ def test_listener_replacement_lists_the_deleted_listener_endpoint_groups_once():
 
     assert changed
     assert listeners[0]["listener_arn"] == "arn:new"
+    # The create retried after freeing quota reuses its idempotency token.
+    first, second = client.create_listener.call_args_list
+    assert first.kwargs["IdempotencyToken"] == second.kwargs["IdempotencyToken"]
     # The conflict check lists the obsolete listener's endpoint groups; its deletion reuses them.
     get_endpoint_groups.assert_called_once_with(client, module, "arn:old", changed=False)
     client.delete_listener.assert_called_once_with(ListenerArn="arn:old", aws_retry=True)
@@ -2808,62 +2800,6 @@ def test_listener_creation_waits_before_endpoint_groups():
         "wait_for_accelerator",
         "ensure_endpoint_groups",
     ]
-
-
-def test_listener_replacement_retries_after_freeing_quota():
-    client = Mock()
-    client.create_listener.side_effect = [
-        plugin.ClientError(
-            {"Error": {"Code": "LimitExceededException", "Message": "full"}},
-            "CreateListener",
-        ),
-        {
-            "Listener": {
-                "ClientAffinity": "NONE",
-                "ListenerArn": "arn:new",
-                "PortRanges": [{"FromPort": 443, "ToPort": 443}],
-                "Protocol": "TCP",
-            }
-        },
-    ]
-    desired = {
-        "client_affinity": "NONE",
-        "endpoint_groups": None,
-        "port_ranges": [{"from_port": 443, "to_port": 443}],
-        "protocol": "TCP",
-    }
-    current = {
-        "client_affinity": "NONE",
-        "listener_arn": "arn:old",
-        "port_ranges": [{"from_port": 80, "to_port": 80}],
-        "protocol": "TCP",
-    }
-    module = FakeModule({"purge_listeners": True})
-    with (
-        patch.object(
-            plugin,
-            "reconcile_listeners",
-            return_value=([], [], [desired], [current]),
-        ),
-        patch.object(plugin, "get_listeners", return_value=[current]),
-        patch.object(plugin, "get_endpoint_groups", return_value=[]),
-        patch.object(plugin, "delete_listener") as delete_listener,
-        patch.object(plugin, "wait_for_accelerator") as wait_for_accelerator,
-        patch.object(plugin, "require_client_methods"),
-    ):
-        changed, listeners = plugin.ensure_listeners(client, module, "arn:accelerator")
-
-    assert changed
-    assert listeners[0]["listener_arn"] == "arn:new"
-    assert client.create_listener.call_count == 2
-    first, second = client.create_listener.call_args_list
-    assert first.kwargs["IdempotencyToken"] == second.kwargs["IdempotencyToken"]
-    delete_listener.assert_called_once_with(
-        client, module, "arn:accelerator", "arn:old", endpoint_groups=ANY, changed=False, deadline=ANY
-    )
-    wait_for_accelerator.assert_called_once_with(
-        client, module, "arn:accelerator", "accelerator_deployed", changed=True, deadline=ANY
-    )
 
 
 def test_accelerator_creation_waits_before_listeners():

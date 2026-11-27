@@ -103,10 +103,9 @@ def main():
         retry_decorator=AWSRetry.jittered_backoff(catch_extra_error_codes=["Throttled"]),
     )
 
-    attributes = list(dict.fromkeys(module.params["attributes"] or []))
     request = {}
-    if attributes:
-        request["attributes"] = attributes
+    if module.params["attributes"]:
+        request["attributes"] = module.params["attributes"]
 
     require_client_methods(
         module,

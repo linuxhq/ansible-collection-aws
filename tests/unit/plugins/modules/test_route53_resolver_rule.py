@@ -84,19 +84,6 @@ def test_delete_waits_when_requested():
     wait.assert_called_once_with(client, module, "rslvr-rr-1", "deleted", changed=True, deadline=ANY)
 
 
-def test_delete_tolerates_rule_disappearing():
-    client = Mock()
-    client.delete_resolver_rule.side_effect = plugin.ClientError(
-        {"Error": {"Code": "ResourceNotFoundException", "Message": "gone"}},
-        "DeleteResolverRule",
-    )
-    module = FakeModule({"name": "rule", "wait": True})
-    with patch.object(plugin, "wait_for_resolver_rule_status") as wait:
-        assert plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"}) is False
-
-    wait.assert_not_called()
-
-
 def test_absent_reports_unchanged_when_rule_is_already_gone():
     client = Mock()
     client.delete_resolver_rule.side_effect = plugin.ClientError(
@@ -107,9 +94,10 @@ def test_absent_reports_unchanged_when_rule_is_already_gone():
     with (
         patch.object(plugin, "get_resolver_rule_by_name", return_value={"Id": "rslvr-rr-1"}),
         patch.object(plugin, "wait_for_resolver_rule_status") as wait,
-        pytest.raises(ModuleExit) as raised,
     ):
-        plugin.ensure_absent(client, module)
+        assert plugin.delete_resolver_rule(client, module, {"Id": "rslvr-rr-1"}) is False
+        with pytest.raises(ModuleExit) as raised:
+            plugin.ensure_absent(client, module)
 
     assert raised.value.values["changed"] is False
     wait.assert_not_called()

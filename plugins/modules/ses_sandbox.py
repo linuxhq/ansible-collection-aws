@@ -356,7 +356,10 @@ def main():
             "change the account details to submit a new request"
         )
 
-    if changed and not module.check_mode:
+    if changed and module.check_mode:
+        current_account = dict(current_account)
+        current_account["details"] = dict(current_details, **desired_compared)
+    elif changed:
         try:
             client.put_account_details(**request, aws_retry=True)
         except is_boto3_error_code("ConflictException"):
@@ -367,9 +370,6 @@ def main():
 
         if changed:
             current_account = get_account(client, module, changed=True)
-    elif changed and module.check_mode:
-        current_account = dict(current_account)
-        current_account["details"] = dict(current_details, **desired_compared)
 
     module.exit_json(changed=changed, account=current_account)
 

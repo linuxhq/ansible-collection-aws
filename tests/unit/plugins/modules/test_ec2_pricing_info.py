@@ -10,6 +10,12 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
 )
 
 
+def params(**overrides):
+    return dict(
+        {"filters": [], "format_version": "aws_v1", "max_results": None, "service_code": "AmazonEC2"}, **overrides
+    )
+
+
 def test_module_contract():
     options = assert_module_contract(plugin)
     assert options["argument_spec"]["service_code"]["default"] == "AmazonEC2"
@@ -17,12 +23,7 @@ def test_module_contract():
 
 def test_empty_filters_query_every_product_like_the_api():
     module = FakeModule(
-        {
-            "filters": [],
-            "format_version": "aws_v1",
-            "max_results": None,
-            "service_code": "AmazonEC2",
-        },
+        params(),
         client=Mock(),
     )
     with (
@@ -40,12 +41,7 @@ def test_empty_filters_query_every_product_like_the_api():
 def test_product_terms_use_snake_case_fields_and_keep_codes():
     client = Mock()
     module = FakeModule(
-        {
-            "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}],
-            "format_version": "aws_v1",
-            "max_results": None,
-            "service_code": "AmazonEC2",
-        },
+        params(filters=[{"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}]),
         client=client,
     )
     terms = {
@@ -107,12 +103,7 @@ def test_product_terms_use_snake_case_fields_and_keep_codes():
 
 def test_non_term_match_filter_types_are_sent_without_botocore_gate():
     module = Mock(
-        params={
-            "filters": [{"field": "instanceType", "type": "EQUALS", "value": "t3"}],
-            "format_version": "aws_v1",
-            "max_results": None,
-            "service_code": "AmazonEC2",
-        },
+        params=params(filters=[{"field": "instanceType", "type": "EQUALS", "value": "t3"}]),
         client=Mock(return_value=Mock()),
     )
     with (
@@ -128,12 +119,7 @@ def test_non_term_match_filter_types_are_sent_without_botocore_gate():
 
 def test_max_results_is_sent_to_the_query():
     module = FakeModule(
-        {
-            "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}],
-            "format_version": "aws_v1",
-            "max_results": 10,
-            "service_code": "AmazonEC2",
-        },
+        params(filters=[{"field": "instanceType", "type": "TERM_MATCH", "value": "t3"}], max_results=10),
         client=Mock(),
     )
     with (
@@ -150,12 +136,7 @@ def test_max_results_is_sent_to_the_query():
 
 def test_pricing_client_uses_the_selected_region():
     module = Mock(
-        params={
-            "filters": [{"field": "instanceType", "type": "TERM_MATCH", "value": "t3.micro"}],
-            "format_version": "aws_v1",
-            "max_results": None,
-            "service_code": "AmazonEC2",
-        },
+        params=params(filters=[{"field": "instanceType", "type": "TERM_MATCH", "value": "t3.micro"}]),
         region="eu-central-1",
         client=Mock(return_value=Mock()),
     )
@@ -180,12 +161,7 @@ def test_pricing_client_uses_the_selected_region():
 )
 def test_format_version_is_returned_from_the_response(response, returned):
     module = FakeModule(
-        {
-            "filters": [],
-            "format_version": "aws_v1",
-            "max_results": None,
-            "service_code": "AmazonEC2",
-        },
+        params(),
         client=Mock(),
     )
     with (

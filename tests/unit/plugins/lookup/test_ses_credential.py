@@ -42,7 +42,7 @@ def test_rejects_invalid_region(region):
         run_lookup(aws_secret_access_key="secret", region=region)
 
 
-@pytest.mark.parametrize("secret", ["secret ", " secret", "sec ret", "secret\n"])
+@pytest.mark.parametrize("secret", ["secret ", " secret", "sec ret", "secret\n", " ", "\t"])
 def test_rejects_whitespace_in_secret_without_revealing_it(secret):
     with pytest.raises(AnsibleLookupError) as raised:
         run_lookup(aws_secret_access_key=secret, region="us-east-1")

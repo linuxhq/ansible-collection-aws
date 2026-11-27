@@ -49,8 +49,4 @@ def get_accelerator_by_arn(client, module, accelerator_arn, changed=False):
     except (BotoCoreError, ClientError) as e:
         module.fail_json_aws(e, changed=changed, msg=f"Unable to describe AWS Global Accelerator {accelerator_arn}")
 
-    accelerator = response["Accelerator"]
-    if accelerator["AcceleratorArn"] != accelerator_arn:
-        module.fail_json(changed=changed, msg="Global Accelerator returned an invalid accelerator")
-
-    return accelerator
+    return response["Accelerator"]

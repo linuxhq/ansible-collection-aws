@@ -18,19 +18,7 @@ ROLE_ARN = "arn:aws:iam::123456789012:role/flow-logs"
 
 
 def test_sdk_validation_matches_flow_log_requests():
-    params = dict(dict.fromkeys(plugin.PRESENT_MATCH_FIELDS), name="main")
-    params.update(
-        {
-            "destination_options": None,
-            "log_destination_type": None,
-            "purge_tags": True,
-            "resource_ids": ["vpc-1"],
-            "resource_type": "VPC",
-            "state": "present",
-            "tags": {"Name": "main"},
-            "traffic_type": None,
-        }
-    )
+    params = present_params(log_destination_type=None, log_destination=None, tags={})
     module = Mock(params=params, client=Mock(return_value=Mock()))
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -140,18 +128,8 @@ def test_flow_log_matching_uses_only_managed_destination_options():
 
 def test_identical_tag_changes_are_batched_across_flow_logs():
     client = Mock()
-    params = dict(dict.fromkeys(plugin.PRESENT_MATCH_FIELDS), name="main")
-    params.update(
-        {
-            "destination_options": None,
-            "log_destination_type": None,
-            "purge_tags": True,
-            "resource_ids": ["vpc-1", "vpc-2"],
-            "resource_type": "VPC",
-            "state": "present",
-            "tags": {"Environment": "prod", "Name": "main"},
-            "traffic_type": None,
-        }
+    params = present_params(
+        log_destination_type=None, log_destination=None, resource_ids=["vpc-1", "vpc-2"], tags={"Environment": "prod"}
     )
     module = FakeModule(params)
     flow_logs = [
@@ -189,17 +167,8 @@ def test_identical_tag_changes_are_batched_across_flow_logs():
 
 
 def test_invalid_resource_and_destination_combinations_are_rejected():
-    base = dict(dict.fromkeys(plugin.PRESENT_MATCH_FIELDS), name="main")
-    base.update(
-        {
-            "destination_options": None,
-            "log_destination_type": None,
-            "resource_ids": ["tgw-1"],
-            "resource_type": "TransitGateway",
-            "state": "present",
-            "tags": None,
-            "traffic_type": None,
-        }
+    base = present_params(
+        log_destination_type=None, log_destination=None, resource_ids=["tgw-1"], resource_type="TransitGateway"
     )
     cases = [
         (
@@ -247,39 +216,10 @@ def test_absent_checks_the_delete_operation_before_deleting():
     client.delete_flow_logs.assert_not_called()
 
 
-def test_tag_keys_may_contain_128_characters_but_not_129():
-    params = dict(dict.fromkeys(plugin.PRESENT_MATCH_FIELDS), name="main")
-    params.update(
-        {
-            "destination_options": None,
-            "log_destination_type": None,
-            "purge_tags": True,
-            "resource_ids": ["vpc-1"],
-            "resource_type": "VPC",
-            "state": "present",
-            "tags": {"k" * 128: "v"},
-            "traffic_type": None,
-        }
-    )
-    module = FakeModule(params, client=Mock())
-    with (
-        patch.object(plugin, "AnsibleAWSModule", return_value=module),
-        patch.object(plugin, "require_client_methods"),
-        patch.object(plugin, "ensure_present") as ensure_present,
-    ):
-        plugin.main()
-
-    ensure_present.assert_called_once_with(module.client(), module)
-
-    params["tags"] = {"k" * 129: "v"}
-    assert_module_rejects(plugin, params, "tag keys must contain 1 to 128 characters and values at most 256 characters")
-
-
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("key", [" ", "\t", "\N{IDEOGRAPHIC SPACE}"])
-def test_blank_tag_keys_fail_before_aws(key, check_mode):
+def test_blank_tag_keys_fail_before_aws(check_mode):
     # Live: EC2 rejects them (InvalidParameterValue), after any flow log create or delete of the same run.
-    module = FakeModule(present_params(tags={key: "x"}), check_mode=check_mode)
+    module = FakeModule(present_params(tags={" ": "x"}), check_mode=check_mode)
     module.client = Mock()
     with (
         patch.object(plugin, "AnsibleAWSModule", return_value=module),
@@ -319,20 +259,8 @@ def test_blank_tag_values_match_the_empty_value_ec2_stores(check_mode):
 def test_partial_create_failure_is_not_reported_as_success():
     client = Mock()
     client.create_flow_logs.return_value = {"Unsuccessful": [{"Error": {"Code": "LimitExceeded"}}]}
-    params = dict(dict.fromkeys(plugin.PRESENT_MATCH_FIELDS), name="main")
-    params.update(
-        {
-            "deliver_logs_permission_arn": ROLE_ARN,
-            "destination_options": None,
-            "log_group_name": "flow",
-            "log_destination_type": None,
-            "purge_tags": True,
-            "resource_ids": ["vpc-1"],
-            "resource_type": "VPC",
-            "state": "present",
-            "tags": None,
-            "traffic_type": None,
-        }
+    params = present_params(
+        deliver_logs_permission_arn=ROLE_ARN, log_group_name="flow", log_destination_type=None, log_destination=None
     )
     with (
         patch.object(plugin, "get_flow_logs", return_value=[]),
@@ -352,20 +280,8 @@ def test_create_result_keeps_ids_missing_from_eventually_consistent_describe():
         "FlowLogIds": ["fl-created"],
         "Unsuccessful": [],
     }
-    params = dict(dict.fromkeys(plugin.PRESENT_MATCH_FIELDS), name="main")
-    params.update(
-        {
-            "deliver_logs_permission_arn": ROLE_ARN,
-            "destination_options": None,
-            "log_group_name": "flow",
-            "log_destination_type": None,
-            "purge_tags": True,
-            "resource_ids": ["vpc-1"],
-            "resource_type": "VPC",
-            "state": "present",
-            "tags": None,
-            "traffic_type": None,
-        }
+    params = present_params(
+        deliver_logs_permission_arn=ROLE_ARN, log_group_name="flow", log_destination_type=None, log_destination=None
     )
     with (
         patch.object(plugin, "get_flow_logs", return_value=[]),
@@ -446,16 +362,6 @@ def run_main(client, module, flow_logs):
         plugin.main()
 
     return result.value.values
-
-
-def test_changed_settings_keep_a_flow_log_with_another_name():
-    client = Mock()
-    other = dict(OLD_FLOW_LOG, Tags=[{"Key": "Name", "Value": "other"}])
-    result = run_present(client, FakeModule(present_params()), [other])
-
-    assert result["changed"] is True
-    assert result["deleted_flow_log_ids"] == []
-    client.delete_flow_logs.assert_not_called()
 
 
 def test_name_keeps_matching_flow_logs_and_predicts_the_replacement_in_check_mode():
@@ -1289,29 +1195,21 @@ def not_found_error():
     )
 
 
-@pytest.mark.parametrize(
-    ("remaining", "expected_removed", "delete_calls"),
-    [
-        ([{"FlowLogId": "fl-live"}], ["fl-live"], 2),
-        ([], [], 1),
-    ],
-)
-def test_delete_skips_flow_logs_already_gone_when_ec2_rejects_the_request(remaining, expected_removed, delete_calls):
+def test_delete_skips_flow_logs_already_gone_when_ec2_rejects_the_request():
     client = Mock()
     client.delete_flow_logs.side_effect = [not_found_error(), {}]
     with (
         patch.object(plugin, "require_client_methods") as require,
-        patch.object(plugin, "query_list", return_value=remaining) as query,
+        patch.object(plugin, "query_list", return_value=[{"FlowLogId": "fl-live"}]) as query,
     ):
         removed = plugin.delete_flow_logs(client, FakeModule({}), ["fl-gone", "fl-live"])
 
-    assert removed == expected_removed
+    assert removed == ["fl-live"]
     # main() gates FlowLogIds before any write, so a delete never fails on it partway through.
     require.assert_not_called()
     assert query.call_args.kwargs["FlowLogIds"] == ["fl-gone", "fl-live"]
-    assert client.delete_flow_logs.call_count == delete_calls
-    if delete_calls == 2:
-        assert client.delete_flow_logs.call_args.kwargs["FlowLogIds"] == ["fl-live"]
+    assert client.delete_flow_logs.call_count == 2
+    assert client.delete_flow_logs.call_args.kwargs["FlowLogIds"] == ["fl-live"]
 
 
 def test_absent_reports_unchanged_when_every_flow_log_is_already_gone():

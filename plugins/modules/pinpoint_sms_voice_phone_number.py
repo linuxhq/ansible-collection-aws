@@ -631,7 +631,7 @@ def require_not_last_pool_phone_number(client, module, current):
 
     originations = response.get("OriginationIdentities", [])
 
-    identities = tuple(filter(None, (phone_number_id, current.get("PhoneNumberArn"))))
+    identities = (phone_number_id, current["PhoneNumberArn"])
     # Deleting a pool disassociates its numbers, so the number can be released once its pool is going away.
     if is_last_phone_number(originations, identities) and not pool_is_deleting(client, module, pool_id):
         module.fail_json(changed=False, msg=last_phone_number_message(phone_number_id, pool_id))
@@ -818,8 +818,7 @@ def ensure_present(client, module, tags):
         for phone_number in phone_numbers
         if phone_number.get("Status") != "DELETED"
         and all(
-            (sorted(set(phone_number.get(key) or [])) if key == "NumberCapabilities" else phone_number.get(key))
-            == value
+            (sorted(set(phone_number[key])) if key == "NumberCapabilities" else phone_number.get(key)) == value
             for key, value in desired.items()
         )
     ]

@@ -796,16 +796,6 @@ GLOBAL_ACCELERATOR_WAITER_MODEL_DATA = {
 }
 
 
-def require_expected_endpoint_group(module, endpoint_group, expected_arn=None, expected_region=None):
-    """Fail when a write response names a different endpoint group than the one requested."""
-    if (expected_arn is not None and endpoint_group["EndpointGroupArn"] != expected_arn) or (
-        expected_region is not None and endpoint_group["EndpointGroupRegion"] != expected_region
-    ):
-        module.fail_json(changed=True, msg="Global Accelerator returned an invalid endpoint group")
-
-    return endpoint_group
-
-
 def get_accelerator(client, module):
     if module.params["arn"] is not None:
         return get_accelerator_by_arn(client, module, module.params["arn"])
@@ -1543,9 +1533,7 @@ def ensure_endpoint_groups(
                 )
 
             mutated = True
-            endpoint_group = require_expected_endpoint_group(module, response["EndpointGroup"], expected_region=region)
-
-            results.append(endpoint_group_result(endpoint_group))
+            results.append(endpoint_group_result(response["EndpointGroup"]))
         elif endpoint_group_requires_update(current, desired, scope):
             changed = True
             if module.check_mode:
@@ -1569,11 +1557,7 @@ def ensure_endpoint_groups(
                 )
 
             mutated = True
-            endpoint_group = require_expected_endpoint_group(
-                module, response["EndpointGroup"], expected_arn=endpoint_group_arn
-            )
-
-            results.append(endpoint_group_result(endpoint_group))
+            results.append(endpoint_group_result(response["EndpointGroup"]))
         else:
             results.append(current)
 
@@ -1663,10 +1647,7 @@ def release_port_overrides(client, module, current_groups, releases, changed=Fal
             )
 
         changed = True
-        endpoint_group = require_expected_endpoint_group(
-            module, response["EndpointGroup"], expected_arn=endpoint_group_arn
-        )
-        current_groups[index] = endpoint_group_result(endpoint_group)
+        current_groups[index] = endpoint_group_result(response["EndpointGroup"])
 
     return changed
 
@@ -2462,8 +2443,6 @@ def ensure_present(client, module, deadline=None):
                 )
 
             accelerator = response["Accelerator"]
-            if accelerator["AcceleratorArn"] != request["AcceleratorArn"]:
-                module.fail_json(changed=True, msg="Global Accelerator returned an invalid accelerator")
 
     # Failures after the accelerator was created or updated report changed=True.
     mutated = not module.check_mode and (created or resource_changed)

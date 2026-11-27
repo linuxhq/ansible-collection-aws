@@ -190,17 +190,6 @@ def test_check_mode_replacement_does_not_return_stale_id():
     assert "resolver_rule_association_id" not in raised.value.values
 
 
-def test_check_mode_predicts_rule_association():
-    with (
-        patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=None),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        plugin.ensure_present(Mock(), FakeModule(params(wait=True), check_mode=True))
-
-    assert raised.value.values["changed"]
-    assert raised.value.values["resolver_rule_association"]["vpc_id"] == "vpc-1"
-
-
 def test_absent_does_not_require_name():
     with (
         patch.object(plugin, "get_resolver_rule_association_by_rule_and_vpc", return_value=None),
@@ -443,6 +432,7 @@ def test_check_mode_create_or_replacement_predicts_the_status_a_real_run_returns
 
     expected = "COMPLETE" if wait else "CREATING"
     assert results[True]["status"] == results[False]["status"] == expected
+    assert results[True]["vpc_id"] == "vpc-1"
 
 
 @pytest.mark.parametrize(

@@ -41,6 +41,7 @@ def test_requested_attributes_are_forwarded():
         plugin.main()
 
     assert require.call_args.args[3] == {"get_sms_attributes": ("attributes",)}
-    client.get_sms_attributes.assert_called_once_with(attributes=["DefaultSMSType"], aws_retry=True)
+    # Live: SNS accepts a repeated attribute and returns it once.
+    client.get_sms_attributes.assert_called_once_with(attributes=["DefaultSMSType", "DefaultSMSType"], aws_retry=True)
     assert raised.value.values["attributes"] == {"default_sms_type": "Transactional"}
     assert not raised.value.values["changed"]

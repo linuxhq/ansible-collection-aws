@@ -207,7 +207,7 @@ def get_caller_account(module):
     except (BotoCoreError, ClientError):
         return None
 
-    return response.get("Account")
+    return response["Account"]
 
 
 def get_queue(client, module, queue_url, read_tags=True):

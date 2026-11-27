@@ -388,25 +388,9 @@ def test_reconcile_ec2_tags_later_batch_failure_reports_changed(method, tags_to_
     assert raised.value.values["msg"] == message
 
 
-def test_reconcile_ssm_tags_reports_changed_after_removing_tags():
-    client = Mock()
-    client.add_tags_to_resource.side_effect = ClientError({"Error": {"Code": "Throttling", "Message": "no"}}, "Tag")
-    with pytest.raises(ModuleFail) as raised:
-        reconcile_ssm_tags(FakeModule({}), client, "Document", "doc", {"new": "value"}, ["old"], "document")
-
-    assert raised.value.values["changed"] is True
-
-
-@pytest.mark.parametrize("changed", [False, True])
-def test_reconcile_ssm_tags_reports_the_supplied_changed_state(changed):
-    client = Mock()
-    client.remove_tags_from_resource.side_effect = ClientError(
-        {"Error": {"Code": "Throttling", "Message": "no"}}, "Untag"
-    )
-    with pytest.raises(ModuleFail) as raised:
-        reconcile_ssm_tags(FakeModule({}), client, "Document", "doc", {}, ["old"], "document", changed=changed)
-
-    assert raised.value.values["changed"] is changed
+def reconcile_ssm_document_tags(module, client, resource_id, *args, **kwargs):
+    """Call reconcile_ssm_tags with the arguments of the other reconcile helpers, for an SSM document."""
+    return reconcile_ssm_tags(module, client, "Document", resource_id, *args, **kwargs)
 
 
 @pytest.mark.parametrize(
@@ -414,6 +398,7 @@ def test_reconcile_ssm_tags_reports_the_supplied_changed_state(changed):
     (
         (reconcile_ec2_tags, ["fl-1"], "delete_tags", "create_tags"),
         (reconcile_arn_tags, "arn:resource", "untag_resource", "tag_resource"),
+        (reconcile_ssm_document_tags, "doc", "remove_tags_from_resource", "add_tags_to_resource"),
     ),
 )
 def test_reconcile_tags_report_changed_after_removing_tags(reconcile, resource, remove_method, tag_method):
@@ -432,6 +417,7 @@ def test_reconcile_tags_report_changed_after_removing_tags(reconcile, resource, 
     (
         (reconcile_ec2_tags, ["fl-1"], "delete_tags"),
         (reconcile_arn_tags, "arn:resource", "untag_resource"),
+        (reconcile_ssm_document_tags, "doc", "remove_tags_from_resource"),
     ),
 )
 def test_reconcile_tags_report_the_supplied_changed_state(reconcile, resource, remove_method, changed):
