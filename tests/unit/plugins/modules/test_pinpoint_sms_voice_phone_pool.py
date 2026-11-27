@@ -910,7 +910,7 @@ def test_absent_does_not_return_stale_data_when_delete_races():
         patch.object(
             plugin,
             "describe_pools",
-            return_value=[{"PoolId": "pool-1", "Status": "ACTIVE"}],
+            return_value=[active_pool(DeletionProtectionEnabled=False)],
         ),
         pytest.raises(ModuleExit) as raised,
     ):
@@ -1934,16 +1934,27 @@ def test_absent_checks_the_sdk_methods_of_its_lookup(pool_id):
     ensure_absent.assert_called_once_with(client, module)
 
 
+def run_main_with_pool(client, module, pool):
+    """Run main(), which replaces any Name entry of tags with name, with find_pool returning pool."""
+    with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
+        patch.object(plugin, "require_client_methods"),
+        patch.object(plugin, "find_pool", return_value=pool),
+        pytest.raises(ModuleExit) as raised,
+    ):
+        plugin.main()
+
+    return raised
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_name_overrides_a_name_entry_in_tags_when_creating(check_mode):
     client = Mock()
     client.create_pool.return_value = described_pool("pool-1", Status="CREATING")
-    module = FakeModule(main_params(name="real", tags={"Env": "test", "Name": "other"}), check_mode=check_mode)
-    with (
-        patch.object(plugin, "find_pool", return_value=None),
-        pytest.raises(ModuleExit) as raised,
-    ):
-        run_ensure_present(client, module)
+    module = FakeModule(
+        main_params(name="real", tags={"Env": "test", "Name": "other"}), check_mode=check_mode, client=client
+    )
+    raised = run_main_with_pool(client, module, None)
 
     assert raised.value.values["pool"]["tags"] == {"Env": "test", "Name": "real"}
     if not check_mode:
@@ -1957,14 +1968,12 @@ def test_name_overrides_a_name_entry_in_tags_when_creating(check_mode):
 def test_name_overrides_a_name_entry_in_tags_when_updating(check_mode):
     client = Mock()
     module = FakeModule(
-        present_params(name="real", pool_id="pool-1", tags={"Env": "test", "Name": "other"}), check_mode=check_mode
+        main_params(name="real", pool_id="pool-1", tags={"Env": "test", "Name": "other"}),
+        check_mode=check_mode,
+        client=client,
     )
-    with (
-        patch.object(plugin, "find_pool", return_value=active_pool()),
-        patch.object(plugin, "reconcile_arn_tags") as reconcile,
-        pytest.raises(ModuleExit) as raised,
-    ):
-        run_ensure_present(client, module)
+    with patch.object(plugin, "reconcile_arn_tags") as reconcile:
+        raised = run_main_with_pool(client, module, active_pool())
 
     assert raised.value.values["changed"] is True
     assert raised.value.values["pool"]["tags"] == {"Env": "test", "Name": "real"}

@@ -16,22 +16,14 @@ from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     assert_documents_shape,
     assert_module_contract,
     documented_returns,
+    model_client,
+    model_mock_client,
 )
 
 
 def run_ensure_present(client, module):
     """Run ensure_present with the tags main() passes, the tags with the Name tag from name."""
     plugin.ensure_present(client, module, dict(module.params["tags"] or {}, Name=module.params["name"]))
-
-
-def model_client():
-    """Return a mock client with the real botocore model, for check-mode predictions that read it.
-
-    The model is loaded without creating a client, so no credential lookup runs.
-    """
-    client = Mock()
-    client.meta.service_model = get_session().get_service_model("pinpoint-sms-voice-v2")
-    return client
 
 
 def named(name="sms"):
@@ -75,7 +67,7 @@ def test_documented_returns_cover_the_sdk_shape(shape_name):
 
 
 def test_lookup_checks_the_describe_parameters_it_sends():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(
         {
             "client_token": None,
@@ -209,9 +201,7 @@ def test_null_iso_country_code_is_rejected_before_any_aws_call(check_mode):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_empty_number_capabilities_are_rejected_by_botocore_before_any_write(check_mode):
     # The phone number search sends them as a filter, which botocore rejects in both modes before any request.
-    client = get_session().create_client(
-        "pinpoint-sms-voice-v2", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x"
-    )
+    client = model_client("pinpoint-sms-voice-v2")
     stubber = Stubber(client)
     stubber.add_response("describe_phone_numbers", {"PhoneNumbers": []})
     module = FakeModule(
@@ -420,7 +410,7 @@ def test_existing_number_matches_pool_and_opt_out_list_arns():
 
 
 def test_check_mode_projects_deduplicated_request_without_client_token():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(
         {
             "client_token": "secret-token",
@@ -672,22 +662,12 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
         patch.object(
             plugin,
             "get_phone_number",
-            return_value={
-                "DeletionProtectionEnabled": True,
-                "PhoneNumberArn": "arn:phone-1",
-                "PhoneNumberId": "phone-1",
-                "PoolId": "pool-1",
-                "Status": "ACTIVE",
-            },
+            return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1"),
         ),
         patch.object(
             plugin,
             "wait_for_phone_number_active",
-            return_value={
-                "DeletionProtectionEnabled": True,
-                "PhoneNumberId": "phone-1",
-                "Status": "ACTIVE",
-            },
+            return_value=existing_number(),
         ) as wait_for_phone_number_active,
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
@@ -696,8 +676,9 @@ def test_absent_removes_pool_and_deletion_protection_before_release():
         plugin.ensure_absent(client, module)
 
     client.disassociate_origination_identity.assert_called_once_with(
-        PoolId="pool-1",
+        IsoCountryCode="US",
         OriginationIdentity="phone-1",
+        PoolId="pool-1",
         aws_retry=True,
     )
     client.update_phone_number.assert_called_once_with(
@@ -764,13 +745,7 @@ def test_absent_tolerates_disappearing_prerequisites():
         patch.object(
             plugin,
             "get_phone_number",
-            return_value={
-                "DeletionProtectionEnabled": True,
-                "PhoneNumberArn": "arn:phone-1",
-                "PhoneNumberId": "phone-1",
-                "PoolId": "pool-1",
-                "Status": "ACTIVE",
-            },
+            return_value=existing_number(PhoneNumberArn="arn:phone-1", PoolId="pool-1"),
         ),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
         patch.object(plugin, "require_client_methods"),
@@ -1070,18 +1045,15 @@ def test_absent_waits_for_disassociation_before_release():
     events = Mock()
     events.attach_mock(client.disassociate_origination_identity, "disassociate")
     events.attach_mock(client.release_phone_number, "release")
-    events.wait.return_value = {"PhoneNumberId": "phone-1", "Status": "ACTIVE"}
+    events.wait.return_value = existing_number(DeletionProtectionEnabled=False)
 
     with (
         patch.object(
             plugin,
             "get_phone_number",
-            return_value={
-                "PhoneNumberArn": "arn:phone-1",
-                "PhoneNumberId": "phone-1",
-                "PoolId": "pool-1",
-                "Status": "ACTIVE",
-            },
+            return_value=existing_number(
+                DeletionProtectionEnabled=False, PhoneNumberArn="arn:phone-1", PoolId="pool-1"
+            ),
         ),
         patch.object(plugin, "wait_for_phone_number_active", events.wait),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
@@ -1103,12 +1075,9 @@ def test_absent_stops_when_number_disappears_after_disassociation():
         patch.object(
             plugin,
             "get_phone_number",
-            return_value={
-                "PhoneNumberArn": "arn:phone-1",
-                "PhoneNumberId": "phone-1",
-                "PoolId": "pool-1",
-                "Status": "ACTIVE",
-            },
+            return_value=existing_number(
+                DeletionProtectionEnabled=False, PhoneNumberArn="arn:phone-1", PoolId="pool-1"
+            ),
         ),
         patch.object(plugin, "wait_for_phone_number_active", return_value={}),
         patch.object(pinpoint_sms_voice, "paginated_query_with_retries", return_value=pool_with_other_phone_number()),
@@ -1207,7 +1176,7 @@ def test_missing_explicit_number_reports_the_module_message():
         run_ensure_present(client, module)
 
     assert raised.value.values["msg"] == (
-        "The specified phone number was not found or does not match the requested attributes"
+        "Pinpoint SMS Voice V2 phone number phone-missing was not found or does not match the requested attributes"
     )
     assert query.call_args.kwargs == {"PhoneNumberIds": ["phone-missing"]}
     query_list.assert_not_called()
@@ -1416,7 +1385,7 @@ def test_name_matched_number_converges_tags_instead_of_requesting(tags, purge_ta
 
 
 def test_number_without_the_requested_name_is_not_adopted():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(phone_number_params(name="missing"), check_mode=True)
     with (
         patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1")]),
@@ -1583,7 +1552,7 @@ def test_absent_fails_without_mutation_for_last_phone_number_in_pool(check_mode)
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_absent_proceeds_when_other_phone_numbers_remain_in_pool(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False)
     client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
@@ -1609,7 +1578,7 @@ def test_absent_proceeds_when_other_phone_numbers_remain_in_pool(check_mode):
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_absent_releases_number_beside_sender_id_in_pool(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.update_phone_number.return_value = existing_number(DeletionProtectionEnabled=False)
     client.release_phone_number.return_value = {"PhoneNumberId": "phone-1", "Status": "DELETED"}
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=check_mode)
@@ -1675,7 +1644,7 @@ def test_absent_releases_last_phone_number_of_a_pool_being_deleted(pools_result)
     ids=["deleting", "gone"],
 )
 def test_absent_check_mode_reports_release_of_last_phone_number_of_a_pool_being_deleted(pools_result):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule({"phone_number_id": "phone-1", "state": "absent", "tags": None}, check_mode=True)
     with (
         patch.object(
@@ -1751,7 +1720,7 @@ def test_absent_reports_other_disassociate_conflicts_from_aws():
 
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_new_number_with_arns_returns_ids_and_names_in_every_mode(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.request_phone_number.return_value = existing_number(
         OptOutListName="list-1",
         PoolId="pool-1",
@@ -1919,7 +1888,7 @@ def test_absent_check_mode_predicts_the_release_response(pool_id, deletion_prote
 
     results = {}
     for check_mode in (False, True):
-        client = model_client()
+        client = model_mock_client("pinpoint-sms-voice-v2")
         client.update_phone_number.return_value = dict(DESCRIBED_NUMBER)
         client.release_phone_number.return_value = dict(released)
         module = FakeModule(
@@ -2098,7 +2067,7 @@ def require_without_international_sending(module, client, service, methods, chan
 def test_check_mode_runs_the_sdk_checks_the_real_run_fails_on(existing, check_mode):
     # Older botocore also drops InternationalSendingEnabled from DescribePhoneNumbers, so an update is always predicted.
     current = {key: value for key, value in existing_number().items() if key != "InternationalSendingEnabled"}
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(phone_number_params(international_sending_enabled=False), check_mode=check_mode)
     with (
         named(),
@@ -2256,7 +2225,7 @@ def test_absent_without_phone_number_id_releases_the_number_with_the_name_tag():
 
 
 def test_absent_check_mode_without_phone_number_id_predicts_the_release_of_the_named_number():
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     module = FakeModule(phone_number_params(state="absent"), check_mode=True)
     with (
         patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1")]),
@@ -2386,17 +2355,24 @@ def test_absent_checks_the_describe_parameters_of_its_lookup(phone_number_id, de
     ensure_absent.assert_called_once_with(client, module)
 
 
+def main_module(client, check_mode, **overrides):
+    """Return a module for main(), which replaces any Name entry of tags with name."""
+    params = dict(phone_number_params(**overrides), wait_delay=5, wait_timeout=300)
+    return FakeModule(params, check_mode=check_mode, client=client)
+
+
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_name_overrides_a_name_entry_in_tags_when_requesting(check_mode):
-    client = model_client()
+    client = model_mock_client("pinpoint-sms-voice-v2")
     client.request_phone_number.return_value = existing_number(PhoneNumberId="phone-2", Status="PENDING")
-    module = FakeModule(phone_number_params(name="real", tags={"Env": "test", "Name": "other"}), check_mode=check_mode)
+    module = main_module(client, check_mode, name="real", tags={"Env": "test", "Name": "other"})
     with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "query_list", return_value=[]),
         patch.object(plugin, "require_client_methods"),
         pytest.raises(ModuleExit) as raised,
     ):
-        run_ensure_present(client, module)
+        plugin.main()
 
     tags = [{"Key": "Env", "Value": "test"}, {"Key": "Name", "Value": "real"}]
     if check_mode:
@@ -2409,13 +2385,13 @@ def test_name_overrides_a_name_entry_in_tags_when_requesting(check_mode):
 @pytest.mark.parametrize("phone_number_id", [None, "phone-1"])
 def test_name_overrides_a_name_entry_in_tags_when_updating(phone_number_id, check_mode):
     client = Mock()
-    module = FakeModule(
-        phone_number_params(name="real", phone_number_id=phone_number_id, tags={"Env": "test", "Name": "other"}),
-        check_mode=check_mode,
+    module = main_module(
+        client, check_mode, name="real", phone_number_id=phone_number_id, tags={"Env": "test", "Name": "other"}
     )
     # Without phone_number_id the number is found by its Name tag, so only the explicit number can be renamed.
     current_name = "old" if phone_number_id else "real"
     with (
+        patch.object(plugin, "AnsibleAWSModule", return_value=module),
         patch.object(plugin, "query_list", return_value=[existing_number(PhoneNumberArn="arn:phone-1")]),
         patch.object(plugin, "get_phone_number", return_value=existing_number(PhoneNumberArn="arn:phone-1")),
         named(current_name),
@@ -2423,7 +2399,7 @@ def test_name_overrides_a_name_entry_in_tags_when_updating(phone_number_id, chec
         patch.object(plugin, "reconcile_arn_tags") as reconcile,
         pytest.raises(ModuleExit) as raised,
     ):
-        run_ensure_present(client, module)
+        plugin.main()
 
     tags_to_set = {"Env": "test"} if current_name == "real" else {"Env": "test", "Name": "real"}
     assert raised.value.values["changed"] is True

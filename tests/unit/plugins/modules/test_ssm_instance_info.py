@@ -60,6 +60,13 @@ def test_instance_ids_are_sent_for_aws_to_validate():
     assert query_list.call_args.kwargs["Filters"] == [{"Key": "InstanceIds", "Values": instance_ids}]
 
 
+def test_repeated_instance_ids_are_sent_once_in_order():
+    module = FakeModule(params(instance_ids=["i-2", "i-1", "i-2", "i-1"]), client=Mock())
+    _result, _require, query_list = run(module, [])
+
+    assert query_list.call_args.kwargs["Filters"] == [{"Key": "InstanceIds", "Values": ["i-2", "i-1"]}]
+
+
 def test_null_filter_value_is_rejected_before_describing():
     result, _require, query_list = run(FakeModule(params(filters={"tag:Environment": None}), client=Mock()))
 

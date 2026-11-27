@@ -359,11 +359,13 @@ def test_disassociate_response_without_the_identity_is_returned_unchanged():
                 {"PoolId": "pool-1"},
                 [
                     {
+                        "IsoCountryCode": "US",
                         "OriginationIdentity": "sender-1",
                         "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
                         "PoolId": "pool-1",
                     },
                     {
+                        "IsoCountryCode": "US",
                         "OriginationIdentity": "sender-2",
                         "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-2/US",
                         "PoolId": "pool-1",
@@ -403,10 +405,12 @@ def test_absent_does_not_return_association_that_disappeared():
                 {"PoolId": "pool-1"},
                 [
                     {
+                        "IsoCountryCode": "US",
                         "OriginationIdentity": "sender-1",
                         "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
                     },
                     {
+                        "IsoCountryCode": "US",
                         "OriginationIdentity": "sender-2",
                         "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-2/US",
                     },
@@ -1060,6 +1064,7 @@ def test_absent_without_a_country_requires_botocore_1_42_80_before_disassociatin
         (
             [
                 {
+                    "IsoCountryCode": "US",
                     "OriginationIdentity": "sender-1",
                     "OriginationIdentityArn": "arn:aws:sms-voice:us-east-1:123456789012:sender-id/sender-1/US",
                 }

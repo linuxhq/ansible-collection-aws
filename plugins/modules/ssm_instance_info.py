@@ -152,7 +152,7 @@ instances:
       type: str
     instance_id:
       description: Managed instance ID.
-      returned: when available
+      returned: always
       type: str
     ip_address:
       description: IP address of the managed instance.

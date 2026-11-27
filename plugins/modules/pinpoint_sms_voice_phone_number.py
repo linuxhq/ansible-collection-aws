@@ -435,7 +435,7 @@ def find_phone_number_by_name(client, module, phone_numbers):
     """Return the number, with its tags, whose Name tag equals name; fail when several numbers have it."""
     matches = []
     for phone_number in phone_numbers:
-        if phone_number.get("Status") == "DELETED":
+        if phone_number["Status"] == "DELETED":
             continue
 
         # Another actor can release a candidate between DescribePhoneNumbers and ListTagsForResource.
@@ -654,7 +654,7 @@ def ensure_absent(client, module):
         if current is not None:
             phone_number_id = current["PhoneNumberId"]
 
-    if current is not None and current.get("Status") == "DELETED":
+    if current is not None and current["Status"] == "DELETED":
         current = None
 
     changed = current is not None
@@ -672,26 +672,25 @@ def ensure_absent(client, module):
         response["Status"] = "DELETED"
 
     if changed and not module.check_mode:
-        if current.get("Status") != "ACTIVE":
+        if current["Status"] != "ACTIVE":
             current = wait_for_phone_number_active(client, module, phone_number_id)
             # Deleted elsewhere during the wait; this run changed nothing.
             if not current or current.get("Status") == "DELETED":
                 exit_result(module, False, None)
 
-        if current.get("PoolId"):
+        pool_id = current.get("PoolId")
+        if pool_id:
             require_not_last_pool_phone_number(client, module, current)
 
         # Every write is checked before the first one, so an older botocore fails without modifying anything.
         methods = {"release_phone_number": ("PhoneNumberId",)}
-        # Older botocore requires IsoCountryCode to disassociate; DescribePhoneNumbers always returns the country.
-        disassociate_request = scrub_none_parameters(
-            {
-                "IsoCountryCode": current.get("IsoCountryCode"),
+        if pool_id:
+            # Older botocore requires IsoCountryCode to disassociate; DescribePhoneNumbers always returns the country.
+            disassociate_request = {
+                "IsoCountryCode": current["IsoCountryCode"],
                 "OriginationIdentity": phone_number_id,
-                "PoolId": current.get("PoolId"),
+                "PoolId": pool_id,
             }
-        )
-        if current.get("PoolId"):
             methods["disassociate_origination_identity"] = tuple(disassociate_request)
 
         if current.get("DeletionProtectionEnabled"):
@@ -701,7 +700,7 @@ def ensure_absent(client, module):
 
         # Failures after the first successful change report changed=True.
         mutated = False
-        if current.get("PoolId"):
+        if pool_id:
             try:
                 client.disassociate_origination_identity(
                     **disassociate_request,
@@ -711,11 +710,11 @@ def ensure_absent(client, module):
                 pass
             except is_boto3_error_code("ConflictException") as e:
                 if is_last_phone_number_conflict(e):
-                    module.fail_json(changed=False, msg=last_phone_number_message(phone_number_id, current["PoolId"]))
+                    module.fail_json(changed=False, msg=last_phone_number_message(phone_number_id, pool_id))
 
-                module.fail_json_aws(e, msg=disassociate_failure_message(phone_number_id, current["PoolId"]))
+                module.fail_json_aws(e, msg=disassociate_failure_message(phone_number_id, pool_id))
             except (BotoCoreError, ClientError) as e:
-                module.fail_json_aws(e, msg=disassociate_failure_message(phone_number_id, current["PoolId"]))
+                module.fail_json_aws(e, msg=disassociate_failure_message(phone_number_id, pool_id))
             else:
                 mutated = True
                 current = wait_for_phone_number_active(client, module, phone_number_id, changed=True)
@@ -816,7 +815,7 @@ def ensure_present(client, module, tags):
     matches = [
         phone_number
         for phone_number in phone_numbers
-        if phone_number.get("Status") != "DELETED"
+        if phone_number["Status"] != "DELETED"
         and all(
             (sorted(set(phone_number[key])) if key == "NumberCapabilities" else phone_number.get(key)) == value
             for key, value in desired.items()
@@ -892,7 +891,12 @@ def ensure_present(client, module, tags):
         exit_result(module, changed, current)
 
     if module.params["phone_number_id"]:
-        module.fail_json(msg="The specified phone number was not found or does not match the requested attributes")
+        module.fail_json(
+            msg=(
+                f"Pinpoint SMS Voice V2 phone number {module.params['phone_number_id']} was not found or does not "
+                "match the requested attributes"
+            )
+        )
 
     parameters = scrub_none_parameters(
         {

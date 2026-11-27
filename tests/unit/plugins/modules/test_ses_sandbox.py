@@ -1,3 +1,4 @@
+from copy import deepcopy
 from unittest.mock import Mock, patch
 
 import pytest
@@ -69,10 +70,11 @@ def test_account_details_are_deduplicated_and_sorted():
 def test_omitted_contacts_preserve_existing_addresses_without_update(check_mode):
     client = Mock()
     account = {"details": DETAILS, "production_access_enabled": True}
+    expected = deepcopy(account)
     result, _require, _get = run(FakeModule(params(), client=client, check_mode=check_mode), account)
 
     assert not result.values["changed"]
-    assert result.values["account"] == account
+    assert result.values["account"] == expected
     client.put_account_details.assert_not_called()
 
 
@@ -148,11 +150,12 @@ def test_review_details_with_only_a_case_id_are_not_resubmitted(check_mode):
     client = Mock()
     details = dict(DETAILS, review_details={"case_id": "177395777700734"})
     account = {"details": details, "production_access_enabled": False}
+    expected = deepcopy(account)
     module = FakeModule(params(), client=client, check_mode=check_mode)
     result, _require, _get = run(module, account)
 
     assert not result.values["changed"]
-    assert result.values["account"] == account
+    assert result.values["account"] == expected
     client.put_account_details.assert_not_called()
     module.warn.assert_not_called()
 

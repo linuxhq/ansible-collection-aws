@@ -357,7 +357,6 @@ def main():
         )
 
     if changed and module.check_mode:
-        current_account = dict(current_account)
         current_account["details"] = dict(current_details, **desired_compared)
     elif changed:
         try:

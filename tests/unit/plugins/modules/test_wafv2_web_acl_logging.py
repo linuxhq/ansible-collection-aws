@@ -199,10 +199,21 @@ def test_absent_deletes_an_existing_configuration(check_mode):
 def test_absent_reports_no_change_when_configuration_disappears_during_delete():
     client = Mock()
     client.delete_logging_configuration.side_effect = nonexistent("DeleteLoggingConfiguration")
-    with patch.object(plugin, "get_logging_configuration", return_value={}), pytest.raises(ModuleExit) as raised:
+    current = {"LogDestinationConfigs": ["arn:log"], "ResourceArn": ARN}
+    with patch.object(plugin, "get_logging_configuration", return_value=current), pytest.raises(ModuleExit) as raised:
         plugin.ensure_absent(client, FakeModule(params(state="absent")))
 
     assert not raised.value.values["changed"]
+    client.delete_logging_configuration.assert_called_once_with(ResourceArn=ARN, aws_retry=True)
+
+
+def test_absent_checks_only_the_methods_it_calls():
+    _result, require_client_methods = run_main(FakeModule(params(state="absent"), client=Mock()))
+
+    assert require_client_methods.call_args.args[3] == {
+        "delete_logging_configuration": ("ResourceArn",),
+        "get_logging_configuration": ("ResourceArn",),
+    }
 
 
 def test_absent_reports_no_change_for_a_missing_web_acl():

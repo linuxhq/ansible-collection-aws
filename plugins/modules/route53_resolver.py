@@ -924,7 +924,7 @@ def ensure_present(client, module, deadline=None):
                     desired=desired_comparable,
                 )
 
-        endpoint = dict(endpoint, Tags=endpoint.get("Tags", current_tags))
+        endpoint = dict(endpoint, Tags=current_tags)
         if tags is not None:
             reconcile_arn_tags(
                 module,

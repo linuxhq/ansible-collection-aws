@@ -4,13 +4,13 @@ from unittest.mock import Mock, patch
 
 import pytest
 from botocore.exceptions import ClientError, WaiterError
-from botocore.session import get_session
 from botocore.stub import Stubber
 
 from ansible_collections.linuxhq.aws.plugins.module_utils import wait
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
     ModuleFail,
+    model_client,
 )
 
 
@@ -50,9 +50,7 @@ WAITER_MODEL = {
 
 
 def stubbed_client(*responses):
-    client = get_session().create_client(
-        "ssm", region_name="us-east-1", aws_access_key_id="EXAMPLE", aws_secret_access_key="EXAMPLE"
-    )
+    client = model_client("ssm")
     stubber = Stubber(client)
     for response in responses:
         if isinstance(response, str):

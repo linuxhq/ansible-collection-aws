@@ -207,7 +207,14 @@ def test_context_id_requests_a_resource_level_increase():
     methods = require_client_methods.call_args.args[3]
     assert "ContextId" in methods["get_service_quota"]
     assert "ContextId" in methods["request_service_quota_increase"]
-    assert "QuotaRequestedAtLevel" in methods["list_requested_service_quota_change_history_by_quota"]
+    # The paginator sends no MaxResults, so the history listing is not gated on it.
+    assert methods["list_requested_service_quota_change_history_by_quota"] == (
+        "NextToken",
+        "Status",
+        "QuotaCode",
+        "ServiceCode",
+        "QuotaRequestedAtLevel",
+    )
     assert methods["get_aws_default_service_quota"] == ("QuotaCode", "ServiceCode")
 
 

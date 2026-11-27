@@ -230,7 +230,7 @@ def current_association(module, associations):
     iso_country_code = module.params["iso_country_code"]
 
     for association in associations:
-        if iso_country_code is not None and association.get("IsoCountryCode") != iso_country_code:
+        if iso_country_code is not None and association["IsoCountryCode"] != iso_country_code:
             continue
 
         if identity_matches(association, (module.params["origination_identity"],)):
@@ -356,7 +356,7 @@ def ensure_absent(client, module):
     request = {key: value for key, value in association_request(module).items() if key != "ClientToken"}
     # AWS requires a phone number's country to disassociate it, and lists a phone number under its only country.
     if changed and "IsoCountryCode" not in request and is_phone_number_identity(association):
-        request = scrub_none_parameters(dict(request, IsoCountryCode=association.get("IsoCountryCode")))
+        request = dict(request, IsoCountryCode=association["IsoCountryCode"])
 
     # botocore before 1.42.80 requires IsoCountryCode for DisassociateOriginationIdentity and refuses the request
     # without it.

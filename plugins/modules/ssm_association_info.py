@@ -143,9 +143,6 @@ associations:
 
 from ansible_collections.amazon.aws.plugins.module_utils.modules import AnsibleAWSModule
 from ansible_collections.amazon.aws.plugins.module_utils.retries import AWSRetry
-from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
-    boto3_resource_to_ansible_dict,
-)
 
 from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
     query_list,
@@ -153,8 +150,8 @@ from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
 )
 from ansible_collections.linuxhq.aws.plugins.module_utils.ssm import (
     SSM_ASSOCIATION_RESOURCE_TYPE,
-    association_overview,
     list_ssm_tags,
+    normalize_association,
     require_non_null_ssm_filter_values,
     ssm_filter_list,
 )
@@ -211,15 +208,7 @@ def main():
         if tags is None:
             continue
 
-        normalized_associations.append(
-            boto3_resource_to_ansible_dict(
-                dict(association, Tags=tags),
-                ignore_list=["TargetMaps"],
-                transform_tags=True,
-                force_tags=False,
-                nested_transforms={"Overview": association_overview},
-            )
-        )
+        normalized_associations.append(normalize_association(dict(association, Tags=tags)))
 
     module.exit_json(
         changed=False,

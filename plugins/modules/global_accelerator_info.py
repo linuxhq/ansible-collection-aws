@@ -306,11 +306,9 @@ from ansible_collections.amazon.aws.plugins.module_utils.transformation import (
 from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import (
     get_accelerator_by_arn,
     list_accelerator_tags,
+    list_accelerators,
 )
-from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import (
-    query_list,
-    require_client_methods,
-)
+from ansible_collections.linuxhq.aws.plugins.module_utils.sdk import require_client_methods
 
 
 def main():
@@ -335,19 +333,7 @@ def main():
     accelerators = []
 
     if not arn:
-        require_client_methods(
-            module,
-            client,
-            "Global Accelerator",
-            {"list_accelerators": ("MaxResults", "NextToken")},
-        )
-        accelerators = query_list(
-            module,
-            client,
-            "list_accelerators",
-            "Accelerators",
-            "Unable to list AWS Global Accelerator accelerators",
-        )
+        accelerators = list_accelerators(client, module)
     else:
         accelerator = get_accelerator_by_arn(client, module, arn)
         if accelerator is not None:

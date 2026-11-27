@@ -11,6 +11,7 @@ from ansible.module_utils.common.dict_transformations import camel_dict_to_snake
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import (
     is_boto3_error_code,
 )
+from ansible_collections.amazon.aws.plugins.module_utils.transformation import boto3_resource_to_ansible_dict
 
 SSM_ASSOCIATION_RESOURCE_TYPE = "Association"
 SSM_DOCUMENT_RESOURCE_TYPE = "Document"
@@ -42,6 +43,17 @@ def require_non_null_ssm_filter_values(module, filters):
 def association_overview(overview, count_key="AssociationStatusAggregatedCount"):
     # The aggregated count is keyed by association status names, which are data rather than field names.
     return camel_dict_to_snake_dict(overview, ignore_list=[count_key])
+
+
+def normalize_association(association):
+    """Return an association as a result, keeping the case of its tags, target maps, and parameters."""
+    return boto3_resource_to_ansible_dict(
+        association,
+        ignore_list=["TargetMaps", "Parameters"],
+        transform_tags=True,
+        force_tags=False,
+        nested_transforms={"Overview": association_overview},
+    )
 
 
 def list_ssm_tags(module, client, resource_type, resource_id, description, changed=False, missing_ok=False):

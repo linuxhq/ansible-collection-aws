@@ -335,7 +335,6 @@ ATTACHMENT_ROUTABLE_STATES = {"available", "modifying"}
 MAX_ATTACHMENT_FILTER_VALUES = 100
 ROUTE_TABLE_TERMINAL_STATES = {"deleted"}
 ROUTE_TABLE_DELETED_STATES = {"deleted", "deleting"}
-ROUTE_DELETED_STATES = {"deleted", "deleting"}
 ROUTE_PRESENT_STATES = {"active", "blackhole", "pending"}
 ROUTE_STATE_ORDER = {
     "active": 0,
@@ -626,9 +625,9 @@ def wait_for_route(client, module, transit_gateway_route_table_id, desired, chan
         ):
             return route
 
-        # A deleting or deleted route cannot become active or blackhole. A route that is not yet
-        # visible is retried, since route searches are eventually consistent after a create.
-        if (route is None and seen) or (route or {}).get("State") in ROUTE_DELETED_STATES:
+        # A deleting route cannot become active or blackhole; get_route() already drops deleted routes. A
+        # route that is not yet visible is retried, since route searches are eventually consistent after a create.
+        if (route is None and seen) or (route or {}).get("State") == "deleting":
             module.fail_json(
                 changed=changed,
                 msg=f"Unable to wait for EC2 transit gateway route {desired['destination_cidr_block']} to become {target}",
@@ -684,8 +683,8 @@ def ensure_route_absent(
     """
     wait = module.params["wait"] and not module.check_mode
 
-    if route is None or route.get("State") in ROUTE_DELETED_STATES:
-        if module.params["wait"] and route and route.get("State") == "deleting":
+    if route is None or route.get("State") == "deleting":
+        if module.params["wait"] and route:
             # A real run waits until EC2 stops returning the route, so check mode predicts no route.
             if not module.check_mode:
                 wait_for_route_absent(

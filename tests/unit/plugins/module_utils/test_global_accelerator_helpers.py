@@ -9,6 +9,7 @@ from ansible_collections.linuxhq.aws.plugins.module_utils import global_accelera
 from ansible_collections.linuxhq.aws.plugins.module_utils.global_accelerator import (
     get_accelerator_by_arn,
     list_accelerator_tags,
+    list_accelerators,
 )
 from ansible_collections.linuxhq.aws.tests.unit.plugins.modules.utils import (
     FakeModule,
@@ -51,6 +52,24 @@ def test_list_accelerator_tags_defaults_to_no_tags():
     client = Mock(list_tags_for_resource=Mock(return_value={}))
 
     assert list_accelerator_tags(client, FakeModule({}), ARN) == []
+
+
+def test_list_accelerators_checks_the_sdk_and_lists_every_accelerator():
+    accelerators = [{"AcceleratorArn": ARN, "Name": "example"}]
+    client = Mock()
+    module = FakeModule({})
+    with (
+        patch.object(global_accelerator_utils, "require_client_methods") as require,
+        patch.object(global_accelerator_utils, "query_list", return_value=accelerators) as query_list,
+    ):
+        assert list_accelerators(client, module) == accelerators
+
+    require.assert_called_once_with(
+        module, client, "Global Accelerator", {"list_accelerators": ("MaxResults", "NextToken")}
+    )
+    query_list.assert_called_once_with(
+        module, client, "list_accelerators", "Accelerators", "Unable to list AWS Global Accelerator accelerators"
+    )
 
 
 def test_get_accelerator_by_arn_returns_the_described_accelerator():
