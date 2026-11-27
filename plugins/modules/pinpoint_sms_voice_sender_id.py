@@ -264,7 +264,7 @@ def require_message_types(module, current):
         return
 
     # Live: DescribeSenderIds returns message types in title case, such as Transactional, so compare without case.
-    existing = sorted({message_type.upper() for message_type in current.get("MessageTypes") or []})
+    existing = sorted({message_type.upper() for message_type in current["MessageTypes"]})
     if existing != sorted(set(desired)):
         module.fail_json(
             msg=(
@@ -277,9 +277,6 @@ def require_message_types(module, current):
 
 def predict_write_message_types(sender_id):
     """Return a described sender ID with its message types in the letter case a write response uses."""
-    if "MessageTypes" not in sender_id:
-        return sender_id
-
     # Live: UpdateSenderId and ReleaseSenderId return TRANSACTIONAL where DescribeSenderIds returns Transactional.
     return dict(sender_id, MessageTypes=[message_type.upper() for message_type in sender_id["MessageTypes"]])
 
